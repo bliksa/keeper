@@ -83,17 +83,17 @@ static func _hex(r: float, rot := 0.0) -> PackedVector2Array:
 	return pts
 
 
-## Collectible iron: a hex nut spinning in 3D (stack of offset hexes).
-static func iron_nut(ci: CanvasItem, c: Vector2, r: float, spin: float, roll: float) -> void:
+## Collectible iron: a hex nut spinning like a coin around its vertical axis
+## (only the width changes; a stack of offset hexes gives it thickness).
+static func iron_nut(ci: CanvasItem, c: Vector2, r: float, spin: float) -> void:
 	var cs := cos(spin)
-	var front_first := cs > 0
 	var depth := 6
 	var shift := sin(spin) * 6
-	var order := range(depth, -1, -1) if front_first else range(0, depth + 1)
-	for i in order:
-		var xf := Transform2D(roll, Vector2(absf(cs) + 0.001, 1.0), 0.0, c + Vector2(shift * (i / float(depth)), 0))
+	var hex := _hex(r)
+	# Edge layers behind, then the face (with its hole) on top — both sides look like a nut.
+	for i in range(depth, -1, -1):
+		var xf := Transform2D(0.0, Vector2(absf(cs) + 0.001, 1.0), 0.0, c + Vector2(shift * (i / float(depth)), 0))
 		ci.draw_set_transform_matrix(xf)
-		var hex := _hex(r)
 		if i == 0:
 			ci.draw_colored_polygon(hex, Color("#9ca3af"))
 			ci.draw_polyline(hex + PackedVector2Array([hex[0]]), Color("#374151"), 1.5, true)

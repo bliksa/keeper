@@ -43,11 +43,14 @@ func _draw() -> void:
 	var ic := Vector2(r.end.x - 26, r.position.y + 24)
 	var hex := PackedVector2Array()
 	for i in 6:
-		var a := i / 6.0 * TAU - PI / 2 + _spin
-		hex.append(ic + Vector2(cos(a), sin(a)) * 11)
+		# Coin-like spin: only the width changes.
+		var a := i / 6.0 * TAU - PI / 2
+		hex.append(ic + Vector2(cos(a) * absf(cos(_spin)), sin(a)) * 11)
 	draw_colored_polygon(hex, Color("#9ca3af"))
 	draw_polyline(hex + PackedVector2Array([hex[0]]), Color("#4b5563"), 1.5, true)
-	draw_circle(ic, 4.5, BG)
+	draw_set_transform(ic, 0, Vector2(maxf(absf(cos(_spin)), 0.01), 1))
+	draw_circle(Vector2.ZERO, 4.5, BG)
+	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 
 	if Game.has_breathing:
 		_draw_breath(font)

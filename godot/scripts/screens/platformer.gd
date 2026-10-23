@@ -911,7 +911,7 @@ func _draw_world() -> void:
 			continue
 		match e.type:
 			"iron":
-				Draw.iron_nut(ci, Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3), e.w / 2, t / 800.0 + e.id, t / 2000.0)
+				Draw.iron_nut(ci, Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3), e.w / 2, t / 800.0 + e.id)
 			"enemy", "spike":
 				_draw_cramp(ci, e, t)
 			"trigger":
