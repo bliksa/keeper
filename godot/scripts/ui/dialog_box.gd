@@ -11,6 +11,8 @@ extends Control
 signal closed
 
 const H := 150.0
+## One warm white for every dialog panel (story dialogs, hints, game-over choices).
+const PANEL_BG := Color("#f0eee9")
 
 var at_top := false:
 	set(v):
@@ -46,9 +48,9 @@ func _ready() -> void:
 	avatar_frame.size = Vector2(H - 32, H - 32)
 	avatar_frame.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("#d1fae5")
+	sb.bg_color = PANEL_BG.darkened(0.06)
 	sb.set_corner_radius_all(12)
-	sb.border_color = Color("#f0eee9")
+	sb.border_color = PANEL_BG
 	sb.set_border_width_all(4)
 	avatar_frame.add_theme_stylebox_override("panel", sb)
 	_bg.add_child(avatar_frame)
@@ -164,7 +166,7 @@ func _refresh() -> void:
 	for c in _buttons.get_children():
 		c.queue_free()
 	if _node_style:
-		_bg.add_theme_stylebox_override("panel", _style(Color("#f0eee9", 0.95)))
+		_bg.add_theme_stylebox_override("panel", _style(Color(PANEL_BG, 0.95)))
 		var part := _part_data()
 		var speaker: String = part.get("speaker", "")
 		_avatar.texture = load("res://assets/images/dia2.png" if speaker == "Kyra" else "res://assets/images/dia1.png")
@@ -177,7 +179,7 @@ func _refresh() -> void:
 		else:
 			_add_button(Text.plain(Text.t("BTN_NEXT")), 0, _next, true)
 	else:
-		_bg.add_theme_stylebox_override("panel", _style(Color("#ecfdf5", 0.95)))
+		_bg.add_theme_stylebox_override("panel", _style(Color(PANEL_BG, 0.95)))
 		_avatar.texture = load(_panel.get("avatar", "res://assets/images/dia1.png"))
 		_speaker.text = Text.plain(Text.t(_panel.get("title", ""))).to_upper()
 		_text.text = Text.bb(_panel.get("text", ""))
