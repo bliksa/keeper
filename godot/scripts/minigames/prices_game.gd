@@ -113,7 +113,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("move_up", true): cursor = maxi(0, cursor - 1)
 	elif event.is_action_pressed("move_right", true): _set_guess(cursor, guesses[PRODUCTS[cursor].id] + 50)
 	elif event.is_action_pressed("move_left", true): _set_guess(cursor, guesses[PRODUCTS[cursor].id] - 50)
-	elif event is InputEventJoypadButton and event.pressed and (event.button_index <= JOY_BUTTON_Y or event.button_index == JOY_BUTTON_START):
+	elif event is InputEventJoypadButton and event.pressed and event.button_index <= JOY_BUTTON_Y:
 		_evaluate()
 
 

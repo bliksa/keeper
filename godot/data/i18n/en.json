@@ -121,5 +121,9 @@
  "CREDIT_VISUALS": "VISUALS",
  "CREDIT_SOUND": "SOUND AND MUSIC",
  "CREDIT_VOICES": "VOICES",
- "HINT_DOUBLE_JUMP": "Press <KB>UP</KB><GP>🟢</GP> twice to Double Jump!"
+ "HINT_DOUBLE_JUMP": "Press <KB>UP</KB><GP>🟢</GP> twice to Double Jump!",
+ "UI_PAUSED": "Paused",
+ "BTN_RESUME": "Continue",
+ "BTN_RESTART_GAME": "Restart game",
+ "BTN_MAIN_MENU": "Main menu"
 }

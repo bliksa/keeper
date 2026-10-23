@@ -121,5 +121,9 @@
  "CREDIT_VISUALS": "VIZUÁL",
  "CREDIT_SOUND": "ZVUK A HUDBA",
  "CREDIT_VOICES": "HLASY",
- "HINT_DOUBLE_JUMP": "Stlač dvakrát <KB>HORE</KB><GP>🟢</GP> pre dvojitý skok!"
+ "HINT_DOUBLE_JUMP": "Stlač dvakrát <KB>HORE</KB><GP>🟢</GP> pre dvojitý skok!",
+ "UI_PAUSED": "Pauza",
+ "BTN_RESUME": "Pokračovať",
+ "BTN_RESTART_GAME": "Reštartovať hru",
+ "BTN_MAIN_MENU": "Hlavné menu"
 }

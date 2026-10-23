@@ -121,5 +121,9 @@
  "CREDIT_VISUALS": "ARTE VISUAL",
  "CREDIT_SOUND": "SOM E MÚSICA",
  "CREDIT_VOICES": "VOZES",
- "HINT_DOUBLE_JUMP": "Prime <KB>CIMA</KB><GP>🟢</GP> duas vezes para o salto duplo!"
+ "HINT_DOUBLE_JUMP": "Prime <KB>CIMA</KB><GP>🟢</GP> duas vezes para o salto duplo!",
+ "UI_PAUSED": "Pausa",
+ "BTN_RESUME": "Continuar",
+ "BTN_RESTART_GAME": "Reiniciar o jogo",
+ "BTN_MAIN_MENU": "Menu principal"
 }

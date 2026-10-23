@@ -84,6 +84,7 @@ func _setup_input() -> void:
 	_action("rotate_left", [KEY_Q], [JOY_BUTTON_B], [])
 	_action("rotate_right", [KEY_E], [JOY_BUTTON_A, JOY_BUTTON_X, JOY_BUTTON_Y], [])
 	_action("skip_minigame", [KEY_X], [], [])
+	_action("pause", [KEY_ESCAPE], [JOY_BUTTON_START], [])
 
 
 func _action(action: StringName, keys: Array, buttons: Array, axes: Array) -> void:

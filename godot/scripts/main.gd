@@ -20,6 +20,10 @@ var forest: ForestIntro
 var platformer: Platformer
 var minigame: Minigame
 var _menu: Control
+var _pause: PauseMenu
+## Bumped when a run is aborted (pause menu) so pending fades/timers of the
+## old run don't act on the new one.
+var _run_id := 0
 
 
 func _ready() -> void:
@@ -44,6 +48,11 @@ func _ready() -> void:
 	dialog_layer.add_child(_node_box)
 	_panel_box.blocker = _node_box
 	_menu_layer = _layer(10)
+	var pause_layer := _layer(15)
+	_pause = PauseMenu.new()
+	_pause.restart_pressed.connect(_restart_game)
+	_pause.title_pressed.connect(_quit_to_title)
+	pause_layer.add_child(_pause)
 	var fade_layer := _layer(20)
 	_fade = _rect(Color.BLACK)
 	fade_layer.add_child(_fade)
@@ -119,6 +128,7 @@ func _dialog(id: String, then: Callable = Callable()) -> void:
 
 
 func _process(_delta: float) -> void:
+	_pause.allowed = state in ["intro", "mg1", "platformer", "mg2", "mg3", "mg4"]
 	var any_dialog := _node_box.is_open() or _panel_box.is_open()
 	if platformer:
 		platformer.active = state == "platformer"
@@ -186,6 +196,31 @@ func _dev_action(name: String, value: int) -> void:
 			_skip_to_boss(value)
 
 
+## Stop everything that belongs to a run in progress (sounds, dialogs, overlays).
+func _abort_run() -> void:
+	_run_id += 1
+	Audio.stop_all_loops()
+	Audio.stop_voice()
+	Audio.set_bgm_volume(0.5)
+	_node_box.close()
+	_panel_box.close()
+	_dim.modulate.a = 0
+	_fade.modulate.a = 0
+
+
+## Pause menu → Restart game: a fresh run from the very beginning.
+func _restart_game() -> void:
+	_abort_run()
+	_start_new_game()
+
+
+## Pause menu → Main menu.
+func _quit_to_title() -> void:
+	_abort_run()
+	Game.reset_run()
+	_go_title()
+
+
 func _start_new_game() -> void:
 	Game.reset_run()
 	_clear_menu()
@@ -222,7 +257,10 @@ func _breathing_done() -> void:
 
 
 func _enter_cave() -> void:
+	var run := _run_id
 	await _fade_to(1.0, 1.0)
+	if run != _run_id:
+		return
 	Game.intro_done = true
 	_start_cave(1, Game.iron, false)
 	await get_tree().create_timer(0.5).timeout
@@ -231,8 +269,11 @@ func _enter_cave() -> void:
 
 ## (Re)start the cave at a checkpoint (0/1 start, 2–4 after minigame N).
 func _start_cave(checkpoint: int, iron: int, fade := true) -> void:
+	var run := _run_id
 	if fade:
 		await _fade_to(1.0)
+		if run != _run_id:
+			return
 	_clear_menu()
 	_clear_world()
 	_node_box.close()
@@ -255,7 +296,10 @@ func _start_cave(checkpoint: int, iron: int, fade := true) -> void:
 func _skip_to_boss(iron: int) -> void:
 	Game.has_breathing = true
 	Game.intro_done = true
+	var run := _run_id
 	await _start_cave(5, iron)
+	if run != _run_id or platformer == null:
+		return
 	platformer.start_boss(iron)
 	_on_trigger("end")
 
@@ -301,7 +345,10 @@ func _on_trigger(name: String) -> void:
 			_dialog("boss_start")
 		"game_over", "game_over_boss":
 			_set_dim(true)
+			var run := _run_id
 			await get_tree().create_timer(0.5).timeout
+			if run != _run_id:
+				return
 			_panel_box.show_panel({
 				"title": "UI_TOO_MUCH_PAIN", "text": "UI_CRAMPS_OVERWHELMED", "hide_button": true,
 				"choices": [{"text": "BTN_TRY_AGAIN" if name == "game_over" else "BTN_RESTART_CAVE", "action": _restart_cave}],

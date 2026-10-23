@@ -27,6 +27,11 @@ Godot editor na to netreba. Všetko je v čitateľných súboroch:
 | Minihry | `godot/scripts/minigames/` |
 | Tok hry (čo nasleduje po čom) | `godot/scripts/main.gd` |
 
+## Pauza
+
+Počas hry **Esc** (na gamepade **Start**) otvorí menu: **Pokračovať**,
+**Reštartovať hru** (nová hra od začiatku v lese) alebo **Hlavné menu**.
+
 ## Level editor
 
 Na titulnej obrazovke klikni na **Developer mode → Level Editor**:

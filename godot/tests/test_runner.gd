@@ -12,6 +12,7 @@ var _step := ""
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	await get_tree().process_frame
 	await _run()
 	print("\n%s (%d failure%s)" % ["PASSED" if failures == 0 else "FAILED", failures, "" if failures == 1 else "s"])
@@ -88,6 +89,7 @@ func _run() -> void:
 
 	step("boot → title")
 	main = load("res://scenes/main.tscn").instantiate()
+	main.process_mode = Node.PROCESS_MODE_PAUSABLE # as under the real root
 	add_child(main)
 	await frames(5)
 	check(main.state == "boot", "starts on boot screen")
@@ -227,6 +229,39 @@ func _run() -> void:
 	var old_id := pf.get_instance_id()
 	var restarted := await until(func(): return main.platformer != null and main.platformer.get_instance_id() != old_id, 5)
 	check(restarted, "try again restarts the cave")
+
+	step("pause menu")
+	await finish_dialog("cave_start")
+	_key(KEY_ESCAPE, true)
+	await frames(2)
+	_key(KEY_ESCAPE, false)
+	check(main._pause.is_open() and get_tree().paused, "Esc opens the pause menu and pauses")
+	var px: float = main.platformer.p.x
+	Input.action_press("move_right")
+	await frames(20)
+	Input.action_release("move_right")
+	check(main.platformer.p.x == px, "game is frozen while paused")
+	_key(KEY_ESCAPE, true)
+	await frames(2)
+	_key(KEY_ESCAPE, false)
+	check(not main._pause.is_open() and not get_tree().paused, "Esc again resumes")
+	_key(KEY_ESCAPE, true)
+	await frames(2)
+	_key(KEY_ESCAPE, false)
+	main._pause._buttons[1].pressed.emit()
+	await frames(5)
+	check(not get_tree().paused and main.state == "intro" and Game.iron == 0, "Restart game starts a new run")
+	await finish_dialog("intro_forest")
+	_key(KEY_ESCAPE, true)
+	await frames(2)
+	_key(KEY_ESCAPE, false)
+	main._pause._buttons[2].pressed.emit()
+	await frames(5)
+	check(main.state == "title", "Main menu goes to the title screen")
+	_key(KEY_ESCAPE, true)
+	await frames(2)
+	_key(KEY_ESCAPE, false)
+	check(not main._pause.is_open(), "no pause menu on the title screen")
 
 	step("developer menu + level editor")
 	main._go_title()

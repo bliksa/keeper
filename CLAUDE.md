@@ -70,6 +70,14 @@ and look at the page in Chromium (Playwright is preinstalled in cloud sessions).
 After push, GitHub Actions deploys to `https://bliksa.github.io/keeper/`
 (original prototype at `/original/`).
 
+## Pause menu
+
+`Esc` / gamepad Start during play (forest, cave, minigames) opens
+`scripts/ui/pause_menu.gd`: Continue, Restart game (fresh run from the forest),
+Main menu. It uses `get_tree().paused`; the menu itself runs with
+`PROCESS_MODE_ALWAYS`. Async steps in `main.gd` check `_run_id` so a fade
+started before a restart can't act on the new run.
+
 ## Debug shortcuts (in the cave)
 
 `1–4` restart at checkpoint · `Shift+2…5` jump to minigame/boss trigger · `5` boss ·
