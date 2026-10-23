@@ -1,0 +1,62 @@
+name: Test & deploy web build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/godot-4.4.1
+            ~/.local/share/godot/export_templates
+          key: godot-4.4.1-web
+
+      - name: Install Godot
+        run: tools/setup_godot.sh
+
+      - name: Run tests
+        run: tools/test.sh
+
+      - name: Export web build
+        run: tools/export_web.sh
+
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp -r build/web/. site/
+          # The original vibe-coded web prototype, for side-by-side comparison.
+          mkdir -p site/original
+          cp -r web-export/. site/original/
+          touch site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

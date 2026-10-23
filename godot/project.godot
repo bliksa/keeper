@@ -1,0 +1,38 @@
+; Engine configuration file.
+; Edited by hand / by prompts — keep it minimal. Input actions are defined in
+; scripts/autoload/game.gd (not here) so they stay readable.
+
+config_version=5
+
+[application]
+
+config/name="Keeper of the Cycle"
+config/version="2.0.0"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
+boot_splash/bg_color=Color(0.0705882, 0.0705882, 0.0705882, 1)
+boot_splash/show_image=false
+
+[autoload]
+
+Game="*res://scripts/autoload/game.gd"
+Text="*res://scripts/autoload/text.gd"
+Audio="*res://scripts/autoload/audio.gd"
+
+[display]
+
+window/size/viewport_width=1066
+window/size/viewport_height=600
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[gui]
+
+theme/custom_font="res://assets/fonts/Comfortaa.ttf"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0, 0, 0, 1)

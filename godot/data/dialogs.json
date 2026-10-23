@@ -1,0 +1,415 @@
+{
+ "_comment": "Dialog nodes. 'text' and 'buttons' are string keys from data/i18n/<lang>.json. Voice file = voice_overrides[key] or <key>.wav if it exists in assets/audio. 'letter_dialogs' maps lowercase level letters (a-z) to dialog nodes; unmapped letters use node 'DIA_<LETTER>' if it exists.",
+ "letter_dialogs": {
+  "a": "cave_start",
+  "x": "first_cramp"
+ },
+ "voice_overrides": {
+  "DIA_001": "Kyra-001.wav",
+  "DIA_002": "Kyra-002.wav",
+  "DIA_003": "Kyra-003.wav",
+  "DIA_004": "Kyra-004.wav",
+  "DIA_009_FINAL": "breath_after.wav"
+ },
+ "nodes": {
+  "DIA_A": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_A_01"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_A_02"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_A_03"
+    }
+   ]
+  },
+  "intro_forest": {
+   "parts": [
+    {
+     "speaker": "Kyra",
+     "text": "DIA_001"
+    },
+    {
+     "speaker": "Kyra",
+     "text": "DIA_002"
+    }
+   ],
+   "buttons": [
+    "BTN_WALK"
+   ]
+  },
+  "intro_fairy": {
+   "parts": [
+    {
+     "speaker": "Kyra",
+     "text": "DIA_003"
+    },
+    {
+     "speaker": "Kyra",
+     "text": "DIA_004"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_005"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_006"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_007"
+    }
+   ],
+   "buttons": [
+    "BTN_BREATHE"
+   ]
+  },
+  "intro_breathing": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_008"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_009"
+    }
+   ],
+   "buttons": [
+    "BTN_START_BREATHING"
+   ]
+  },
+  "intro_breathing_done": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_009_FINAL"
+    }
+   ]
+  },
+  "cave_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_010"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_011"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_012"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "first_cramp": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_013"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_014"
+    }
+   ],
+   "buttons": [
+    "BTN_YES_MAAM"
+   ]
+  },
+  "mg1_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_015"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_016"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_017"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_DO_THIS"
+   ]
+  },
+  "mg1_intro": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_018"
+    }
+   ],
+   "buttons": [
+    "BTN_START"
+   ]
+  },
+  "mg1_after": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_019"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_020"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_021"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_022"
+    }
+   ],
+   "buttons": [
+    "BTN_DEVOUR",
+    "BTN_PIECE"
+   ]
+  },
+  "mg2_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_023"
+    }
+   ],
+   "buttons": [
+    "BTN_DRINK"
+   ]
+  },
+  "mg2_intro": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_024"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_025"
+    }
+   ],
+   "buttons": [
+    "BTN_START"
+   ]
+  },
+  "mg2_win": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_026"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "mg2_after": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_027"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_028"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_029"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_030"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_031"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_032"
+    }
+   ],
+   "buttons": [
+    "BTN_UNDERSTAND"
+   ]
+  },
+  "mg3_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_033"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_034"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_035"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_036"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_037"
+    }
+   ],
+   "buttons": [
+    "BTN_CALCULATE"
+   ]
+  },
+  "mg3_eval": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_038"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "mg3_after": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_039"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_040"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_041"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_042"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_043"
+    }
+   ],
+   "buttons": [
+    "BTN_EXACTLY"
+   ]
+  },
+  "boss_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_044"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_045"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_046"
+    }
+   ],
+   "buttons": [
+    "BTN_BATTLE"
+   ]
+  },
+  "boss_win": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_047"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_048"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_049"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_050"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_051"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_052"
+    }
+   ],
+   "buttons": [
+    "BTN_BACK_MENU"
+   ]
+  },
+  "boss_loss": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_053"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_054"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_055"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_056"
+    }
+   ],
+   "buttons": [
+    "BTN_RESTART"
+   ]
+  }
+ },
+ "breathing_hints": {
+  "intro": [
+   "DIA_B00"
+  ],
+  "success": [
+   "DIA_B01",
+   "DIA_B02",
+   "DIA_B03",
+   "DIA_B04",
+   "DIA_B05"
+  ],
+  "errorShort": [
+   "DIA_B06",
+   "DIA_B07",
+   "DIA_B08"
+  ],
+  "errorLong": [
+   "DIA_B09"
+  ],
+  "encouragement": [
+   "DIA_B10",
+   "DIA_B11"
+  ]
+ }
+}

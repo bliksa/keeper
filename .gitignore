@@ -1,0 +1,5 @@
+# Godot import cache and build output
+godot/.godot/
+build/
+*.tmp
+.DS_Store
