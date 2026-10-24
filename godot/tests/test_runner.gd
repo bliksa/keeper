@@ -291,6 +291,25 @@ func _run() -> void:
 	await _click(Vector2(97, 584))
 	await frames(3)
 	check(ed._test == null, "BACK TO EDITOR button stops the test")
+
+	step("animation lab")
+	dev._show("anim")
+	await frames(3)
+	var lab: AnimLab = dev._lab
+	check(lab != null and lab.variants.run.has("original"), "lab loaded data/anim_variants.json")
+	await seconds(2.0)
+	check(absf(lab.p.vx) > 3.5 and lab.p.anim_progress > 0, "auto mode runs the character")
+	var jumped := await until(func(): return not lab.p.is_grounded, 3)
+	check(jumped, "auto mode jumps")
+	# A variant is just a list of frame paths; reuse the originals in reverse.
+	var rev: Array = lab.variants.run["original"].duplicate()
+	rev.reverse()
+	lab.variants.run["test-reversed"] = rev
+	lab._pick_run("test-reversed")
+	check(PlayerArt.overrides.get("run", []).size() == 8, "picking a variant swaps the run frames")
+	dev._show("shortcuts")
+	await frames(3)
+	check(PlayerArt.overrides.is_empty(), "leaving without 'Use in game' restores the original frames")
 	if FileAccess.file_exists(LevelEditor.AUTOSAVE):
 		DirAccess.remove_absolute(LevelEditor.AUTOSAVE)
 

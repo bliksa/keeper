@@ -3,9 +3,16 @@ extends RefCounted
 ## Draws the player character (Kyra) onto any CanvasItem.
 ## Port of the web `wf()` function: same frames, offsets and timings.
 
-const SCALE := 1.6
 const SPRITE_H := 85.0
 const DIR := "res://assets/images/"
+
+## Sprite scale (1.6 like the web build); the animation lab can change it.
+static var scale := 1.6
+## Frame overrides from the animation lab: "run" | "jump" | "sidejump" |
+## "doublejump" | "fall" -> Array[Texture2D]. Empty = original art.
+static var overrides := {}
+## Playback speed of multi-frame jump/fall overrides.
+static var jump_fps := 12.0
 
 static var _frames := {}
 
@@ -42,6 +49,7 @@ static func draw(ci: CanvasItem, p: PlayerBody, time_ms: float, big_ring := fals
 	var running := moving and speed > 3.5
 
 	var off_y := 0.0
+	var SCALE := scale
 	if sitting: off_y = 22 * SCALE
 	if pain: off_y = 0
 	if dead: off_y = 22 * SCALE
@@ -58,17 +66,22 @@ static func draw(ci: CanvasItem, p: PlayerBody, time_ms: float, big_ring := fals
 	elif pain:
 		seq = _seq("pain", 4)
 	elif airborne:
-		if p.vy > 0: single = _one("fall")
-		elif p.jumps_left == 0: single = _one("doublejump")
-		elif speed > 1: single = _one("sidejump")
-		else: single = _one("jump")
+		var pose := "jump"
+		if p.vy > 0: pose = "fall"
+		elif p.jumps_left == 0: pose = "doublejump"
+		elif speed > 1: pose = "sidejump"
+		var alt: Array = overrides.get(pose, [])
+		if alt.is_empty():
+			single = _one(pose)
+		else:
+			single = alt[int(floorf(time_ms / 1000.0 * jump_fps)) % alt.size()]
 	elif sitting or crouched:
 		seq = _seq("sed", 7)
 		lift = -8
 	elif looking_down:
 		single = _one("lookdown")
 	elif moving:
-		seq = _seq("run", 8) if running else _seq("walk", 8)
+		seq = overrides.get("run", _seq("run", 8)) if running else _seq("walk", 8)
 	else:
 		seq = _seq("idle", 4)
 

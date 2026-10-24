@@ -70,6 +70,22 @@ and look at the page in Chromium (Playwright is preinstalled in cloud sessions).
 After push, GitHub Actions deploys to `https://bliksa.github.io/keeper/`
 (original prototype at `/original/`).
 
+## Animation lab (Developer mode → Animations)
+
+`scripts/dev/anim_lab.gd` previews run/jump frame variants listed in
+`data/anim_variants.json` on the real renderer (`PlayerArt.overrides`). When the
+user sends new PNGs, add them with:
+
+```
+tools/add_anim_variant.py run  "<variant name>" path/to/*.png
+tools/add_anim_variant.py jump "<variant name>" jump*.png sidejump*.png doublejump*.png fall*.png
+```
+
+(copies into `assets/anim_test/<anim>/<slug>/`, updates the manifest), then run
+`tools/test.sh` and push. Frames are scaled to the same on-screen height as the
+originals (85 px × scale), so canvas size doesn't matter, but the feet should sit
+at the same place in the canvas as in `run1.png`.
+
 ## Pause menu
 
 `Esc` / gamepad Start during play (forest, cave, minigames) opens

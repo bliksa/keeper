@@ -54,6 +54,18 @@ Na titulnej obrazovke klikni na **Developer mode → Level Editor**:
 V developer menu sú aj skratky: preskočiť intro, checkpointy, skok na bossa s
 ľubovoľným počtom železa.
 
+## Testovanie animácií
+
+**Developer mode → Animations:** postava beží a skáče sama (alebo ju ovládaš
+šípkami a medzerníkom) a hore vyberáš varianty **behu** a **skoku**. Posuvníky
+menia rýchlosť behu, tempo snímok behu, snímky za sekundu pri skoku a veľkosť
+postavy. Dole sú všetky snímky a práve zobrazená je zvýraznená. **Use in game**
+ich nechá v hre (do obnovenia stránky).
+
+Nové verzie PNG stačí poslať do chatu („nový variant behu v3“). Pridajú sa do
+`godot/assets/anim_test/` a do `godot/data/anim_variants.json`. Pri skoku sa
+súbory triedia podľa začiatku názvu: `jump…`, `sidejump…`, `doublejump…`, `fall…`.
+
 ## Lokálne
 
 ```

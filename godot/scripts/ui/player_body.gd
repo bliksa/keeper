@@ -20,6 +20,10 @@ var is_hanging := false
 var look_down_timer := 0.0
 var anim_progress := 0.0
 
+## Walk/run cycle speed (frames per pixel); the animation lab can change run_rate.
+static var run_rate := 0.026
+static var walk_rate := 0.038
+
 # --- cave-only state ---
 ## Breath blast ring (40 → 0).
 var is_breathing := 0.0
@@ -52,7 +56,7 @@ func center() -> Vector2:
 func step_animation(dt60: float) -> void:
 	if is_grounded and absf(vx) > 0.1:
 		var before := anim_progress
-		var rate := 0.026 if absf(vx) > 3.5 else 0.038
+		var rate := run_rate if absf(vx) > 3.5 else walk_rate
 		anim_progress += absf(vx) * dt60 * rate
 		var now_f := int(floorf(fmod(anim_progress, 8)))
 		var was_f := int(floorf(fmod(before, 8)))

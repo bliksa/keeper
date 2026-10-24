@@ -1,7 +1,7 @@
 class_name DevMenu
 extends Control
-## Developer menu (port of the web "start" screen). Kept: shortcuts and the
-## level editor. The character/animation testers were not ported.
+## Developer menu (port of the web "start" screen): shortcuts, the level
+## editor and the animation lab (run / jump frame variants).
 
 signal back
 ## Main handles these: ("skip_intro"), ("boss", iron), ("checkpoint", n)
@@ -12,6 +12,7 @@ var _content: Control
 var _tabs := {}
 var _iron := 20
 var _editor: LevelEditor
+var _lab: AnimLab
 ## Header slot the active tab can fill with its own icon buttons.
 var header_tools: HBoxContainer
 var _help: Label
@@ -32,7 +33,7 @@ func _ready() -> void:
 	bar.size = Vector2(1066, BAR_H)
 	add_child(bar)
 	var x := 8.0
-	for t in [["shortcuts", "Shortcuts"], ["level", "Level editor"]]:
+	for t in [["shortcuts", "Shortcuts"], ["level", "Level editor"], ["anim", "Animations"]]:
 		var b := UiKit.button(t[1], Vector2(110, ICON), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
 		b.position = Vector2(x, (BAR_H - ICON) / 2)
 		b.pressed.connect(_show.bind(t[0]))
@@ -82,7 +83,16 @@ func _show(tab: String) -> void:
 		_editor.stop_test()
 		_editor.queue_free()
 		_editor = null
-	if tab == "level":
+	if _lab:
+		_lab.queue_free()
+		_lab = null
+	if tab == "anim":
+		_lab = AnimLab.new()
+		_lab.top = BAR_H
+		_help.text = "Variants: data/anim_variants.json\nKeys: ← → move · ↑ / Space jump"
+		add_child(_lab)
+		move_child(_lab, 1)
+	elif tab == "level":
 		# Full-screen editor below the tab bar (added first so the bar stays on top).
 		_editor = LevelEditor.new()
 		_editor.top = BAR_H

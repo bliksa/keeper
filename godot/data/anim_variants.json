@@ -1,0 +1,14 @@
+{
+ "_comment": "Animation variants for Developer mode > Animations. Add new ones with tools/add_anim_variant.py. 'run' = list of frames; 'jump' = poses jump/sidejump/doublejump/fall, each a list of frames (more than one frame = animated).",
+ "run": {
+  "original": ["res://assets/images/run1.png", "res://assets/images/run2.png", "res://assets/images/run3.png", "res://assets/images/run4.png", "res://assets/images/run5.png", "res://assets/images/run6.png", "res://assets/images/run7.png", "res://assets/images/run8.png"]
+ },
+ "jump": {
+  "original": {
+   "jump": ["res://assets/images/jump.png"],
+   "sidejump": ["res://assets/images/sidejump.png"],
+   "doublejump": ["res://assets/images/doublejump.png"],
+   "fall": ["res://assets/images/fall.png"]
+  }
+ }
+}
