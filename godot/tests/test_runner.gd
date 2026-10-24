@@ -273,22 +273,36 @@ func _run() -> void:
 	await frames(3)
 	var ed: LevelEditor = dev._editor
 	check(ed != null and ed.rows.size() > 100, "editor loaded the level")
-	ed._select_tool("^")
-	ed._painting = 1
-	ed._paint_at(Vector2(15, 15))
-	ed._painting = 0
-	check(ed.rows[0][0] == "^", "painting a spike works")
-	ed.start_test()
+	# Real clicks: pick the Spike tool, then paint the top-left cell.
+	var spike_btn: Button = ed._tool_buttons["^"]
+	await _click(spike_btn.get_global_rect().get_center())
+	check(ed.tool == "^", "clicking a tool selects it")
+	await _click(Vector2(LevelEditor.SIDEBAR + 20 + 15, 56 + 8 + 15))
+	await frames(2)
+	check(ed.rows[0][0] == "^", "clicking the grid paints a spike")
+	# Real mouse click on the TEST LEVEL button (it used to be swallowed by the dev menu).
+	await _click(Vector2(120, 85))
 	await seconds(1.0)
 	check(ed._test != null and ed._test.active, "test play runs")
-	ed.stop_test()
+	await _click(Vector2(97, 584))
 	await frames(3)
-	check(ed._test == null, "test play stopped")
+	check(ed._test == null, "BACK TO EDITOR button stops the test")
 	if FileAccess.file_exists(LevelEditor.AUTOSAVE):
 		DirAccess.remove_absolute(LevelEditor.AUTOSAVE)
 
 
 # --- helpers ------------------------------------------------------------------
+
+func _click(pos: Vector2) -> void:
+	for pressed in [true, false]:
+		var e := InputEventMouseButton.new()
+		e.button_index = MOUSE_BUTTON_LEFT
+		e.pressed = pressed
+		e.position = pos
+		e.global_position = pos
+		get_viewport().push_input(e, true)
+		await get_tree().process_frame
+
 
 func _key(code: Key, pressed: bool) -> void:
 	var e := InputEventKey.new()

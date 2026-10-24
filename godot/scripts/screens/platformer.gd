@@ -59,6 +59,9 @@ var _player_layer: Node2D
 var hud: PlatformerHud
 ## CanvasLayer index of the HUD (the level editor raises it above its own UI).
 var hud_layer := 6
+## CanvasLayer of the player sprite. Above the dialog panels (layer 8), as in
+## the web build, so Kyra sitting on a dialog box keeps her legs in front of it.
+var player_layer := 9
 
 
 ## rows: level text rows. checkpoint: 0/1 = start, 2..4 = after minigame N, 5 = boss.
@@ -77,8 +80,12 @@ func _ready() -> void:
 	_bg = Node2D.new()
 	_world = Node2D.new()
 	_player_layer = Node2D.new()
-	for n in [_bg, _world, _player_layer]:
-		add_child(n)
+	add_child(_bg)
+	add_child(_world)
+	var pl := CanvasLayer.new()
+	pl.layer = player_layer
+	add_child(pl)
+	pl.add_child(_player_layer)
 	_bg.draw.connect(_draw_bg)
 	_world.draw.connect(_draw_world)
 	_player_layer.draw.connect(_draw_player)

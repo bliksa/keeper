@@ -40,6 +40,8 @@ func _ready() -> void:
 	_content.position = Vector2(0, 56)
 	_content.size = Vector2(1066, 544)
 	_content.clip_contents = true
+	# Only a holder: it must not swallow clicks meant for the level editor below it.
+	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_content)
 	_show("shortcuts")
 

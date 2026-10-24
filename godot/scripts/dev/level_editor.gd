@@ -55,7 +55,11 @@ func _ready() -> void:
 	tsb.content_margin_top = 8
 	tsb.content_margin_bottom = 8
 	_toast.add_theme_stylebox_override("normal", tsb)
-	add_child(_toast)
+	# Own layer so messages stay visible above the test play too.
+	var toast_layer := CanvasLayer.new()
+	toast_layer.layer = 34
+	add_child(toast_layer)
+	toast_layer.add_child(_toast)
 	_load_initial()
 
 
@@ -330,6 +334,7 @@ func start_test() -> void:
 	Game.checkpoint = 0
 	_test = Platformer.new()
 	_test.hud_layer = 32
+	_test.player_layer = 31
 	_test.setup(rows, 0)
 	_test.active = true
 	_test.trigger.connect(_on_test_trigger)
@@ -340,12 +345,24 @@ func start_test() -> void:
 	layer.name = "TestLayer"
 	add_child(layer)
 	layer.add_child(_test)
-	_test_info = UiKit.label("TEST MODE — press ENTER to return to the editor", 13, Color.WHITE, true)
-	_test_info.position = Vector2(330, 570)
+	# Test-mode bar: clear feedback plus a way back for mouse users.
 	var hud_layer := CanvasLayer.new()
-	hud_layer.layer = 31
-	hud_layer.add_child(_test_info)
+	hud_layer.layer = 33
 	layer.add_child(hud_layer)
+	var bar := ColorRect.new()
+	bar.color = Color(0, 0, 0, 0.6)
+	bar.position = Vector2(0, 600 - 44)
+	bar.size = Vector2(1066, 44)
+	hud_layer.add_child(bar)
+	_test_info = UiKit.label("TEST MODE  ·  arrows move, Up/Space jump, Ctrl breathe  ·  Enter or Esc = back", 13, Color.WHITE, true)
+	_test_info.position = Vector2(200, 600 - 44)
+	_test_info.size = Vector2(700, 44)
+	_test_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hud_layer.add_child(_test_info)
+	var back := UiKit.button("BACK TO EDITOR", Vector2(170, 32), 12, Color("#059669"))
+	back.position = Vector2(12, 600 - 38)
+	back.pressed.connect(stop_test)
+	hud_layer.add_child(back)
 
 
 func stop_test() -> void:

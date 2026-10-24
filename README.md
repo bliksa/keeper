@@ -37,7 +37,8 @@ Počas hry **Esc** (na gamepade **Start**) otvorí menu: **Pokračovať**,
 Na titulnej obrazovke klikni na **Developer mode → Level Editor**:
 
 - ľavé tlačidlo myši kreslí, pravé maže, koliesko scrolluje,
-- **Enter** spustí test levelu priamo v hre, ďalší Enter ťa vráti do editora,
+- **Test Level** (alebo Enter) spustí test levelu priamo v hre; späť sa vrátiš
+  tlačidlom **Back to editor**, Enterom alebo Esc,
 - **Use in game** použije upravený level v hre (do obnovenia stránky),
 - **Export** level skopíruje a stiahne ako `cave.txt`. Ten stačí vložiť do
   promptu („nahraď level týmto“) alebo do `godot/data/levels/cave.txt`.
