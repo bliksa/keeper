@@ -277,11 +277,11 @@ func _run() -> void:
 	var spike_btn: Button = ed._tool_buttons["^"]
 	await _click(spike_btn.get_global_rect().get_center())
 	check(ed.tool == "^", "clicking a tool selects it")
-	await _click(Vector2(LevelEditor.SIDEBAR + 20 + 15, 56 + 8 + 15))
+	await _click(ed._grid.get_global_rect().position + Vector2(15, 15))
 	await frames(2)
 	check(ed.rows[0][0] == "^", "clicking the grid paints a spike")
 	# Real mouse click on the TEST LEVEL button (it used to be swallowed by the dev menu).
-	await _click(Vector2(120, 85))
+	await _click(ed._test_button.get_global_rect().get_center())
 	await seconds(1.0)
 	check(ed._test != null and ed._test.active, "test play runs")
 	await _click(Vector2(97, 584))

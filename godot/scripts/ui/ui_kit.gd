@@ -51,3 +51,34 @@ static func label(text: String, size := 14, col := Color.WHITE, bold := false) -
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", col)
 	return l
+
+
+## Square toolbar button with an icon and a hover tooltip (Photoshop-style).
+static func icon_button(icon_path: String, tooltip: String, side := 34.0) -> Button:
+	var b := Button.new()
+	b.icon = load(icon_path)
+	b.expand_icon = true
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.tooltip_text = tooltip
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(side, side)
+	b.size = Vector2(side, side)
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var pad := int(side * 0.18)
+	for st in ["normal", "hover", "pressed"]:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color("#334155") if st == "hover" else Color(0, 0, 0, 0)
+		sb.set_corner_radius_all(6)
+		sb.set_content_margin_all(pad)
+		b.add_theme_stylebox_override(st, sb)
+	return b
+
+
+## Highlight (or un-highlight) an icon button as the active tool.
+static func set_icon_active(b: Button, on: bool) -> void:
+	var sb: StyleBoxFlat = b.get_theme_stylebox("normal").duplicate()
+	sb.bg_color = Color("#059669", 0.85) if on else Color(0, 0, 0, 0)
+	b.add_theme_stylebox_override("normal", sb)
+	var hv: StyleBoxFlat = b.get_theme_stylebox("hover").duplicate()
+	hv.bg_color = Color("#10b981") if on else Color("#334155")
+	b.add_theme_stylebox_override("hover", hv)

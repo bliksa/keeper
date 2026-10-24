@@ -5,9 +5,10 @@ extends Control
 ## imports / exports text so a level can be pasted into the repo (or into a prompt).
 ##
 ## Mouse: left = paint, right = erase, wheel = scroll. Enter = test / back.
+## Tools are icons on the left (hover for names); level actions sit in the header.
 
 const CELL := 30.0
-const SIDEBAR := 236.0
+const SIDEBAR := 92.0
 const AUTOSAVE := "user://custom_level.txt"
 
 var rows: PackedStringArray = []
@@ -34,7 +35,8 @@ func _ready() -> void:
 	add_child(bg)
 	_build_sidebar()
 	_scroll = ScrollContainer.new()
-	_scroll.position = Vector2(SIDEBAR + 20, top + 8)
+	# Grid centred in the space right of the toolbar.
+	_scroll.position = Vector2(SIDEBAR + (1066 - SIDEBAR - LevelData.COLS * CELL - 14) / 2, top + 8)
 	_scroll.size = Vector2(LevelData.COLS * CELL + 14, 600 - top - 16)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(_scroll)
@@ -45,7 +47,7 @@ func _ready() -> void:
 	_scroll.add_child(_grid)
 	_scroll.get_v_scroll_bar().value_changed.connect(func(_v): _grid.queue_redraw())
 	_toast = UiKit.label("", 14, Color.WHITE, true)
-	_toast.position = Vector2(SIDEBAR + 40, top + 14)
+	_toast.position = Vector2(SIDEBAR + 24, top + 12)
 	_toast.visible = false
 	var tsb := StyleBoxFlat.new()
 	tsb.bg_color = Color("#16a34a")
@@ -89,78 +91,116 @@ func _toast_msg(s: String) -> void:
 	_toast_t = 3.0
 
 
-# --- sidebar ------------------------------------------------------------------
+# --- toolbars -----------------------------------------------------------------
+
+## Tools: [level char, icon, tooltip]. Hover shows the name, like Photoshop.
+const TOOLS := [
+	["=", "platform", "Platform (=)"], ["O", "iron", "Iron (O)"],
+	["^", "spike", "Spike (^)"], ["P", "spawn", "Spawn point (P)"],
+	["S", "cramp_static", "Cramp – static (S)"], ["F", "cramp_float", "Cramp – floating (F)"],
+	["J", "cramp_lunge", "Cramp – lunging (J)"], ["C", "cramp_chase", "Cramp – chasing (C)"],
+	["2", "choco", "Minigame: chocolate (2)"], ["3", "pipes", "Minigame: pipes (3)"],
+	["4", "prices", "Minigame: prices (4)"], ["5", "boss", "Boss fight (5)"],
+	["T", "teleport", "Teleport to top (T)"], ["I", "hint", "Hint text (I)"],
+	[" ", "eraser", "Eraser (or right click)"],
+]
+const ICONS := "res://assets/ui/icons/%s.png"
+
+## Optional header (the developer menu's top bar) for the level actions.
+var header: HBoxContainer
+var _test_button: Button
+var _dialog_button: Button
+var _tool_label: Label
+
 
 func _build_sidebar() -> void:
 	var panel := ColorRect.new()
-	panel.color = Color(0, 0, 0, 0.8)
+	panel.color = Color(0, 0, 0, 0.55)
 	panel.position = Vector2(0, top)
 	panel.size = Vector2(SIDEBAR, 600 - top)
 	add_child(panel)
-	var sc := ScrollContainer.new()
-	sc.position = Vector2(10, top + 10)
-	sc.size = Vector2(SIDEBAR - 14, 580 - top)
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	add_child(sc)
-	var box := VBoxContainer.new()
-	box.custom_minimum_size = Vector2(SIDEBAR - 28, 0)
-	box.add_theme_constant_override("separation", 6)
-	sc.add_child(box)
-
-	var test := UiKit.button("TEST LEVEL (ENTER)", Vector2(SIDEBAR - 28, 38), 12, Color("#059669"))
-	test.pressed.connect(start_test)
-	box.add_child(test)
-
-	box.add_child(UiKit.label("TOOLS", 11, Color("#94a3b8"), true))
 	var grid := GridContainer.new()
 	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 6)
-	grid.add_theme_constant_override("v_separation", 6)
-	box.add_child(grid)
-	var tools := [["=", "Platform"], ["O", "Iron"], ["^", "Spike"], ["P", "Spawn"],
-		["S", "Cramp static"], ["F", "Cramp float"], ["J", "Cramp lunge"], ["C", "Cramp chase"],
-		["2", "Choco puzzle"], ["3", "Pipes"], ["4", "Prices"], ["5", "Boss"],
-		["T", "Teleport"], ["I", "Hint text"], [" ", "Eraser"]]
-	for t in tools:
-		var label: String = ("%s  %s" % [t[0], t[1]]) if t[0] != " " else t[1]
-		var b := UiKit.button(label, Vector2((SIDEBAR - 34) / 2, 30), 10, Color("#1e293b"), Color("#cbd5e1"))
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	grid.position = Vector2(8, top + 10)
+	grid.add_theme_constant_override("h_separation", 4)
+	grid.add_theme_constant_override("v_separation", 4)
+	add_child(grid)
+	for t in TOOLS:
+		var b := UiKit.icon_button(ICONS % t[1], t[2], 36)
 		b.pressed.connect(_select_tool.bind(t[0]))
 		grid.add_child(b)
 		_tool_buttons[t[0]] = b
-
-	box.add_child(UiKit.label("DIALOG TRIGGERS", 11, Color("#94a3b8"), true))
-	var dlg := OptionButton.new()
-	dlg.add_theme_font_size_override("font_size", 12)
-	dlg.get_popup().add_theme_font_size_override("font_size", 12)
+	# Dialog triggers: one tool, the letter is picked from a popup.
+	_dialog_button = UiKit.icon_button(ICONS % "dialog", "Dialog trigger (a–x)", 36)
+	var menu := PopupMenu.new()
+	menu.add_theme_font_size_override("font_size", 12)
 	for i in 24:
 		var ch := char(97 + i)
 		var target := Text.dialog_for_letter(ch)
-		dlg.add_item("Dialog %s%s" % [ch.to_upper(), (" → " + target) if target != "" else ""])
-	dlg.item_selected.connect(func(i): _select_tool(char(97 + i)))
-	box.add_child(dlg)
-
-	box.add_child(UiKit.label("LEVEL", 11, Color("#94a3b8"), true))
-	for item in [
-		["Use in game", _use_in_game], ["Back to bundled level", _use_bundled],
-		["Load game level", _load_game_level], ["New empty level", _new_level],
-		["Add 20 rows", _add_rows], ["Import…", _open_import], ["Export (copy + download)", _export],
-	]:
-		var b := UiKit.button(item[0], Vector2(SIDEBAR - 28, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
-		b.pressed.connect(item[1])
-		box.add_child(b)
-	var help := UiKit.label("Left click paint · right click erase\nWheel scroll · Enter test/back\nAutosaved in this browser.", 10, Color("#64748b"))
-	box.add_child(help)
+		menu.add_item("%s%s" % [ch.to_upper(), ("  →  " + target) if target != "" else ""], i)
+	menu.id_pressed.connect(func(i): _select_tool(char(97 + i)))
+	_dialog_button.add_child(menu)
+	_dialog_button.pressed.connect(func():
+		menu.position = Vector2i(_dialog_button.get_screen_position() + Vector2(40, 0))
+		menu.popup())
+	grid.add_child(_dialog_button)
+	_tool_label = UiKit.label("", 10, Color("#94a3b8"), true)
+	_tool_label.position = Vector2(6, 600 - 40)
+	_tool_label.size = Vector2(SIDEBAR - 12, 34)
+	_tool_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tool_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_tool_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	add_child(_tool_label)
+	_build_header()
 	_select_tool("=")
+
+
+func _build_header() -> void:
+	var own := header == null
+	if own:
+		# Standalone use (no developer menu): make a small bar of our own.
+		header = HBoxContainer.new()
+		header.position = Vector2(SIDEBAR + 8, 3)
+		add_child(header)
+	header.add_theme_constant_override("separation", 2)
+	var items := [
+		["test", "Test level (Enter)", start_test], null,
+		["use_in_game", "Use this level in the game", _use_in_game],
+		["bundled", "Back to the bundled level", _use_bundled], null,
+		["load", "Load the game level (cave.txt)", _load_game_level],
+		["new", "New empty level", _new_level],
+		["add_rows", "Add 20 rows at the bottom", _add_rows], null,
+		["import", "Import level text", _open_import],
+		["export", "Export: copy + download cave.txt", _export],
+	]
+	for it in items:
+		if it == null:
+			var sep := VSeparator.new()
+			sep.custom_minimum_size = Vector2(10, 30)
+			header.add_child(sep)
+			continue
+		var b := UiKit.icon_button(ICONS % it[0], it[1], 34)
+		b.pressed.connect(it[2])
+		header.add_child(b)
+		if it[0] == "test":
+			_test_button = b
+			UiKit.set_icon_active(b, true)
 
 
 func _select_tool(t: String) -> void:
 	tool = t
 	for k in _tool_buttons:
-		var b: Button = _tool_buttons[k]
-		var sb: StyleBoxFlat = b.get_theme_stylebox("normal").duplicate()
-		sb.bg_color = Color("#059669") if k == t else Color("#1e293b")
-		b.add_theme_stylebox_override("normal", sb)
+		UiKit.set_icon_active(_tool_buttons[k], k == t)
+	var is_dialog := t >= "a" and t <= "z"
+	UiKit.set_icon_active(_dialog_button, is_dialog)
+	if is_dialog:
+		var target := Text.dialog_for_letter(t)
+		_tool_label.text = "Dialog %s" % t.to_upper()
+		_dialog_button.tooltip_text = "Dialog trigger %s%s" % [t.to_upper(), (" → " + target) if target != "" else ""]
+	else:
+		for it in TOOLS:
+			if it[0] == t:
+				_tool_label.text = it[2].split(" (")[0]
 
 
 # --- painting -----------------------------------------------------------------

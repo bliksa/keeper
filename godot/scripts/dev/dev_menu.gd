@@ -12,6 +12,11 @@ var _content: Control
 var _tabs := {}
 var _iron := 20
 var _editor: LevelEditor
+## Header slot the active tab can fill with its own icon buttons.
+var header_tools: HBoxContainer
+var _help: Label
+
+const BAR_H := 40.0
 
 
 func _ready() -> void:
@@ -22,27 +27,38 @@ func _ready() -> void:
 	add_child(bg)
 	var bar := ColorRect.new()
 	bar.color = Color(0, 0, 0, 0.8)
-	bar.size = Vector2(1066, 56)
+	bar.size = Vector2(1066, BAR_H)
 	add_child(bar)
-	var x := 12.0
-	for t in [["shortcuts", "Shortcuts"], ["level", "Level Editor"]]:
-		var b := UiKit.button(t[1].to_upper(), Vector2(150, 40), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
-		b.position = Vector2(x, 8)
+	var x := 8.0
+	for t in [["shortcuts", "Shortcuts"], ["level", "Level editor"]]:
+		var b := UiKit.button(t[1], Vector2(110, 28), 11, Color(0, 0, 0, 0), Color("#94a3b8"))
+		b.position = Vector2(x, 6)
 		b.pressed.connect(_show.bind(t[0]))
 		add_child(b)
 		_tabs[t[0]] = b
-		x += 158
-	var ret := UiKit.button("RETURN TO MENU", Vector2(170, 40), 12, Color("#0f172a"), Color("#cbd5e1"))
-	ret.position = Vector2(1066 - 182, 8)
+		x += 114
+	var ret := UiKit.button("Menu", Vector2(76, 28), 11, Color("#0f172a"), Color("#cbd5e1"))
+	ret.tooltip_text = "Return to the title screen"
+	ret.position = Vector2(1066 - 84, 6)
 	ret.pressed.connect(func(): back.emit())
 	add_child(ret)
 	_content = Control.new()
-	_content.position = Vector2(0, 56)
-	_content.size = Vector2(1066, 544)
+	_content.position = Vector2(0, BAR_H)
+	_content.size = Vector2(1066, 600 - BAR_H)
 	_content.clip_contents = true
 	# Only a holder: it must not swallow clicks meant for the level editor below it.
 	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_content)
+	header_tools = HBoxContainer.new()
+	header_tools.position = Vector2(x + 16, 3)
+	header_tools.add_theme_constant_override("separation", 2)
+	add_child(header_tools)
+	_help = UiKit.label("", 10, Color("#64748b"))
+	_help.position = Vector2(700, 0)
+	_help.size = Vector2(270, BAR_H)
+	_help.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(_help)
 	_show("shortcuts")
 
 
@@ -56,6 +72,10 @@ func _show(tab: String) -> void:
 		b.add_theme_color_override("font_color", Color.WHITE if k == tab else Color("#94a3b8"))
 	for c in _content.get_children():
 		c.queue_free()
+	for c in header_tools.get_children():
+		c.queue_free()
+	_help.text = ""
+
 	if _editor:
 		_editor.stop_test()
 		_editor.queue_free()
@@ -63,7 +83,9 @@ func _show(tab: String) -> void:
 	if tab == "level":
 		# Full-screen editor below the tab bar (added first so the bar stays on top).
 		_editor = LevelEditor.new()
-		_editor.top = 56
+		_editor.top = BAR_H
+		_editor.header = header_tools
+		_help.text = "Left click paint · right click erase\nWheel scroll · Enter test · autosaved"
 		add_child(_editor)
 		move_child(_editor, 1)
 	else:
