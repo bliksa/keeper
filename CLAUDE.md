@@ -15,7 +15,7 @@ godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
   scripts/screens/         boot, title, forest_intro, platformer (cave + boss)
   scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4)
   scripts/ui/              dialog_box, platformer_hud, player_art (sprite anim), draw helpers
-  scripts/dev/             dev_menu + level_editor (in-game, Developer mode on the title)
+  scripts/dev/             dev_menu + level_editor (in-game, DEV button on the first/boot screen)
   scripts/level_data.gd    level text → platforms/entities (THE LEGEND lives here)
   data/levels/cave.txt     the cave level, one text row per 120 px band, 25 columns
   data/dialogs.json        dialog nodes (parts, speaker, buttons), voice overrides, letter→dialog map
@@ -127,5 +127,5 @@ started before a restart can't act on the new run.
 ## Debug shortcuts (in the cave)
 
 `1–4` restart at checkpoint · `Shift+2…5` jump to minigame/boss trigger · `5` boss ·
-`C` breathing + 20 iron · `X` skip a minigame. Developer mode (title screen) has
+`C` breathing + 20 iron · `X` skip a minigame. Developer mode (DEV on the boot screen) has
 checkpoints, skip-to-boss and the level editor (paint, test with Enter, export/import).

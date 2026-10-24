@@ -152,6 +152,9 @@ func _go_boot() -> void:
 	b.started.connect(func():
 		Audio.muted = false
 		_go_title())
+	b.dev_pressed.connect(func():
+		Audio.muted = false
+		_go_dev())
 	_menu_layer.add_child(b)
 	_menu = b
 
@@ -164,7 +167,6 @@ func _go_title() -> void:
 	_set_state("title")
 	var t := TitleScreen.new()
 	t.start_pressed.connect(_start_new_game)
-	t.dev_pressed.connect(_go_dev)
 	_menu_layer.add_child(t)
 	_menu = t
 

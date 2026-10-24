@@ -35,7 +35,7 @@ celú obrazovku** alebo **Hlavné menu**.
 
 ## Level editor
 
-Na titulnej obrazovke klikni na **Developer mode → Level Editor**:
+Na úplne prvej obrazovke klikni na **DEV** (vedľa **Spustiť hru**) → **Level editor**:
 
 - vľavo sú skupiny nástrojov: **plošiny** (plošina, bodák), **nepriatelia**
   (4 druhy kŕčov), **zberateľné** (železo), **eventy** (minihry, boss, nápoveda,

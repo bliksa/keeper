@@ -1,11 +1,10 @@
 class_name TitleScreen
 extends Control
 ## Main menu: layered forest with mouse parallax, blinking Kyra, logo,
-## Start / Credits, developer mode, mute and keyboard/gamepad toggles.
+## Start / Credits, mute and keyboard/gamepad toggles.
 ## Port of the web `A2` component.
 
 signal start_pressed
-signal dev_pressed
 
 var _back: Texture2D
 var _middle: Texture2D
@@ -22,7 +21,6 @@ var _start_btn: Button
 var _credits_btn: Button
 var _mute_btn: Button
 var _mode_btn: Button
-var _dev_btn: Button
 
 
 func _ready() -> void:
@@ -68,13 +66,9 @@ func _ready() -> void:
 		Game.control_mode = "gamepad" if Game.control_mode == "keyboard" else "keyboard")
 	add_child(_mode_btn)
 
-	_dev_btn = UiKit.button("", Vector2(150, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
-	_dev_btn.position = Vector2(24, 546)
-	_dev_btn.pressed.connect(func(): dev_pressed.emit())
-	add_child(_dev_btn)
 	var ver := Label.new()
 	ver.name = "Version"
-	ver.position = Vector2(184, 552)
+	ver.position = Vector2(24, 552)
 	ver.add_theme_font_size_override("font_size", 11)
 	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.3))
 	add_child(ver)
@@ -92,7 +86,6 @@ func _refresh() -> void:
 	_start_btn.icon = load("res://assets/ui/pad_blue.png") if pad else null
 	_credits_btn.text = Text.t("BTN_CREDITS")
 	_credits_btn.icon = load("res://assets/ui/pad_red.png") if pad else null
-	_dev_btn.text = Text.t("UI_DEVELOPER_MODE")
 	_mute_btn.text = "SOUND OFF" if Audio.muted else "SOUND ON"
 	_mute_btn.tooltip_text = "Unmute" if Audio.muted else "Mute"
 	_mode_btn.text = "KEYBOARD" if Game.control_mode == "keyboard" else "GAMEPAD"
@@ -118,8 +111,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		start_pressed.emit()
 	elif event.is_action_pressed("choice_1"):
 		_open_credits()
-	elif event.is_action_pressed("choice_2"):
-		dev_pressed.emit()
 
 
 func _input(event: InputEvent) -> void:

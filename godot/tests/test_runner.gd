@@ -265,10 +265,11 @@ func _run() -> void:
 	check(not main._pause.is_open(), "no pause menu on the title screen")
 
 	step("developer menu + level editor")
-	main._go_title()
+	main._go_boot()
 	await frames(3)
-	main._go_dev()
+	await _click((main._menu as BootScreen)._dev.get_global_rect().get_center())
 	await frames(3)
+	check(main.state == "dev" and main._menu is DevMenu, "DEV button on the first screen opens developer mode")
 	var dev: DevMenu = main._menu
 	dev._show("level")
 	await frames(3)

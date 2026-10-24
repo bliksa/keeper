@@ -1,11 +1,14 @@
 class_name BootScreen
 extends Control
 ## First screen (port of the web loading screen): fullscreen toggle,
-## "click to start" (unlocks audio in browsers) and subtitle language.
+## "start game" (unlocks audio in browsers), "dev" (straight to developer mode)
+## and subtitle language.
 
 signal started
+signal dev_pressed
 
 var _start: Button
+var _dev: Button
 var _subs: Label
 var _full: Button
 var _flags := {}
@@ -26,10 +29,14 @@ func _ready() -> void:
 	bar.position = Vector2(405, 226)
 	bar.size = Vector2(256, 8)
 	add_child(bar)
-	_start = UiKit.button("", Vector2(256, 48), 16)
+	_start = UiKit.button("", Vector2(190, 48), 16)
 	_start.position = Vector2(405, 266)
 	_start.pressed.connect(_go)
 	add_child(_start)
+	_dev = UiKit.button("DEV", Vector2(58, 48), 13, Color("#1e293b"), Color("#cbd5e1"))
+	_dev.position = Vector2(603, 266)
+	_dev.pressed.connect(func(): dev_pressed.emit())
+	add_child(_dev)
 	_subs = UiKit.label("", 13, Color("#9ca3af"), true)
 	_subs.position = Vector2(405, 348)
 	add_child(_subs)
@@ -53,6 +60,7 @@ func _refresh() -> void:
 	_full.text = Text.t("UI_SWITCH_FULLSCREEN").to_upper()
 	_start.text = Text.t("UI_CLICK_TO_START").to_upper()
 	_subs.text = Text.t("UI_SUBTITLES").to_upper()
+	_dev.tooltip_text = Text.t("UI_DEVELOPER_MODE")
 	for lang in _flags:
 		var tb: TextureButton = _flags[lang]
 		tb.modulate = Color.WHITE if lang == Text.language else Color(1, 1, 1, 0.55)
