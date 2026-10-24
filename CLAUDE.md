@@ -79,7 +79,13 @@ real renderer (`PlayerArt.overrides`).
 The UI has three parts:
 - an animation dropdown;
 - a variant dropdown with new / duplicate / rename / delete;
-- a frame list with replace / move / remove per frame, plus "Add frames…".
+- a frame list with pick-from-assets / upload / move / remove per frame, plus
+  "Upload frames…" and "From assets…".
+
+The asset browser (`open_assets`) lists repo images via
+`ResourceLoader.list_directory` (`assets/images`, `assets/anim_test/**`) plus
+uploads in `user://anim_uploads/`. Picked repo files are referenced by `res://`
+path, not copied. Space toggles pause in Animation mode.
 
 `data/anim_variants.json` has three keys:
 - `anims`: anim → variant → [res:// frame paths];

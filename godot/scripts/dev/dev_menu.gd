@@ -91,7 +91,7 @@ func _show(tab: String) -> void:
 	if tab == "anim":
 		_lab = AnimLab.new()
 		_lab.top = BAR_H
-		_help.text = "Variants: data/anim_variants.json\nKeys: ← → move · ↑ / Space jump"
+		_help.text = "Space pause / play\n← → step frames"
 		add_child(_lab)
 		move_child(_lab, 1)
 	elif tab == "level":

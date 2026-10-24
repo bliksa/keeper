@@ -65,12 +65,17 @@ V developer menu sú aj skratky: preskočiť intro, checkpointy, skok na bossa s
   dvojskok, pád, pozeranie dole, sed, bolesť, smrť, visenie). Pod ním je výber
   **variantu** a ikony **nový variant z PNG**, **duplikovať**, **premenovať** a
   **zmazať**.
-- Pod tým je zoznam snímok. Pri každej je **nahradiť** (upload), **posunúť
-  hore/dole** a **odstrániť**. Tlačidlo **Add frames…** pridá snímky za
-  vybranú (PNG môžeš aj pretiahnuť do okna). Úprava originálu vytvorí kópiu
+- Pod tým je zoznam snímok. Pri každej je **vybrať z assetov**, **nahradiť**
+  (upload z počítača), **posunúť hore/dole** a **odstrániť**. **Upload frames…**
+  pridá PNG z počítača za vybranú snímku (dajú sa aj pretiahnuť do okna).
+  **From assets…** ich pridá z repa.
+- **Prehliadač assetov** ukazuje obrázky z repa (`assets/images`, uložené
+  varianty v `assets/anim_test/…`) a obrázky nahraté v tomto prehliadači. Má
+  filter podľa názvu. Klik na obrázok ho priradí k snímke. Úprava originálu vytvorí kópiu
   „original edit“, pôvodné obrázky sa neprepíšu.
-- Vpravo je náhľad. **This animation** prehráva vybranú animáciu (klik na
-  snímku ju zastaví presne na nej, ◀ ▶ krokuje). **Gameplay** ukáže postavu, ako
+- Vpravo je náhľad. **Animation** prehráva vybranú animáciu. **Pause/Play**,
+  medzerník alebo klik do náhľadu ju zastaví. ◀ ▶ (alebo šípky) krokujú po
+  snímkach a klik na snímku v zozname zastaví animáciu presne na nej. **Gameplay** ukáže postavu, ako
   beží a skáče, alebo ju ovládaš šípkami a medzerníkom. Posuvníky menia rýchlosť
   behu, tempo snímok, snímky za sekundu pri pózach a veľkosť postavy.
 - Neuložené varianty sú len v tvojom prehliadači (značka *• unsaved*).

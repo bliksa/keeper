@@ -14,8 +14,8 @@ extends Control
 const LOCAL_DIR := "user://anim_uploads/"
 const LOCAL_MANIFEST := LOCAL_DIR + "manifest.json"
 const LIST_W := 300.0
-const STAGE := Rect2(316, 10, 740, 292)
-const FLOOR_Y := 256.0
+const STAGE := Rect2(316, 10, 740, 338)
+const FLOOR_Y := 296.0
 const ROW_H := 58.0
 const GRAVITY := 0.4
 const JUMP := -10.5
@@ -54,6 +54,7 @@ var _list: VBoxContainer
 var _list_title: Label
 var _status: Label
 var _play_btn: Button
+var _frame_lbl: Label
 var _mode_btns := {}
 var _stage: Control
 var _tex_cache := {}
@@ -63,6 +64,12 @@ var _pending: Array = []
 var _pick_purpose := ""
 var _dialog: FileDialog
 var _gh: GitHubSave
+var _assets: Control
+var _asset_grid: GridContainer
+var _asset_folder: OptionButton
+var _asset_search: LineEdit
+var _asset_purpose := ""
+var _thumb_queue: Array = []
 
 
 func _ready() -> void:
@@ -83,6 +90,11 @@ func _ready() -> void:
 	_stage.position = Vector2(STAGE.position.x, top + STAGE.position.y)
 	_stage.size = STAGE.size
 	_stage.clip_contents = true
+	_stage.mouse_filter = Control.MOUSE_FILTER_STOP
+	_stage.tooltip_text = "Click to pause / play"
+	_stage.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			set_paused(not paused))
 	_stage.draw.connect(_draw_stage)
 	add_child(_stage)
 	_build_right()
@@ -269,7 +281,19 @@ func _build_left() -> void:
 	add.add_theme_constant_override("icon_max_width", 18)
 	add.tooltip_text = "Add PNGs after the selected frame (or at the end).\nYou can also drag PNGs onto the window."
 	add.pressed.connect(open_picker.bind("add"))
-	box.add_child(add)
+	var add_row := HBoxContainer.new()
+	add_row.add_theme_constant_override("separation", 6)
+	add.custom_minimum_size = Vector2((LIST_W - 34) / 2, 30)
+	add.text = "Upload frames…"
+	add_row.add_child(add)
+	var pick := UiKit.button("From assets…", Vector2((LIST_W - 34) / 2, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
+	pick.icon = load(ICONS % "images")
+	pick.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	pick.add_theme_constant_override("icon_max_width", 18)
+	pick.tooltip_text = "Add images from the repo (or uploaded in this browser)\nafter the selected frame."
+	pick.pressed.connect(open_assets.bind("add"))
+	add_row.add_child(pick)
+	box.add_child(add_row)
 
 
 func _picker() -> OptionButton:
@@ -350,17 +374,18 @@ func _frame_row(i: int, path: String) -> Control:
 		thumb.texture = _thumb(t)
 	h.add_child(thumb)
 	var name := UiKit.label("#%d  %s" % [i + 1, path.get_file()], 10, Color("#cbd5e1"))
-	name.custom_minimum_size = Vector2(96, 0)
+	name.custom_minimum_size = Vector2(40, 0)
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.clip_text = true
 	name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(name)
-	for it in [["upload", "Replace this frame with a PNG", func(): _replace_at(i)],
+	for it in [["images", "Pick an image for this frame from the repo / uploads", func(): _assets_for(i)],
+			["upload", "Replace this frame with a PNG from your computer", func(): _replace_at(i)],
 			["arrow-up", "Move up", func(): move_frame(i, -1)],
 			["arrow-down", "Move down", func(): move_frame(i, 1)],
 			["x", "Remove this frame", func(): remove_frame(i)]]:
-		var b := UiKit.icon_button(ICONS % it[0], it[1], 26)
+		var b := UiKit.icon_button(ICONS % it[0], it[1], 24)
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		b.pressed.connect(it[2])
 		h.add_child(b)
@@ -706,46 +731,76 @@ func save_to_repo() -> void:
 
 func _build_right() -> void:
 	var x0 := STAGE.position.x
+	var w := STAGE.size.x
 	var y0 := top + STAGE.end.y + 8
+	# Transport: ◀  Pause/Play  ▶  frame counter · mode toggle on the right.
 	var bar := HBoxContainer.new()
 	bar.position = Vector2(x0, y0)
-	bar.add_theme_constant_override("separation", 4)
+	bar.size = Vector2(w, 36)
+	bar.add_theme_constant_override("separation", 6)
 	add_child(bar)
-	_play_btn = UiKit.icon_button(ICONS % "pause", "Pause / play", 36)
-	_play_btn.pressed.connect(func(): set_paused(not paused))
-	bar.add_child(_play_btn)
-	var prev := UiKit.icon_button(ICONS % "chevron-left", "Previous frame", 36)
+	var prev := UiKit.icon_button(ICONS % "chevron-left", "Previous frame (←)", 36)
 	prev.pressed.connect(step_frame.bind(-1))
 	bar.add_child(prev)
-	var next := UiKit.icon_button(ICONS % "chevron-right", "Next frame", 36)
+	_play_btn = UiKit.button("Pause", Vector2(104, 36), 12, Color("#1e293b"))
+	_play_btn.add_theme_constant_override("icon_max_width", 16)
+	_play_btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_play_btn.tooltip_text = "Pause / play (Space or click the preview)"
+	_play_btn.pressed.connect(func(): set_paused(not paused))
+	bar.add_child(_play_btn)
+	var next := UiKit.icon_button(ICONS % "chevron-right", "Next frame (→)", 36)
 	next.pressed.connect(step_frame.bind(1))
 	bar.add_child(next)
-	var sep := VSeparator.new()
-	sep.custom_minimum_size = Vector2(12, 36)
-	bar.add_child(sep)
-	for m in [["anim", "This animation"], ["game", "Gameplay (auto / keys)"]]:
-		var b := UiKit.button(m[1], Vector2(0, 32), 11, Color("#1e293b"), Color("#cbd5e1"))
-		b.custom_minimum_size = Vector2(150 if m[0] == "anim" else 170, 32)
+	_frame_lbl = UiKit.label("", 12, Color("#94a3b8"))
+	_frame_lbl.custom_minimum_size = Vector2(120, 36)
+	_frame_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_frame_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(_frame_lbl)
+	for m in [["anim", "Animation"], ["game", "Gameplay"]]:
+		var b := UiKit.button(m[1], Vector2(110, 36), 12, Color("#1e293b"), Color("#cbd5e1"))
+		b.tooltip_text = "Loop the selected animation" if m[0] == "anim" else "Run & jump on its own, or use ← → and Space"
 		b.pressed.connect(set_preview.bind(m[0]))
 		bar.add_child(b)
 		_mode_btns[m[0]] = b
 	set_preview(preview)
 
+	# Settings card.
+	var card := PanelContainer.new()
+	card.position = Vector2(x0, y0 + 46)
+	card.custom_minimum_size = Vector2(w, 0)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("#111827")
+	sb.border_color = Color("#334155")
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 16
+	sb.content_margin_right = 16
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 10
+	card.add_theme_stylebox_override("panel", sb)
+	add_child(card)
 	var grid := GridContainer.new()
 	grid.columns = 2
-	grid.position = Vector2(x0, y0 + 48)
-	grid.add_theme_constant_override("h_separation", 24)
-	grid.add_theme_constant_override("v_separation", 2)
-	add_child(grid)
+	grid.add_theme_constant_override("h_separation", 32)
+	grid.add_theme_constant_override("v_separation", 6)
+	card.add_child(grid)
 	_slider(grid, "Run speed (gameplay)", 2.0, 12.0, 0.1, max_speed, "%.1f", func(v): max_speed = v)
-	_slider(grid, "Walk/run frame rate", 0.008, 0.08, 0.001, PlayerBody.run_rate, "%.3f", func(v): PlayerBody.run_rate = v)
-	_slider(grid, "Pose frames / s", 2.0, 30.0, 1.0, PlayerArt.anim_fps, "%d", func(v): PlayerArt.anim_fps = v)
+	_slider(grid, "Walk / run frame rate", 0.008, 0.08, 0.001, PlayerBody.run_rate, "%.3f", func(v): PlayerBody.run_rate = v)
+	_slider(grid, "Pose frames per second", 2.0, 30.0, 1.0, PlayerArt.anim_fps, "%d", func(v): PlayerArt.anim_fps = v)
 	_slider(grid, "Sprite scale", 0.8, 2.6, 0.05, PlayerArt.scale, "%.2f", func(v): PlayerArt.scale = v)
 
+	# Bottom: status on the left, actions on the right.
 	var actions := HBoxContainer.new()
 	actions.position = Vector2(x0, 600 - 48)
+	actions.size = Vector2(w, 36)
 	actions.add_theme_constant_override("separation", 8)
 	add_child(actions)
+	_status = UiKit.label("Drag PNGs onto the window to add frames.", 11, Color("#94a3b8"))
+	_status.custom_minimum_size = Vector2(0, 36)
+	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD
+	actions.add_child(_status)
 	var use := UiKit.button("Use in game", Vector2(130, 36), 12, Color("#1e293b"))
 	use.tooltip_text = "Play the game with these frames until the page is reloaded"
 	use.pressed.connect(func():
@@ -759,16 +814,11 @@ func _build_right() -> void:
 	save.tooltip_text = "Commit the variants, the chosen ones and the settings to GitHub;\nthe game for everyone updates after the automatic build."
 	save.pressed.connect(save_to_repo)
 	actions.add_child(save)
-	_status = UiKit.label("Drag PNGs onto the window to add frames.", 11, Color("#94a3b8"))
-	_status.custom_minimum_size = Vector2(440, 36)
-	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_status.autowrap_mode = TextServer.AUTOWRAP_WORD
-	actions.add_child(_status)
 
 
 func _slider(parent: Control, label: String, lo: float, hi: float, step: float, value: float, fmt: String, on_change: Callable) -> void:
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(340, 0)
+	col.custom_minimum_size = Vector2(338, 0)
 	col.add_theme_constant_override("separation", 0)
 	var row := HBoxContainer.new()
 	var l := UiKit.label(label, 11, Color("#cbd5e1"))
@@ -810,6 +860,7 @@ func set_paused(on: bool) -> void:
 	paused = on
 	if _play_btn:
 		_play_btn.icon = load(ICONS % ("play" if paused else "pause"))
+		_play_btn.text = "Play" if paused else "Pause"
 	if paused and selected < 0:
 		selected = 0
 		_refresh_frames()
@@ -828,11 +879,27 @@ func step_frame(d: int) -> void:
 # --- character ----------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _assets:
+		if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
+			close_assets()
+			get_viewport().set_input_as_handled()
+		return
+	if preview == "anim":
+		# Animation mode: Space = pause / play, ← → = step frames.
+		if event is InputEventKey and event.pressed and not event.echo:
+			match event.physical_keycode:
+				KEY_SPACE:
+					set_paused(not paused)
+				KEY_LEFT, KEY_A:
+					step_frame(-1)
+				KEY_RIGHT, KEY_D:
+					step_frame(1)
+				KEY_UP, KEY_W:
+					set_preview("game")
+					_jump()
+		return
 	if event.is_action_pressed("jump") and not event.is_echo():
-		set_preview("game")
 		_jump()
-	elif event.is_action_pressed("move_left") or event.is_action_pressed("move_right"):
-		set_preview("game")
 
 
 func _jump() -> void:
@@ -845,6 +912,7 @@ func _jump() -> void:
 
 func _process(delta: float) -> void:
 	_stage.queue_redraw()
+	_build_thumbs(3)
 	if paused:
 		return
 	var dt := minf(delta, 0.1)
@@ -943,13 +1011,226 @@ func _draw_stage() -> void:
 	if paused or (preview == "anim" and anim in POSED):
 		var posed := _posed(selected if paused else -1)
 		PlayerArt.draw(s, posed[0], posed[1], false, posed[2])
-		info += ("   ·   PAUSED on frame %d / %d" % [selected + 1, posed[3]]) if paused else "   ·   looping"
+		_frame_lbl.text = ("Frame %d / %d" % [selected + 1, posed[3]]) if paused else "%d frames · looping" % posed[3]
 	else:
 		PlayerArt.draw(s, p, _time)
-		info += "   ·   " + ("gameplay" if preview == "game" else "looping")
+		_frame_lbl.text = "Gameplay" if preview == "game" else "%d frames · looping" % current_paths().size()
+	if paused:
+		Draw.panel(s, Rect2(STAGE.size.x - 92, 12, 80, 26), Color("#78350f"), 13)
+		s.draw_string(Text.font_bold, Vector2(STAGE.size.x - 92, 30), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color.WHITE)
 	s.draw_string(Text.font, Vector2(14, STAGE.size.y - 12), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
 
 
 func _on_token(ok: bool) -> void:
 	if ok:
 		save_to_repo()
+
+
+# --- asset browser -------------------------------------------------------------------
+
+## Folders with images: character art, saved variants (anim_test/…), uploads in this browser.
+func asset_folders() -> Array:
+	var out := [["Character art  ·  assets/images", "res://assets/images/"]]
+	var stack := ["res://assets/anim_test/"]
+	while not stack.is_empty():
+		var d: String = stack.pop_front()
+		var has_img := false
+		for f in ResourceLoader.list_directory(d):
+			if f.ends_with("/"):
+				stack.append(d + f)
+			elif _is_image(f):
+				has_img = true
+		if has_img:
+			out.append(["Saved  ·  " + d.trim_prefix("res://assets/anim_test/").trim_suffix("/"), d])
+	if DirAccess.dir_exists_absolute(LOCAL_DIR):
+		out.append(["Uploaded in this browser", LOCAL_DIR])
+	return out
+
+
+func _is_image(f: String) -> bool:
+	return f.get_extension().to_lower() in ["png", "webp", "jpg", "jpeg"]
+
+
+func list_assets(dir: String) -> Array:
+	var out := []
+	if dir.begins_with("user://"):
+		for sub in DirAccess.get_directories_at(dir):
+			for f in DirAccess.get_files_at(dir + sub):
+				if _is_image(f):
+					out.append(dir + sub + "/" + f)
+	else:
+		for f in ResourceLoader.list_directory(dir):
+			if _is_image(f):
+				out.append(dir + f)
+	return out
+
+
+func _assets_for(i: int) -> void:
+	selected = i
+	_refresh_frames()
+	open_assets("replace")
+
+
+## purpose: "replace" (the selected frame) or "add" (after the selected frame).
+func open_assets(purpose: String) -> void:
+	if _assets:
+		_assets.queue_free()
+	_asset_purpose = purpose
+	_assets = Control.new()
+	_assets.position = Vector2(0, top)
+	_assets.size = Vector2(1066, 600 - top)
+	_assets.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_assets)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.7)
+	dim.size = _assets.size
+	_assets.add_child(dim)
+	var card := Panel.new()
+	card.position = Vector2(40, 14)
+	card.size = Vector2(986, _assets.size.y - 28)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("#0f172a")
+	sb.border_color = Color("#334155")
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(12)
+	card.add_theme_stylebox_override("panel", sb)
+	_assets.add_child(card)
+	var head := HBoxContainer.new()
+	head.position = Vector2(16, 12)
+	head.size = Vector2(954, 34)
+	head.add_theme_constant_override("separation", 10)
+	card.add_child(head)
+	var title := UiKit.label("Replace frame %d with…" % (selected + 1) if purpose == "replace" else "Add frames", 16, Color.WHITE, true)
+	title.custom_minimum_size = Vector2(0, 34)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	head.add_child(title)
+	_asset_folder = OptionButton.new()
+	_asset_folder.focus_mode = Control.FOCUS_NONE
+	_asset_folder.add_theme_font_size_override("font_size", 12)
+	_asset_folder.custom_minimum_size = Vector2(300, 34)
+	for f in asset_folders():
+		_asset_folder.add_item(f[0])
+		_asset_folder.set_item_metadata(_asset_folder.item_count - 1, f[1])
+	# Open the folder of the current frame when there is one.
+	var cur := current_paths()
+	if selected >= 0 and selected < cur.size():
+		var best := 0
+		for k in _asset_folder.item_count:
+			var d: String = _asset_folder.get_item_metadata(k)
+			if String(cur[selected]).begins_with(d) and d.length() > String(_asset_folder.get_item_metadata(best)).length():
+				best = k
+		_asset_folder.select(best)
+	_asset_folder.item_selected.connect(func(_i): _fill_assets())
+	head.add_child(_asset_folder)
+	_asset_search = LineEdit.new()
+	_asset_search.placeholder_text = "Filter by name (e.g. run, jump)"
+	_asset_search.custom_minimum_size = Vector2(240, 34)
+	_asset_search.add_theme_font_size_override("font_size", 12)
+	_asset_search.text_changed.connect(func(_t): _fill_assets())
+	head.add_child(_asset_search)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(spacer)
+	var close := UiKit.icon_button(ICONS % "x", "Close (Esc)", 34)
+	close.pressed.connect(close_assets)
+	head.add_child(close)
+	var sc := ScrollContainer.new()
+	sc.position = Vector2(16, 58)
+	sc.size = Vector2(954, card.size.y - 70)
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	card.add_child(sc)
+	_asset_grid = GridContainer.new()
+	_asset_grid.columns = 8
+	_asset_grid.add_theme_constant_override("h_separation", 8)
+	_asset_grid.add_theme_constant_override("v_separation", 8)
+	sc.add_child(_asset_grid)
+	_fill_assets()
+
+
+func close_assets() -> void:
+	if _assets:
+		_assets.queue_free()
+		_assets = null
+		_thumb_queue.clear()
+
+
+func _fill_assets() -> void:
+	for c in _asset_grid.get_children():
+		c.queue_free()
+	_thumb_queue.clear()
+	var dir: String = _asset_folder.get_item_metadata(_asset_folder.selected)
+	var q := _asset_search.text.strip_edges().to_lower()
+	for path in list_assets(dir):
+		var name := _asset_label(path)
+		if q != "" and not name.to_lower().contains(q):
+			continue
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(112, 132)
+		b.focus_mode = Control.FOCUS_NONE
+		b.tooltip_text = path
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color("#1e293b")
+		st.set_corner_radius_all(8)
+		b.add_theme_stylebox_override("normal", st)
+		var hv := st.duplicate()
+		hv.bg_color = Color("#334155")
+		hv.border_color = Color("#34d399")
+		hv.set_border_width_all(2)
+		b.add_theme_stylebox_override("hover", hv)
+		b.add_theme_stylebox_override("pressed", hv)
+		var img := TextureRect.new()
+		img.position = Vector2(6, 6)
+		img.size = Vector2(100, 100)
+		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(img)
+		var l := UiKit.label(name, 10, Color("#cbd5e1"))
+		l.position = Vector2(4, 108)
+		l.size = Vector2(104, 20)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.clip_text = true
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(l)
+		b.pressed.connect(assign_asset.bind(path))
+		_asset_grid.add_child(b)
+		_thumb_queue.append([img, path])
+
+
+func _asset_label(path: String) -> String:
+	var f := path.get_file()
+	# Uploaded files are stored as <ticks>-<original name>.
+	if path.begins_with("user://") and f.find("-") > 0 and f.get_slice("-", 0).is_valid_int():
+		f = f.substr(f.find("-") + 1)
+	return f
+
+
+## A few thumbnails per frame so the browser opens instantly.
+func _build_thumbs(n: int) -> void:
+	while n > 0 and not _thumb_queue.is_empty():
+		var it: Array = _thumb_queue.pop_front()
+		var img: TextureRect = it[0]
+		if not is_instance_valid(img):
+			continue
+		var t := _tex(it[1])
+		if t and t.get_width() <= 3000:
+			img.texture = _thumb(t)
+		n -= 1
+
+
+## Puts an image from the browser into the frame list (repo files are referenced,
+## not copied, so "Save to repo" only commits the manifest for them).
+func assign_asset(path: String) -> void:
+	var purpose := _asset_purpose
+	close_assets()
+	var list: Array = local.anims[anim][_editable()]
+	if purpose == "replace" and list.size() > 0:
+		var i := clampi(selected, 0, list.size() - 1)
+		list[i] = path
+		selected = i
+		_after_edit("Frame %d → %s" % [i + 1, _asset_label(path)])
+	else:
+		var at := list.size() if selected < 0 else selected + 1
+		list.insert(at, path)
+		selected = at
+		_after_edit("Added %s as frame %d." % [_asset_label(path), at + 1])
