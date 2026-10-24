@@ -125,5 +125,7 @@
  "UI_PAUSED": "Pauza",
  "BTN_RESUME": "Pokračovať",
  "BTN_RESTART_GAME": "Reštartovať hru",
- "BTN_MAIN_MENU": "Hlavné menu"
+ "BTN_MAIN_MENU": "Hlavné menu",
+ "BTN_FULLSCREEN": "Celá obrazovka",
+ "BTN_EXIT_FULLSCREEN": "Ukončiť celú obrazovku"
 }

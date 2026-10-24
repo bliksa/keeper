@@ -30,7 +30,8 @@ Godot editor na to netreba. Všetko je v čitateľných súboroch:
 ## Pauza
 
 Počas hry **Esc** (na gamepade **Start**) otvorí menu: **Pokračovať**,
-**Reštartovať hru** (nová hra od začiatku v lese) alebo **Hlavné menu**.
+**Reštartovať hru** (nová hra od začiatku v lese), **Celá obrazovka / Ukončiť
+celú obrazovku** alebo **Hlavné menu**.
 
 ## Level editor
 
@@ -62,9 +63,18 @@ menia rýchlosť behu, tempo snímok behu, snímky za sekundu pri skoku a veľko
 postavy. Dole sú všetky snímky a práve zobrazená je zvýraznená. **Use in game**
 ich nechá v hre (do obnovenia stránky).
 
-Nové verzie PNG stačí poslať do chatu („nový variant behu v3“). Pridajú sa do
-`godot/assets/anim_test/` a do `godot/data/anim_variants.json`. Pri skoku sa
-súbory triedia podľa začiatku názvu: `jump…`, `sidejump…`, `doublejump…`, `fall…`.
+**Vlastné PNG priamo v prehliadači:**
+- **Upload run… / Upload jump…** (alebo PNG pretiahni myšou do okna) vytvorí nový
+  variant. Snímky behu idú v poradí názvov (run1, run2 … run10), pri skoku sa
+  triedia podľa začiatku názvu: `jump…`, `sidejump…`, `doublejump…`, `fall…`.
+- Nahraté varianty sa ukladajú v prehliadači (prežijú obnovenie stránky),
+  v zozname majú značku *(local)*. **Delete local** ich zmaže.
+- **Jednotlivé snímky:** klik na snímku pozastaví postavu presne na nej,
+  ◀ ▶ krokuje, ⏯ pustí animáciu. Vybranú snímku vieš **nahradiť**, **pridať**
+  za ňu ďalšie alebo ju **zmazať** (z variantu z repa sa urobí lokálna kópia).
+
+Keď je variant dobrý, pošli PNG do chatu a pridám ho natrvalo do repa
+(`godot/assets/anim_test/` + `godot/data/anim_variants.json`), aby ho videli všetci.
 
 ## Lokálne
 

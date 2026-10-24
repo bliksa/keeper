@@ -1,7 +1,7 @@
 class_name PauseMenu
 extends Control
 ## Esc / gamepad Start during play: pauses the game and offers
-## Continue, Restart game and Main menu.
+## Continue, Restart game, Fullscreen on/off and Main menu.
 
 signal restart_pressed
 signal title_pressed
@@ -28,10 +28,10 @@ func _ready() -> void:
 	_title.size = Vector2(1066, 40)
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_title)
-	var actions := [close, func(): _pick(restart_pressed), func(): _pick(title_pressed)]
-	for i in 3:
+	var actions := [close, func(): _pick(restart_pressed), toggle_fullscreen, func(): _pick(title_pressed)]
+	for i in actions.size():
 		var b := UiKit.button("", Vector2(300, 52), 18)
-		b.position = Vector2((1066 - 300) / 2.0, 230 + i * 66)
+		b.position = Vector2((1066 - 300) / 2.0, 220 + i * 62)
 		b.pressed.connect(actions[i])
 		b.mouse_entered.connect(func(): _select(i))
 		add_child(b)
@@ -43,7 +43,8 @@ func _ready() -> void:
 
 func _refresh() -> void:
 	_title.text = Text.t("UI_PAUSED")
-	var keys := ["BTN_RESUME", "BTN_RESTART_GAME", "BTN_MAIN_MENU"]
+	var full := DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+	var keys := ["BTN_RESUME", "BTN_RESTART_GAME", "BTN_EXIT_FULLSCREEN" if full else "BTN_FULLSCREEN", "BTN_MAIN_MENU"]
 	for i in _buttons.size():
 		_buttons[i].text = Text.t(keys[i])
 
@@ -52,7 +53,16 @@ func is_open() -> bool:
 	return visible
 
 
+func toggle_fullscreen() -> void:
+	if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	_refresh.call_deferred()
+
+
 func open() -> void:
+	_refresh()
 	_select(0)
 	visible = true
 	get_tree().paused = true

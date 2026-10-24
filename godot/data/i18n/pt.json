@@ -125,5 +125,7 @@
  "UI_PAUSED": "Pausa",
  "BTN_RESUME": "Continuar",
  "BTN_RESTART_GAME": "Reiniciar o jogo",
- "BTN_MAIN_MENU": "Menu principal"
+ "BTN_MAIN_MENU": "Menu principal",
+ "BTN_FULLSCREEN": "Ecrã inteiro",
+ "BTN_EXIT_FULLSCREEN": "Sair do ecrã inteiro"
 }

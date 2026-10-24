@@ -84,7 +84,9 @@ func _show(tab: String) -> void:
 		_editor.queue_free()
 		_editor = null
 	if _lab:
-		_lab.queue_free()
+		# Free now (not queued) so it restores the original frames before a new lab starts.
+		remove_child(_lab)
+		_lab.free()
 		_lab = null
 	if tab == "anim":
 		_lab = AnimLab.new()

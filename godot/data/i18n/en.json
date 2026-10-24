@@ -125,5 +125,7 @@
  "UI_PAUSED": "Paused",
  "BTN_RESUME": "Continue",
  "BTN_RESTART_GAME": "Restart game",
- "BTN_MAIN_MENU": "Main menu"
+ "BTN_MAIN_MENU": "Main menu",
+ "BTN_FULLSCREEN": "Fullscreen",
+ "BTN_EXIT_FULLSCREEN": "Exit fullscreen"
 }

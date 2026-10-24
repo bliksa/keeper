@@ -255,7 +255,8 @@ func _run() -> void:
 	_key(KEY_ESCAPE, true)
 	await frames(2)
 	_key(KEY_ESCAPE, false)
-	main._pause._buttons[2].pressed.emit()
+	check(main._pause._buttons.size() == 4 and main._pause._buttons[2].text != "", "pause menu offers a fullscreen toggle")
+	main._pause._buttons[3].pressed.emit()
 	await frames(5)
 	check(main.state == "title", "Main menu goes to the title screen")
 	_key(KEY_ESCAPE, true)
@@ -307,9 +308,29 @@ func _run() -> void:
 	lab.variants.run["test-reversed"] = rev
 	lab._pick_run("test-reversed")
 	check(PlayerArt.overrides.get("run", []).size() == 8, "picking a variant swaps the run frames")
+	# Upload in the browser = receive_files(); use a real PNG's bytes.
+	var png := FileAccess.get_file_as_bytes("res://assets/images/run3.png")
+	lab.receive_files([["a1.png", png], ["a2.png", png], ["a3.png", png]], "run")
+	check(lab.run_variant.ends_with(AnimLab.LOCAL_TAG) and PlayerArt.overrides.get("run", []).size() == 3, "uploaded PNGs become a local run variant")
+	lab.receive_files([["fall_1.png", png], ["fall_2.png", png], ["x.png", png]], "auto")
+	check(PlayerArt.overrides.get("fall", []).size() == 2 and PlayerArt.overrides.get("jump", []).size() == 1, "dropped files are sorted into jump poses by name")
+	lab.selected = {"kind": "run", "i": 1}
+	lab.receive_files([["b.png", png]], "add")
+	check(PlayerArt.overrides.get("run", []).size() == 4, "adding a frame after the selected one")
+	lab.selected = {"kind": "run", "i": 0}
+	lab.remove_selected()
+	check(PlayerArt.overrides.get("run", []).size() == 3, "removing the selected frame")
+	lab.step_frame(1)
+	check(lab.paused and lab.selected.i == 1, "stepping pauses and moves to the next frame")
+	var local_names: Array = lab._local.run.keys()
+	dev._show("anim")
+	await frames(3)
+	check(dev._lab.variants.run.has(local_names[0] + AnimLab.LOCAL_TAG), "uploaded variants survive reopening (saved locally)")
+	dev._lab._delete_local()
 	dev._show("shortcuts")
 	await frames(3)
 	check(PlayerArt.overrides.is_empty(), "leaving without 'Use in game' restores the original frames")
+	DirAccess.remove_absolute(AnimLab.LOCAL_MANIFEST)
 	if FileAccess.file_exists(LevelEditor.AUTOSAVE):
 		DirAccess.remove_absolute(LevelEditor.AUTOSAVE)
 

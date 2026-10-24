@@ -86,11 +86,16 @@ tools/add_anim_variant.py jump "<variant name>" jump*.png sidejump*.png doubleju
 originals (85 px × scale), so canvas size doesn't matter, but the feet should sit
 at the same place in the canvas as in `run1.png`.
 
+In the browser the lab can also upload PNGs (JS file input via
+`JavaScriptBridge`, or drag & drop via `Window.files_dropped`) into local
+variants stored in `user://anim_uploads/` (IndexedDB), and inspect / replace /
+add / remove single frames. Those stay in that browser only.
+
 ## Pause menu
 
 `Esc` / gamepad Start during play (forest, cave, minigames) opens
 `scripts/ui/pause_menu.gd`: Continue, Restart game (fresh run from the forest),
-Main menu. It uses `get_tree().paused`; the menu itself runs with
+Fullscreen on/off, Main menu. It uses `get_tree().paused`; the menu itself runs with
 `PROCESS_MODE_ALWAYS`. Async steps in `main.gd` check `_run_id` so a fade
 started before a restart can't act on the new run.
 
