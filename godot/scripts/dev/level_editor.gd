@@ -5,11 +5,17 @@ extends Control
 ## imports / exports text so a level can be pasted into the repo (or into a prompt).
 ##
 ## Mouse: left = paint, right = erase, wheel = scroll. Enter = test / back.
-## Tools are grouped icon buttons on the left (hover for names, click again or
-## right-click for the group's other tools); level actions sit in the header.
+## Tools are grouped icon buttons on the left (a click opens the group's menu);
+## level actions sit in the header. The grid fills the rest of the screen.
 
-const CELL := 30.0
-const SIDEBAR := 72.0
+## Cells are as wide as the screen allows (25 columns next to the toolbar).
+const CELL_W := 39.0
+const CELL_H := 30.0
+## Space below the last row that shows where the level ends.
+const END_PAD := 96.0
+## Same as the developer menu header height, so all toolbar icons line up.
+const SIDEBAR := 48.0
+const ICON := 36.0
 const AUTOSAVE := "user://custom_level.txt"
 
 var rows: PackedStringArray = []
@@ -35,9 +41,9 @@ func _ready() -> void:
 	add_child(bg)
 	_build_sidebar()
 	_scroll = ScrollContainer.new()
-	# Grid centred in the space right of the toolbar.
-	_scroll.position = Vector2(SIDEBAR + (1066 - SIDEBAR - LevelData.COLS * CELL - 14) / 2, top + 8)
-	_scroll.size = Vector2(LevelData.COLS * CELL + 14, 600 - top - 16)
+	# The grid fills everything right of the toolbar.
+	_scroll.position = Vector2(SIDEBAR + 4, top)
+	_scroll.size = Vector2(1066 - SIDEBAR - 4, 600 - top)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	add_child(_scroll)
 	_grid = Control.new()
@@ -46,6 +52,8 @@ func _ready() -> void:
 	_grid.gui_input.connect(_grid_input)
 	_scroll.add_child(_grid)
 	_scroll.get_v_scroll_bar().value_changed.connect(func(_v): _grid.queue_redraw())
+	# One wheel notch scrolls 4 rows (the level is ~300 rows tall).
+	_scroll.get_v_scroll_bar().custom_step = CELL_H * 4
 	_toast = UiKit.label("", 14, Color.WHITE, true)
 	_toast.position = Vector2(SIDEBAR + 24, top + 12)
 	_toast.visible = false
@@ -75,7 +83,7 @@ func _load_initial() -> void:
 
 
 func _resize_grid() -> void:
-	_grid.custom_minimum_size = Vector2(LevelData.COLS * CELL, rows.size() * CELL)
+	_grid.custom_minimum_size = Vector2(LevelData.COLS * CELL_W, rows.size() * CELL_H + END_PAD)
 	_grid.queue_redraw()
 
 
@@ -93,8 +101,8 @@ func _toast_msg(s: String) -> void:
 
 # --- toolbars -----------------------------------------------------------------
 
-## Tool groups (Photoshop-style): each toolbar button holds a group; click it
-## to use its current tool, click it again (or right-click) to pick another.
+## Tool groups (Photoshop-style): each toolbar button holds a group; clicking it
+## uses its current tool and opens a menu with the group's other tools.
 ## Items: [level char, lucide icon, name]. Dialog letters are added to "events".
 const GROUPS := [
 	{"id": "platforms", "name": "Platforms", "items": [
@@ -130,7 +138,6 @@ const ICONS := "res://assets/ui/icons/%s.svg"
 ## Optional header (the developer menu's top bar) for the level actions.
 var header: HBoxContainer
 var _test_button: Button
-var _tool_label: Label
 ## group id -> {button, menu, current: [char, icon, name]}
 var _groups := {}
 ## level char -> [char, icon, name, group id] for every tool
@@ -144,7 +151,7 @@ func _build_sidebar() -> void:
 	panel.size = Vector2(SIDEBAR, 600 - top)
 	add_child(panel)
 	var col := VBoxContainer.new()
-	col.position = Vector2((SIDEBAR - 44) / 2, top + 12)
+	col.position = Vector2((SIDEBAR - ICON) / 2, top + (SIDEBAR - ICON) / 2)
 	col.add_theme_constant_override("separation", 6)
 	add_child(col)
 	for g in GROUPS:
@@ -156,7 +163,7 @@ func _build_sidebar() -> void:
 				items.append([ch, "message-square", "Dialog %s%s" % [ch.to_upper(), (" → " + target) if target != "" else ""]])
 		for it in items:
 			_tool_info[it[0]] = [it[0], it[1], it[2], g.id]
-		var b := UiKit.icon_button(ICONS % items[0][1], "", 44)
+		var b := UiKit.icon_button(ICONS % items[0][1], "", ICON)
 		b.draw.connect(_draw_group_corner.bind(b, items.size() > 1))
 		var menu := PopupMenu.new()
 		var dialogs: PopupMenu = null
@@ -183,13 +190,6 @@ func _build_sidebar() -> void:
 		if g.id == "teleports":
 			col.add_child(HSeparator.new())
 		_groups[g.id] = {"button": b, "menu": menu, "current": items[0], "name": g.name, "multi": items.size() > 1}
-	_tool_label = UiKit.label("", 10, Color("#94a3b8"), true)
-	_tool_label.position = Vector2(4, 600 - 52)
-	_tool_label.size = Vector2(SIDEBAR - 8, 46)
-	_tool_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_tool_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_tool_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	add_child(_tool_label)
 	_build_header()
 	_select_tool("=")
 
@@ -203,12 +203,11 @@ func _draw_group_corner(b: Button, multi: bool) -> void:
 
 
 func _group_pressed(id: String) -> void:
+	# Select the group's current tool and, if it has more, show them right away.
 	var g: Dictionary = _groups[id]
-	var active: bool = _tool_info.get(tool, ["", "", "", ""])[3] == id
-	if active and g.multi:
+	_select_tool(g.current[0])
+	if g.multi:
 		_open_group_menu(id)
-	else:
-		_select_tool(g.current[0])
 
 
 func _group_input(event: InputEvent, id: String) -> void:
@@ -229,7 +228,7 @@ func _build_header() -> void:
 	if own:
 		# Standalone use (no developer menu): make a small bar of our own.
 		header = HBoxContainer.new()
-		header.position = Vector2(SIDEBAR + 8, 3)
+		header.position = Vector2(SIDEBAR + 8, (SIDEBAR - ICON) / 2)
 		add_child(header)
 	header.add_theme_constant_override("separation", 2)
 	var items := [
@@ -245,10 +244,10 @@ func _build_header() -> void:
 	for it in items:
 		if it == null:
 			var sep := VSeparator.new()
-			sep.custom_minimum_size = Vector2(10, 30)
+			sep.custom_minimum_size = Vector2(10, ICON)
 			header.add_child(sep)
 			continue
-		var b := UiKit.icon_button(ICONS % it[0], it[1], 34)
+		var b := UiKit.icon_button(ICONS % it[0], it[1], ICON)
 		b.pressed.connect(it[2])
 		header.add_child(b)
 		if it[0] == "play":
@@ -269,8 +268,7 @@ func _select_tool(t: String) -> void:
 			g.button.icon = load(ICONS % info[1])
 		UiKit.set_icon_active(g.button, on)
 		var cur: Array = g.current
-		g.button.tooltip_text = "%s: %s%s" % [g.name, cur[2], "\n(click again or right-click for more)" if g.multi else ""]
-	_tool_label.text = info[2].split(" (")[0]
+		g.button.tooltip_text = "%s: %s%s" % [g.name, cur[2], ""]
 
 
 # --- painting -----------------------------------------------------------------
@@ -289,8 +287,8 @@ func _grid_input(event: InputEvent) -> void:
 
 
 func _paint_at(pos: Vector2) -> void:
-	var c := int(pos.x / CELL)
-	var r := int(pos.y / CELL)
+	var c := int(pos.x / CELL_W)
+	var r := int(pos.y / CELL_H)
 	if r < 0 or r >= rows.size() or c < 0 or c >= LevelData.COLS:
 		return
 	var ch := " " if _painting == 2 else tool
@@ -307,18 +305,19 @@ func _paint_at(pos: Vector2) -> void:
 func _draw_grid() -> void:
 	var ci := _grid
 	var font: Font = Text.font_bold
-	var top := _scroll.scroll_vertical
-	var first := maxi(0, int(top / CELL) - 1)
-	var last := mini(rows.size(), first + int(600 / CELL) + 3)
-	var w := LevelData.COLS * CELL
-	ci.draw_rect(Rect2(0, first * CELL, w, (last - first) * CELL), Color("#111827"))
+	var scroll_top := _scroll.scroll_vertical
+	var first := maxi(0, int(scroll_top / CELL_H) - 1)
+	var last := mini(rows.size(), first + int(600 / CELL_H) + 3)
+	var w := LevelData.COLS * CELL_W
+	var level_h := rows.size() * CELL_H
+	ci.draw_rect(Rect2(0, first * CELL_H, w, (last - first) * CELL_H), Color("#111827"))
 	for r in range(first, last):
-		var y := r * CELL
+		var y := r * CELL_H
 		ci.draw_line(Vector2(0, y), Vector2(w, y), Color(1, 1, 1, 0.12 if r % 4 == 0 else 0.05))
 		var row := rows[r]
 		for c in LevelData.COLS:
 			var ch := row[c]
-			var cell := Rect2(c * CELL, y, CELL, CELL)
+			var cell := Rect2(c * CELL_W, y, CELL_W, CELL_H)
 			var mid := cell.get_center()
 			match ch:
 				" ":
@@ -344,7 +343,21 @@ func _draw_grid() -> void:
 					ci.draw_rect(cell.grow(-1), Color("#60a5fa"), false, 1.0)
 					Draw.text_center(ci, font, mid, ch.to_upper(), 12, Color.WHITE)
 	for c in LevelData.COLS + 1:
-		ci.draw_line(Vector2(c * CELL, first * CELL), Vector2(c * CELL, last * CELL), Color(1, 1, 1, 0.05))
+		ci.draw_line(Vector2(c * CELL_W, first * CELL_H), Vector2(c * CELL_W, last * CELL_H), Color(1, 1, 1, 0.05))
+	# Level boundary: a bright frame, and a hatched "end of level" band below the last row.
+	var frame_col := Color("#10b981")
+	ci.draw_line(Vector2(1, 0), Vector2(1, level_h), frame_col, 2.0)
+	ci.draw_line(Vector2(w - 1, 0), Vector2(w - 1, level_h), frame_col, 2.0)
+	ci.draw_line(Vector2(0, 1), Vector2(w, 1), frame_col, 2.0)
+	if level_h + END_PAD >= scroll_top and level_h <= scroll_top + 600:
+		ci.draw_rect(Rect2(0, level_h, w, END_PAD), Color("#020617"))
+		var x := -END_PAD
+		while x < w:
+			ci.draw_line(Vector2(maxf(x, 0), level_h + (maxf(x, 0) - x)), Vector2(minf(x + END_PAD, w), level_h + END_PAD - (x + END_PAD - minf(x + END_PAD, w))), Color(1, 1, 1, 0.04), 2.0)
+			x += 18
+		ci.draw_line(Vector2(0, level_h), Vector2(w, level_h), frame_col, 3.0)
+		Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "END OF LEVEL  ·  %d rows" % rows.size(), 13, Color(frame_col, 0.9))
+		Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "add more with “Add 20 rows” in the header", 11, Color("#64748b"))
 
 
 # --- level actions -------------------------------------------------------------

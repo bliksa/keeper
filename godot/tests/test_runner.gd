@@ -277,12 +277,11 @@ func _run() -> void:
 	var enemies: Button = ed._groups["enemies"].button
 	await _click(enemies.get_global_rect().get_center())
 	check(ed.tool == "S", "clicking a group selects its tool")
-	await _click(enemies.get_global_rect().get_center())
-	check(ed._groups["enemies"].menu.visible, "clicking the active group opens its menu")
+	check(ed._groups["enemies"].menu.visible, "clicking a group opens its menu right away")
 	ed._groups["enemies"].menu.hide()
 	ed._select_tool("^")
 	check(ed._groups["platforms"].button.icon.resource_path.ends_with("triangle.svg"), "group button shows the chosen tool")
-	await _click(ed._grid.get_global_rect().position + Vector2(15, 15))
+	await _click(ed._grid.get_global_rect().position + Vector2(LevelEditor.CELL_W / 2, LevelEditor.CELL_H / 2))
 	await frames(2)
 	check(ed.rows[0][0] == "^", "clicking the grid paints a spike")
 	# Real mouse click on the TEST LEVEL button (it used to be swallowed by the dev menu).

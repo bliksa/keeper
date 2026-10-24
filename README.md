@@ -38,9 +38,10 @@ Na titulnej obrazovke klikni na **Developer mode → Level Editor**:
 
 - vľavo sú skupiny nástrojov: **plošiny** (plošina, bodák), **nepriatelia**
   (4 druhy kŕčov), **zberateľné** (železo), **eventy** (minihry, boss, nápoveda,
-  dialógy) a **spawn a teleporty**, pod nimi guma. Klik vyberie nástroj skupiny,
-  druhý klik alebo pravý klik otvorí menu s ostatnými nástrojmi. Názvy ukáže
-  tooltip.
+  dialógy) a **spawn a teleporty**, pod nimi guma. Klik na skupinu vyberie jej
+  posledný nástroj a hneď otvorí menu s ostatnými. Názvy ukáže tooltip.
+- mriežka vypĺňa celú plochu vpravo, koniec levelu je zvýraznený zelenou
+  čiarou a pásom „END OF LEVEL“,
 - hore v lište sú akcie levelu: test, použiť v hre, späť na pôvodný level,
   načítať level hry, nový, pridať riadky, import, export (názov ukáže tooltip),
 - ľavé tlačidlo myši kreslí, pravé maže, koliesko scrolluje,

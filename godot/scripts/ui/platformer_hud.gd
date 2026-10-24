@@ -73,7 +73,7 @@ func _draw_breath(font: Font) -> void:
 	var keyboard := Game.control_mode == "keyboard"
 	if p.breath_charges > 0 and p.held_by_cramp == -1:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 300.0)
-		Draw.panel(self, rect, Color(0, 0, 0, 0), 16, Color(TEAL, pulse), 4)
+		_progress_outline(rect, 1.0, Color(TEAL, pulse))
 		if p.has_used_breath:
 			var n := p.breath_charges
 			for i in n:
@@ -86,8 +86,6 @@ func _draw_breath(font: Font) -> void:
 			_key_hint(font, c, "CTRL" if keyboard else "PUSH", keyboard)
 	elif p.is_recharging and p.breathing_cooldown <= 0:
 		var k := minf(1.0, p.breath_timer / 12.0)
-		var fill := Rect2(rect.position, Vector2(rect.size.x * k, rect.size.y))
-		Draw.panel(self, fill, Color(RUST, 0.3) if breath_error else Color(TEAL, 0.2), 16)
 		_progress_outline(rect, k, RUST if breath_error else TEAL)
 		var syms := ["up", "hold", "down"]
 		for i in 3:
@@ -141,20 +139,41 @@ func _shape(kind: String, c: Vector2, col: Color) -> void:
 			draw_colored_polygon(PackedVector2Array([c + Vector2(0, 10), c + Vector2(10, -8), c + Vector2(-10, -8)]), col)
 
 
+## Outline that runs clockwise along the pill's rounded edge as the breath
+## progresses (like the web build's SVG stroke-dashoffset), corners included.
 func _progress_outline(rect: Rect2, k: float, col: Color) -> void:
-	# Outline that fills clockwise from the top-left as the breath progresses.
-	var r := rect.grow(-2)
-	var pts := PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position])
-	var total := (r.size.x + r.size.y) * 2
-	var left := total * k
-	var out := PackedVector2Array([pts[0]])
-	for i in range(1, pts.size()):
-		var seg := pts[i - 1].distance_to(pts[i])
+	var path := _rounded_path(rect.grow(-2), 14.0)
+	var total := 0.0
+	for i in range(1, path.size()):
+		total += path[i - 1].distance_to(path[i])
+	var left := total * clampf(k, 0, 1)
+	var out := PackedVector2Array([path[0]])
+	for i in range(1, path.size()):
+		var seg := path[i - 1].distance_to(path[i])
 		if left >= seg:
-			out.append(pts[i])
+			out.append(path[i])
 			left -= seg
 		else:
-			out.append(pts[i - 1].lerp(pts[i], left / seg))
+			if seg > 0:
+				out.append(path[i - 1].lerp(path[i], left / seg))
 			break
 	if out.size() > 1:
-		draw_polyline(out, col, 5.0, true)
+		draw_polyline(out, col, 4.0, true)
+
+
+## Closed rounded-rectangle path starting at the top edge after the top-left corner.
+func _rounded_path(r: Rect2, rad: float) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	var corners := [
+		[Vector2(r.end.x - rad, r.position.y + rad), -PI / 2],
+		[Vector2(r.end.x - rad, r.end.y - rad), 0.0],
+		[Vector2(r.position.x + rad, r.end.y - rad), PI / 2],
+		[Vector2(r.position.x + rad, r.position.y + rad), PI],
+	]
+	pts.append(Vector2(r.position.x + rad, r.position.y))
+	for c in corners:
+		for i in 9:
+			var a: float = c[1] + i / 8.0 * PI / 2
+			pts.append(c[0] + Vector2(cos(a), sin(a)) * rad)
+	pts.append(Vector2(r.position.x + rad, r.position.y))
+	return pts

@@ -16,7 +16,9 @@ var _editor: LevelEditor
 var header_tools: HBoxContainer
 var _help: Label
 
-const BAR_H := 40.0
+## Same thickness as the level editor's tool sidebar (LevelEditor.SIDEBAR).
+const BAR_H := 48.0
+const ICON := 36.0
 
 
 func _ready() -> void:
@@ -31,15 +33,15 @@ func _ready() -> void:
 	add_child(bar)
 	var x := 8.0
 	for t in [["shortcuts", "Shortcuts"], ["level", "Level editor"]]:
-		var b := UiKit.button(t[1], Vector2(110, 28), 11, Color(0, 0, 0, 0), Color("#94a3b8"))
-		b.position = Vector2(x, 6)
+		var b := UiKit.button(t[1], Vector2(110, ICON), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
+		b.position = Vector2(x, (BAR_H - ICON) / 2)
 		b.pressed.connect(_show.bind(t[0]))
 		add_child(b)
 		_tabs[t[0]] = b
 		x += 114
-	var ret := UiKit.button("Menu", Vector2(76, 28), 11, Color("#0f172a"), Color("#cbd5e1"))
+	var ret := UiKit.button("Menu", Vector2(76, ICON), 12, Color("#0f172a"), Color("#cbd5e1"))
 	ret.tooltip_text = "Return to the title screen"
-	ret.position = Vector2(1066 - 84, 6)
+	ret.position = Vector2(1066 - 84, (BAR_H - ICON) / 2)
 	ret.pressed.connect(func(): back.emit())
 	add_child(ret)
 	_content = Control.new()
@@ -50,7 +52,7 @@ func _ready() -> void:
 	_content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_content)
 	header_tools = HBoxContainer.new()
-	header_tools.position = Vector2(x + 16, 3)
+	header_tools.position = Vector2(x + 16, (BAR_H - ICON) / 2)
 	header_tools.add_theme_constant_override("separation", 2)
 	add_child(header_tools)
 	_help = UiKit.label("", 10, Color("#64748b"))
