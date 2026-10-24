@@ -39,6 +39,12 @@ jobs:
         run: |
           mkdir -p site
           cp -r build/web/. site/
+          # Pages caches files for 10 min; a per-build pack name makes a reload
+          # always fetch the new game data.
+          PCK="index-${GITHUB_SHA::8}.pck"
+          mv site/index.pck "site/$PCK"
+          sed -i "s/GODOT_CONFIG = {/GODOT_CONFIG = {\"mainPack\":\"$PCK\",/; s/\"index.pck\":/\"$PCK\":/" site/index.html
+          grep -q "\"mainPack\":\"$PCK\"" site/index.html
           # The original vibe-coded web prototype, for side-by-side comparison.
           mkdir -p site/original
           cp -r web-export/. site/original/
