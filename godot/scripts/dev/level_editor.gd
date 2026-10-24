@@ -239,7 +239,8 @@ func _build_header() -> void:
 		["file-plus", "New empty level", _new_level],
 		["list-plus", "Add 20 rows at the bottom", _add_rows], null,
 		["import", "Import level text", _open_import],
-		["download", "Export: copy + download cave.txt", _export],
+		["download", "Export: copy + download cave.txt", _export], null,
+		["git-commit-horizontal", "Save to repo (commits cave.txt to GitHub)", save_to_repo],
 	]
 	for it in items:
 		if it == null:
@@ -401,6 +402,30 @@ func _export() -> void:
 	if OS.has_feature("web"):
 		JavaScriptBridge.download_buffer(txt.to_utf8_buffer(), "cave.txt", "text/plain")
 	_toast_msg("Level copied to clipboard%s!" % (" and downloaded" if OS.has_feature("web") else ""))
+
+
+## Commits the level as godot/data/levels/cave.txt (the game rebuilds with it).
+func save_to_repo() -> void:
+	if not GitHubSave.has_token():
+		GitHubSave.token_dialog(self, _on_token)
+		return
+	var gh := GitHubSave.new()
+	add_child(gh)
+	gh.progress.connect(_toast_msg)
+	var res := await gh.commit({"godot/data/levels/cave.txt": LevelData.to_text(rows).to_utf8_buffer()},
+		"Level editor: update the cave level\n\nSaved from Developer mode > Level editor in the browser.")
+	gh.queue_free()
+	if not res.ok:
+		_toast_msg("Save failed: " + res.error)
+		if "token" in res.error:
+			GitHubSave.forget_token()
+		return
+	_toast_msg("Saved to the repo — the game updates after the next build (~2 min).")
+
+
+func _on_token(ok: bool) -> void:
+	if ok:
+		save_to_repo()
 
 
 func _open_import() -> void:

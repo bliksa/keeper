@@ -2,35 +2,77 @@ class_name PlayerArt
 extends RefCounted
 ## Draws the player character (Kyra) onto any CanvasItem.
 ## Port of the web `wf()` function: same frames, offsets and timings.
+##
+## Every animation can be swapped for another frame list (animation lab,
+## data/anim_variants.json → "in_game").
 
 const SPRITE_H := 85.0
 const DIR := "res://assets/images/"
+const VARIANTS := "res://data/anim_variants.json"
+
+## Animation id -> [file prefix, frame count]; count 0 = a single file "<prefix>.png".
+const ANIMS := {
+	"idle": ["idle", 4], "walk": ["walk", 8], "run": ["run", 8],
+	"jump": ["jump", 0], "sidejump": ["sidejump", 0], "doublejump": ["doublejump", 0], "fall": ["fall", 0],
+	"lookdown": ["lookdown", 0], "sit": ["sed", 7], "pain": ["pain", 4], "dead": ["smrt", 0], "hang": ["hang", 0],
+}
 
 ## Sprite scale (1.6 like the web build); the animation lab can change it.
 static var scale := 1.6
-## Frame overrides from the animation lab: "run" | "jump" | "sidejump" |
-## "doublejump" | "fall" -> Array[Texture2D]. Empty = original art.
+## Frame overrides: animation id -> Array[Texture2D]. Missing = original art.
 static var overrides := {}
-## Playback speed of multi-frame jump/fall overrides.
-static var jump_fps := 12.0
+## Playback speed of multi-frame poses (jump, fall, lookdown, dead, hang).
+static var anim_fps := 12.0
 
 static var _frames := {}
 
 
-static func _seq(name: String, count: int) -> Array:
-	var key := "%s%d" % [name, count]
-	if not _frames.has(key):
+## Original frame paths of an animation.
+static func original_paths(anim: String) -> Array:
+	var def: Array = ANIMS[anim]
+	if def[1] == 0:
+		return [DIR + def[0] + ".png"]
+	var out := []
+	for i in range(1, def[1] + 1):
+		out.append(DIR + "%s%d.png" % [def[0], i])
+	return out
+
+
+## Frames used for an animation right now (override or original).
+static func frames(anim: String) -> Array:
+	if overrides.has(anim) and not overrides[anim].is_empty():
+		return overrides[anim]
+	if not _frames.has(anim):
 		var arr := []
-		for i in range(1, count + 1):
-			arr.append(load(DIR + "%s%d.png" % [name, i]))
-		_frames[key] = arr
-	return _frames[key]
+		for path in original_paths(anim):
+			arr.append(load(path))
+		_frames[anim] = arr
+	return _frames[anim]
 
 
-static func _one(name: String) -> Texture2D:
-	if not _frames.has(name):
-		_frames[name] = load(DIR + name + ".png")
-	return _frames[name]
+## Applies the "in_game" variants and settings from data/anim_variants.json
+## (saved from the animation lab). Called once at start-up.
+static func load_game_defaults() -> void:
+	overrides = {}
+	if not FileAccess.file_exists(VARIANTS):
+		return
+	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(VARIANTS))
+	if not d is Dictionary:
+		return
+	var anims: Dictionary = d.get("anims", {})
+	var in_game: Dictionary = d.get("in_game", {})
+	for anim in in_game:
+		var paths: Array = anims.get(anim, {}).get(in_game[anim], [])
+		var tex := []
+		for path in paths:
+			if ResourceLoader.exists(path):
+				tex.append(load(path))
+		if not tex.is_empty():
+			overrides[anim] = tex
+	var s: Dictionary = d.get("settings", {})
+	scale = s.get("scale", 1.6)
+	anim_fps = s.get("anim_fps", 12.0)
+	PlayerBody.run_rate = s.get("run_rate", 0.026)
 
 
 ## p: PlayerBody. time_ms: elapsed ms. big_ring: boss breath ring (400 px instead of 200).
@@ -47,55 +89,60 @@ static func draw(ci: CanvasItem, p: PlayerBody, time_ms: float, big_ring := fals
 	var speed: float = absf(p.vx)
 	var moving := speed > 0.5
 	var running := moving and speed > 3.5
+	var k_scale := scale
 
 	var off_y := 0.0
-	var SCALE := scale
-	if sitting: off_y = 22 * SCALE
+	if sitting: off_y = 22 * k_scale
 	if pain: off_y = 0
-	if dead: off_y = 22 * SCALE
-	if hanging: off_y = 45 * SCALE
+	if dead: off_y = 22 * k_scale
+	if hanging: off_y = 45 * k_scale
 	var origin := Vector2(p.x + p.width / 2, p.y + p.height / 2 + off_y)
 
-	var single: Texture2D = null
-	var seq: Array = []
+	# Which animation, and how its frame is chosen: "progress" (walk cycle),
+	# a fixed period in ms (idle 360, sit/pain 240) or "fps" (poses).
+	var anim := "idle"
+	var timing := "360"
 	var lift := -1.0
 	if dead:
-		single = _one("smrt")
+		anim = "dead"
+		timing = "fps"
 	elif hanging:
-		single = _one("hang")
+		anim = "hang"
+		timing = "fps"
 	elif pain:
-		seq = _seq("pain", 4)
+		anim = "pain"
+		timing = "240"
 	elif airborne:
-		var pose := "jump"
-		if p.vy > 0: pose = "fall"
-		elif p.jumps_left == 0: pose = "doublejump"
-		elif speed > 1: pose = "sidejump"
-		var alt: Array = overrides.get(pose, [])
-		if alt.is_empty():
-			single = _one(pose)
-		else:
-			single = alt[int(floorf(time_ms / 1000.0 * jump_fps)) % alt.size()]
+		timing = "fps"
+		if p.vy > 0: anim = "fall"
+		elif p.jumps_left == 0: anim = "doublejump"
+		elif speed > 1: anim = "sidejump"
+		else: anim = "jump"
 	elif sitting or crouched:
-		seq = _seq("sed", 7)
+		anim = "sit"
+		timing = "240"
 		lift = -8
 	elif looking_down:
-		single = _one("lookdown")
+		anim = "lookdown"
+		timing = "fps"
 	elif moving:
-		seq = overrides.get("run", _seq("run", 8)) if running else _seq("walk", 8)
-	else:
-		seq = _seq("idle", 4)
+		anim = "run" if running else "walk"
+		timing = "progress"
 
-	var tex := single
-	if tex == null and seq.size() > 0:
+	var seq := frames(anim)
+	var tex: Texture2D = null
+	if seq.size() > 0:
 		var idx := 0
-		if moving and not airborne and not sitting and not crouched and not looking_down and not pain:
-			idx = int(floorf(p.anim_progress)) % seq.size()
-		else:
-			var period := 240.0 if (sitting or crouched or pain) else 360.0
-			idx = int(floorf(time_ms / period)) % seq.size()
+		match timing:
+			"progress":
+				idx = int(floorf(p.anim_progress)) % seq.size()
+			"fps":
+				idx = int(floorf(time_ms / 1000.0 * anim_fps)) % seq.size()
+			_:
+				idx = int(floorf(time_ms / float(timing))) % seq.size()
 		tex = seq[idx]
 
-	ci.draw_set_transform(origin, 0.0, Vector2(SCALE if facing else -SCALE, SCALE))
+	ci.draw_set_transform(origin, 0.0, Vector2(k_scale if facing else -k_scale, k_scale))
 	if tex:
 		var k := SPRITE_H / tex.get_height()
 		var w := tex.get_width() * k

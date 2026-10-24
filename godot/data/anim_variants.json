@@ -1,14 +1,6 @@
 {
- "_comment": "Animation variants for Developer mode > Animations. Add new ones with tools/add_anim_variant.py. 'run' = list of frames; 'jump' = poses jump/sidejump/doublejump/fall, each a list of frames (more than one frame = animated).",
- "run": {
-  "original": ["res://assets/images/run1.png", "res://assets/images/run2.png", "res://assets/images/run3.png", "res://assets/images/run4.png", "res://assets/images/run5.png", "res://assets/images/run6.png", "res://assets/images/run7.png", "res://assets/images/run8.png"]
- },
- "jump": {
-  "original": {
-   "jump": ["res://assets/images/jump.png"],
-   "sidejump": ["res://assets/images/sidejump.png"],
-   "doublejump": ["res://assets/images/doublejump.png"],
-   "fall": ["res://assets/images/fall.png"]
-  }
- }
+ "_comment": "Character animation variants. anims.<animation>.<variant> = frame paths (the built-in 'original' variant is not listed). in_game.<animation> = variant the game uses. settings = scale / anim_fps / run_rate. Written by the animation lab's 'Save to repo' and by tools/add_anim_variant.py.",
+ "anims": {},
+ "in_game": {},
+ "settings": {"scale": 1.6, "anim_fps": 12.0, "run_rate": 0.026}
 }

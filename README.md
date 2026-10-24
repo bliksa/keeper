@@ -44,37 +44,57 @@ Na titulnej obrazovke klikni na **Developer mode → Level Editor**:
 - mriežka vypĺňa celú plochu vpravo, koniec levelu je zvýraznený zelenou
   čiarou a pásom „END OF LEVEL“,
 - hore v lište sú akcie levelu: test, použiť v hre, späť na pôvodný level,
-  načítať level hry, nový, pridať riadky, import, export (názov ukáže tooltip),
+  načítať level hry, nový, pridať riadky, import, export, uložiť do repa
+  (názov ukáže tooltip),
 - ľavé tlačidlo myši kreslí, pravé maže, koliesko scrolluje,
 - **Test Level** (alebo Enter) spustí test levelu priamo v hre; späť sa vrátiš
   tlačidlom **Back to editor**, Enterom alebo Esc,
 - **Use in game** použije upravený level v hre (do obnovenia stránky),
 - **Export** level skopíruje a stiahne ako `cave.txt`. Ten stačí vložiť do
   promptu („nahraď level týmto“) alebo do `godot/data/levels/cave.txt`.
+- **Save to repo** (posledná ikona) level rovno commitne do repa (pozri nižšie).
 
 V developer menu sú aj skratky: preskočiť intro, checkpointy, skok na bossa s
 ľubovoľným počtom železa.
 
 ## Testovanie animácií
 
-**Developer mode → Animations:** postava beží a skáče sama (alebo ju ovládaš
-šípkami a medzerníkom) a hore vyberáš varianty **behu** a **skoku**. Posuvníky
-menia rýchlosť behu, tempo snímok behu, snímky za sekundu pri skoku a veľkosť
-postavy. Dole sú všetky snímky a práve zobrazená je zvýraznená. **Use in game**
-ich nechá v hre (do obnovenia stránky).
+**Developer mode → Animations:**
 
-**Vlastné PNG priamo v prehliadači:**
-- **Upload run… / Upload jump…** (alebo PNG pretiahni myšou do okna) vytvorí nový
-  variant. Snímky behu idú v poradí názvov (run1, run2 … run10), pri skoku sa
-  triedia podľa začiatku názvu: `jump…`, `sidejump…`, `doublejump…`, `fall…`.
-- Nahraté varianty sa ukladajú v prehliadači (prežijú obnovenie stránky),
-  v zozname majú značku *(local)*. **Delete local** ich zmaže.
-- **Jednotlivé snímky:** klik na snímku pozastaví postavu presne na nej,
-  ◀ ▶ krokuje, ⏯ pustí animáciu. Vybranú snímku vieš **nahradiť**, **pridať**
-  za ňu ďalšie alebo ju **zmazať** (z variantu z repa sa urobí lokálna kópia).
+- Hore vľavo je výber **animácie** (beh, chôdza, státie, skok, bočný skok,
+  dvojskok, pád, pozeranie dole, sed, bolesť, smrť, visenie). Pod ním je výber
+  **variantu** a ikony **nový variant z PNG**, **duplikovať**, **premenovať** a
+  **zmazať**.
+- Pod tým je zoznam snímok. Pri každej je **nahradiť** (upload), **posunúť
+  hore/dole** a **odstrániť**. Tlačidlo **Add frames…** pridá snímky za
+  vybranú (PNG môžeš aj pretiahnuť do okna). Úprava originálu vytvorí kópiu
+  „original edit“, pôvodné obrázky sa neprepíšu.
+- Vpravo je náhľad. **This animation** prehráva vybranú animáciu (klik na
+  snímku ju zastaví presne na nej, ◀ ▶ krokuje). **Gameplay** ukáže postavu, ako
+  beží a skáče, alebo ju ovládaš šípkami a medzerníkom. Posuvníky menia rýchlosť
+  behu, tempo snímok, snímky za sekundu pri pózach a veľkosť postavy.
+- Neuložené varianty sú len v tvojom prehliadači (značka *• unsaved*).
+- **Use in game** ich použije v hre do obnovenia stránky.
+- **Save to repo** ich uloží natrvalo:
+  - PNG idú do `godot/assets/anim_test/`, nastavenia do
+    `godot/data/anim_variants.json`.
+  - Vybrané varianty a posuvníky sa stanú predvolenými v hre pre všetkých.
 
-Keď je variant dobrý, pošli PNG do chatu a pridám ho natrvalo do repa
-(`godot/assets/anim_test/` + `godot/data/anim_variants.json`), aby ho videli všetci.
+## Ukladanie z prehliadača do repa
+
+**Save to repo** v animáciách a ikona commitu v hlavičke level editora urobia
+commit priamo do `bliksa/keeper`. Level sa uloží do `godot/data/levels/cave.txt`.
+Hra sa potom sama zbuildí a o pár minút je na webe.
+
+Pri prvom uložení sa hra opýta na GitHub token. Ostane uložený len v tom
+prehliadači. Vytvoríš ho takto:
+
+1. github.com → Settings → Developer settings → **Fine-grained tokens** →
+   Generate new token.
+2. Repository access: **Only select repositories → bliksa/keeper**.
+3. Permissions → Repository permissions: **Contents → Read and write**.
+
+Neplatný token sa zabudne a hra si pri ďalšom uložení vypýta nový.
 
 ## Lokálne
 

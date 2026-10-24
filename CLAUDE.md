@@ -72,24 +72,49 @@ After push, GitHub Actions deploys to `https://bliksa.github.io/keeper/`
 
 ## Animation lab (Developer mode → Animations)
 
-`scripts/dev/anim_lab.gd` previews run/jump frame variants listed in
-`data/anim_variants.json` on the real renderer (`PlayerArt.overrides`). When the
-user sends new PNGs, add them with:
+`scripts/dev/anim_lab.gd` previews every player animation (`PlayerArt.ANIMS`: idle,
+walk, run, jump, sidejump, doublejump, fall, lookdown, sit, pain, dead, hang) on the
+real renderer (`PlayerArt.overrides`).
+
+The UI has three parts:
+- an animation dropdown;
+- a variant dropdown with new / duplicate / rename / delete;
+- a frame list with replace / move / remove per frame, plus "Add frames…".
+
+`data/anim_variants.json` has three keys:
+- `anims`: anim → variant → [res:// frame paths];
+- `in_game`: anim → variant used by the game, applied at start-up by
+  `PlayerArt.load_game_defaults()`;
+- `settings`: scale, anim_fps, run_rate.
+
+To add PNGs the user sends in chat:
 
 ```
-tools/add_anim_variant.py run  "<variant name>" path/to/*.png
-tools/add_anim_variant.py jump "<variant name>" jump*.png sidejump*.png doublejump*.png fall*.png
+tools/add_anim_variant.py run "<variant name>" path/to/*.png [--in-game]
+tools/add_anim_variant.py fall "<variant name>" fall*.png
 ```
 
-(copies into `assets/anim_test/<anim>/<slug>/`, updates the manifest), then run
-`tools/test.sh` and push. Frames are scaled to the same on-screen height as the
-originals (85 px × scale), so canvas size doesn't matter, but the feet should sit
-at the same place in the canvas as in `run1.png`.
+The script copies the files into `assets/anim_test/<anim>/<slug>/` and updates the
+manifest. Then run `tools/test.sh` and push. Frames are scaled to the same
+on-screen height as the originals (85 px × scale). The feet should sit at the same
+place in the canvas as in the original frames.
 
-In the browser the lab can also upload PNGs (JS file input via
-`JavaScriptBridge`, or drag & drop via `Window.files_dropped`) into local
-variants stored in `user://anim_uploads/` (IndexedDB), and inspect / replace /
-add / remove single frames. Those stay in that browser only.
+Uploads in the browser go to `user://anim_uploads/` (IndexedDB, local only) until
+the user clicks **Save to repo**.
+
+## Saving from the browser (GitHub commits)
+
+`scripts/dev/github_save.gd` (`GitHubSave`) commits files through the GitHub Git
+Data API with a fine-grained token the user pastes once (stored in
+`user://github_token`, only in that browser).
+
+There are two callers:
+- the animation lab commits PNGs plus a merged `data/anim_variants.json`;
+- the level editor header commits `data/levels/cave.txt`.
+
+Commits land on the repo's default branch and trigger the deploy. **Run `git pull`
+before editing**, because the branch may contain commits made from the browser.
+For a local mock API, set `GitHubSave.api_base`, or use `?gh_api=` on the web.
 
 ## Pause menu
 
