@@ -34,6 +34,8 @@ var repo := {}
 var local := {"anims": {}, "deleted": {}, "saved": {}}
 ## Variant chosen per animation (what "Use in game" / "Save to repo" applies).
 var chosen := {}
+## Image behind the preview (picked from the assets; kept in this browser).
+var stage_bg := ""
 var settings := {"scale": 1.6, "anim_fps": 12.0, "run_rate": 0.026}
 
 var anim := "run"
@@ -97,6 +99,10 @@ func _ready() -> void:
 			set_paused(not paused))
 	_stage.draw.connect(_draw_stage)
 	add_child(_stage)
+	var bg_btn := UiKit.icon_button(ICONS % "wallpaper", "Change the background (from the assets)", 34)
+	bg_btn.position = Vector2(STAGE.size.x - 44, 10)
+	bg_btn.pressed.connect(open_assets.bind("background"))
+	_stage.add_child(bg_btn)
 	_build_right()
 	p.x = 120
 	p.y = FLOOR_Y - p.height
@@ -129,6 +135,7 @@ func _load_manifests() -> void:
 			local[k] = l.get(k, {})
 		# The lab reopens on the variants picked last time.
 		chosen.merge(l.get("chosen", {}), true)
+		stage_bg = l.get("bg", "")
 	# Drop local copies that were saved and are now part of the repo build.
 	for a in local.saved:
 		for name in local.saved[a]:
@@ -152,6 +159,7 @@ func _save_local() -> void:
 	if f:
 		var out := local.duplicate()
 		out["chosen"] = chosen
+		out["bg"] = stage_bg
 		f.store_string(JSON.stringify(out, " "))
 
 
@@ -1004,8 +1012,16 @@ func _posed(frame: int) -> Array:
 func _draw_stage() -> void:
 	var s := _stage
 	Draw.panel(s, Rect2(Vector2.ZERO, STAGE.size), Color("#111827"), 10, Color("#334155"), 1)
-	for i in range(0, int(STAGE.size.x), 40):
-		s.draw_line(Vector2(i, 0), Vector2(i, FLOOR_Y), Color(1, 1, 1, 0.03))
+	var bg := _tex(stage_bg) if stage_bg != "" else null
+	if bg:
+		# Cover the stage, centred crop.
+		var k := maxf(STAGE.size.x / bg.get_width(), STAGE.size.y / bg.get_height())
+		var src := Rect2(Vector2.ZERO, STAGE.size / k)
+		src.position = (Vector2(bg.get_size()) - src.size) / 2
+		s.draw_texture_rect_region(bg, Rect2(Vector2.ZERO, STAGE.size), src)
+	else:
+		for i in range(0, int(STAGE.size.x), 40):
+			s.draw_line(Vector2(i, 0), Vector2(i, FLOOR_Y), Color(1, 1, 1, 0.03))
 	s.draw_line(Vector2(0, FLOOR_Y), Vector2(STAGE.size.x, FLOOR_Y), Color("#475569"), 2.0)
 	var info := "%s · %s" % [anim, current_variant()]
 	if paused or (preview == "anim" and anim in POSED):
@@ -1016,8 +1032,8 @@ func _draw_stage() -> void:
 		PlayerArt.draw(s, p, _time)
 		_frame_lbl.text = "Gameplay" if preview == "game" else "%d frames · looping" % current_paths().size()
 	if paused:
-		Draw.panel(s, Rect2(STAGE.size.x - 92, 12, 80, 26), Color("#78350f"), 13)
-		s.draw_string(Text.font_bold, Vector2(STAGE.size.x - 92, 30), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color.WHITE)
+		Draw.panel(s, Rect2(STAGE.size.x - 140, 14, 80, 26), Color("#78350f"), 13)
+		s.draw_string(Text.font_bold, Vector2(STAGE.size.x - 140, 32), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color.WHITE)
 	s.draw_string(Text.font, Vector2(14, STAGE.size.y - 12), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
 
 
@@ -1100,7 +1116,8 @@ func open_assets(purpose: String) -> void:
 	head.size = Vector2(954, 34)
 	head.add_theme_constant_override("separation", 10)
 	card.add_child(head)
-	var title := UiKit.label("Replace frame %d with…" % (selected + 1) if purpose == "replace" else "Add frames", 16, Color.WHITE, true)
+	var heading := {"replace": "Replace frame %d with…" % (selected + 1), "add": "Add frames", "background": "Preview background"}
+	var title := UiKit.label(heading[purpose], 16, Color.WHITE, true)
 	title.custom_minimum_size = Vector2(0, 34)
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	head.add_child(title)
@@ -1113,13 +1130,14 @@ func open_assets(purpose: String) -> void:
 		_asset_folder.set_item_metadata(_asset_folder.item_count - 1, f[1])
 	# Open the folder of the current frame when there is one.
 	var cur := current_paths()
-	if selected >= 0 and selected < cur.size():
-		var best := 0
-		for k in _asset_folder.item_count:
-			var d: String = _asset_folder.get_item_metadata(k)
-			if String(cur[selected]).begins_with(d) and d.length() > String(_asset_folder.get_item_metadata(best)).length():
-				best = k
-		_asset_folder.select(best)
+	if purpose == "background" and stage_bg != "":
+		cur = [stage_bg]
+	elif purpose == "background":
+		cur = []
+	if purpose == "background" and cur.size() > 0:
+		_asset_folder.select(_folder_of(cur[0]))
+	elif purpose != "background" and selected >= 0 and selected < cur.size():
+		_asset_folder.select(_folder_of(cur[selected]))
 	_asset_folder.item_selected.connect(func(_i): _fill_assets())
 	head.add_child(_asset_folder)
 	_asset_search = LineEdit.new()
@@ -1160,8 +1178,11 @@ func _fill_assets() -> void:
 	_thumb_queue.clear()
 	var dir: String = _asset_folder.get_item_metadata(_asset_folder.selected)
 	var q := _asset_search.text.strip_edges().to_lower()
-	for path in list_assets(dir):
-		var name := _asset_label(path)
+	var paths := list_assets(dir)
+	if _asset_purpose == "background":
+		paths.push_front("")
+	for path in paths:
+		var name := _asset_label(path) if path != "" else "No background"
 		if q != "" and not name.to_lower().contains(q):
 			continue
 		var b := Button.new()
@@ -1194,7 +1215,8 @@ func _fill_assets() -> void:
 		b.add_child(l)
 		b.pressed.connect(assign_asset.bind(path))
 		_asset_grid.add_child(b)
-		_thumb_queue.append([img, path])
+		if path != "":
+			_thumb_queue.append([img, path])
 
 
 func _asset_label(path: String) -> String:
@@ -1213,7 +1235,7 @@ func _build_thumbs(n: int) -> void:
 		if not is_instance_valid(img):
 			continue
 		var t := _tex(it[1])
-		if t and t.get_width() <= 3000:
+		if t and t.get_width() <= 4200:
 			img.texture = _thumb(t)
 		n -= 1
 
@@ -1223,6 +1245,11 @@ func _build_thumbs(n: int) -> void:
 func assign_asset(path: String) -> void:
 	var purpose := _asset_purpose
 	close_assets()
+	if purpose == "background":
+		stage_bg = path
+		_save_local()
+		_say("Background: " + (_asset_label(path) if path != "" else "none"))
+		return
 	var list: Array = local.anims[anim][_editable()]
 	if purpose == "replace" and list.size() > 0:
 		var i := clampi(selected, 0, list.size() - 1)
@@ -1234,3 +1261,12 @@ func assign_asset(path: String) -> void:
 		list.insert(at, path)
 		selected = at
 		_after_edit("Added %s as frame %d." % [_asset_label(path), at + 1])
+
+
+func _folder_of(path: String) -> int:
+	var best := 0
+	for k in _asset_folder.item_count:
+		var d: String = _asset_folder.get_item_metadata(k)
+		if path.begins_with(d) and d.length() > String(_asset_folder.get_item_metadata(best)).length():
+			best = k
+	return best

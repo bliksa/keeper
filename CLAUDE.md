@@ -85,7 +85,9 @@ The UI has three parts:
 The asset browser (`open_assets`) lists repo images via
 `ResourceLoader.list_directory` (`assets/images`, `assets/anim_test/**`) plus
 uploads in `user://anim_uploads/`. Picked repo files are referenced by `res://`
-path, not copied. Space toggles pause in Animation mode.
+path, not copied. Space toggles pause in Animation mode. The icon at the top right
+of the preview picks a preview background from the same browser (`stage_bg`, kept
+in the browser only).
 
 `data/anim_variants.json` has three keys:
 - `anims`: anim → variant → [res:// frame paths];

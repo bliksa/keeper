@@ -71,7 +71,9 @@ V developer menu sú aj skratky: preskočiť intro, checkpointy, skok na bossa s
   **From assets…** ich pridá z repa.
 - **Prehliadač assetov** ukazuje obrázky z repa (`assets/images`, uložené
   varianty v `assets/anim_test/…`) a obrázky nahraté v tomto prehliadači. Má
-  filter podľa názvu. Klik na obrázok ho priradí k snímke. Úprava originálu vytvorí kópiu
+  filter podľa názvu. Klik na obrázok ho priradí k snímke.
+- Ikona vpravo hore v náhľade mení **pozadie náhľadu** (napr. les alebo
+  jaskyňa z assetov, alebo žiadne). Pamätá si ho tento prehliadač. Úprava originálu vytvorí kópiu
   „original edit“, pôvodné obrázky sa neprepíšu.
 - Vpravo je náhľad. **Animation** prehráva vybranú animáciu. **Pause/Play**,
   medzerník alebo klik do náhľadu ju zastaví. ◀ ▶ (alebo šípky) krokujú po
