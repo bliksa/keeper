@@ -45,11 +45,11 @@ func _ready() -> void:
 	logo.size = Vector2(320, 320)
 	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(logo)
-	_start_btn = UiKit.button("", Vector2(256, 60), 20)
+	_start_btn = UiKit.button("", Vector2(256, 56), UiKit.MENU_FONT)
 	_start_btn.position = Vector2(533 + (533 - 256) / 2.0, 400)
 	_start_btn.pressed.connect(func(): start_pressed.emit())
 	add_child(_start_btn)
-	_credits_btn = UiKit.button("", Vector2(256, 50), 18)
+	_credits_btn = UiKit.button("", Vector2(256, 56), UiKit.MENU_FONT)
 	_credits_btn.position = Vector2(533 + (533 - 256) / 2.0, 476)
 	_credits_btn.pressed.connect(_open_credits)
 	add_child(_credits_btn)

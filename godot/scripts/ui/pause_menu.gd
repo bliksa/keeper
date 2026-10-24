@@ -30,7 +30,7 @@ func _ready() -> void:
 	add_child(_title)
 	var actions := [close, func(): _pick(restart_pressed), toggle_fullscreen, func(): _pick(title_pressed)]
 	for i in actions.size():
-		var b := UiKit.button("", Vector2(300, 52), 18)
+		var b := UiKit.button("", Vector2(300, 52), UiKit.MENU_FONT)
 		b.position = Vector2((1066 - 300) / 2.0, 220 + i * 62)
 		b.pressed.connect(actions[i])
 		b.mouse_entered.connect(func(): _select(i))

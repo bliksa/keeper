@@ -7,6 +7,9 @@ extends Control
 signal started
 signal dev_pressed
 
+## One text size for everything on this screen (same as the other menus).
+const FONT := UiKit.MENU_FONT
+
 var _start: Button
 var _dev: Button
 var _subs: Label
@@ -20,8 +23,8 @@ func _ready() -> void:
 	bg.color = Color("#121212")
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-	_full = UiKit.button("", Vector2(300, 30), 13, Color(0, 0, 0, 0), Color("#9ca3af"))
-	_full.position = Vector2(383, 170)
+	_full = UiKit.button("", Vector2(300, 40), FONT, Color(0, 0, 0, 0), Color("#9ca3af"))
+	_full.position = Vector2(383, 166)
 	_full.pressed.connect(_toggle_fullscreen)
 	add_child(_full)
 	var bar := ColorRect.new()
@@ -29,16 +32,16 @@ func _ready() -> void:
 	bar.position = Vector2(405, 226)
 	bar.size = Vector2(256, 8)
 	add_child(bar)
-	_start = UiKit.button("", Vector2(190, 48), 16)
+	_start = UiKit.button("", Vector2(184, 50), FONT)
 	_start.position = Vector2(405, 266)
 	_start.pressed.connect(_go)
 	add_child(_start)
-	_dev = UiKit.button("DEV", Vector2(58, 48), 13, Color("#1e293b"), Color("#cbd5e1"))
-	_dev.position = Vector2(603, 266)
+	_dev = UiKit.button("DEV", Vector2(64, 50), FONT)
+	_dev.position = Vector2(597, 266)
 	_dev.pressed.connect(func(): dev_pressed.emit())
 	add_child(_dev)
-	_subs = UiKit.label("", 13, Color("#9ca3af"), true)
-	_subs.position = Vector2(405, 348)
+	_subs = UiKit.label("", FONT, Color("#9ca3af"), true)
+	_subs.position = Vector2(405, 342)
 	add_child(_subs)
 	var x := 560.0
 	for lang in ["sk", "en", "pt"]:

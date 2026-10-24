@@ -15,6 +15,10 @@ static func _box(col: Color, radius: int, border := Color(0, 0, 0, 0), bw := 0) 
 	return sb
 
 
+## Text size of every menu button (boot, title, pause).
+const MENU_FONT := 18
+
+
 static func button(text: String, size: Vector2, font_size := 16, bg := Color("#1e293b"), fg := Color.WHITE) -> Button:
 	var b := Button.new()
 	b.text = text
