@@ -33,5 +33,7 @@ corner_radius_bottom_left = 6
 TooltipLabel/colors/font_color = Color(0.024, 0.306, 0.231, 1)
 TooltipLabel/font_sizes/font_size = 12
 TooltipPanel/styles/panel = SubResource("tooltip")
+PopupMenu/constants/icon_max_width = 18
+PopupMenu/constants/v_separation = 8
 PopupMenu/font_sizes/font_size = 12
 PopupMenu/styles/panel = SubResource("popup")

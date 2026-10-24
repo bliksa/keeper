@@ -274,9 +274,14 @@ func _run() -> void:
 	var ed: LevelEditor = dev._editor
 	check(ed != null and ed.rows.size() > 100, "editor loaded the level")
 	# Real clicks: pick the Spike tool, then paint the top-left cell.
-	var spike_btn: Button = ed._tool_buttons["^"]
-	await _click(spike_btn.get_global_rect().get_center())
-	check(ed.tool == "^", "clicking a tool selects it")
+	var enemies: Button = ed._groups["enemies"].button
+	await _click(enemies.get_global_rect().get_center())
+	check(ed.tool == "S", "clicking a group selects its tool")
+	await _click(enemies.get_global_rect().get_center())
+	check(ed._groups["enemies"].menu.visible, "clicking the active group opens its menu")
+	ed._groups["enemies"].menu.hide()
+	ed._select_tool("^")
+	check(ed._groups["platforms"].button.icon.resource_path.ends_with("triangle.svg"), "group button shows the chosen tool")
 	await _click(ed._grid.get_global_rect().position + Vector2(15, 15))
 	await frames(2)
 	check(ed.rows[0][0] == "^", "clicking the grid paints a spike")

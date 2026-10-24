@@ -1,3 +1,0 @@
-Editor icons are Twemoji 15.1 (https://github.com/jdecked/twemoji),
-Copyright 2019 Twitter, Inc and other contributors / jdecked,
-licensed under CC-BY 4.0: https://creativecommons.org/licenses/by/4.0/

@@ -5,10 +5,11 @@ extends Control
 ## imports / exports text so a level can be pasted into the repo (or into a prompt).
 ##
 ## Mouse: left = paint, right = erase, wheel = scroll. Enter = test / back.
-## Tools are icons on the left (hover for names); level actions sit in the header.
+## Tools are grouped icon buttons on the left (hover for names, click again or
+## right-click for the group's other tools); level actions sit in the header.
 
 const CELL := 30.0
-const SIDEBAR := 92.0
+const SIDEBAR := 72.0
 const AUTOSAVE := "user://custom_level.txt"
 
 var rows: PackedStringArray = []
@@ -23,7 +24,6 @@ var _painting := 0 # 0 none, 1 paint, 2 erase
 var _test: Platformer
 var _test_info: Label
 var _import: Control
-var _tool_buttons := {}
 var _saved_state := {}
 
 
@@ -93,24 +93,48 @@ func _toast_msg(s: String) -> void:
 
 # --- toolbars -----------------------------------------------------------------
 
-## Tools: [level char, icon, tooltip]. Hover shows the name, like Photoshop.
-const TOOLS := [
-	["=", "platform", "Platform (=)"], ["O", "iron", "Iron (O)"],
-	["^", "spike", "Spike (^)"], ["P", "spawn", "Spawn point (P)"],
-	["S", "cramp_static", "Cramp – static (S)"], ["F", "cramp_float", "Cramp – floating (F)"],
-	["J", "cramp_lunge", "Cramp – lunging (J)"], ["C", "cramp_chase", "Cramp – chasing (C)"],
-	["2", "choco", "Minigame: chocolate (2)"], ["3", "pipes", "Minigame: pipes (3)"],
-	["4", "prices", "Minigame: prices (4)"], ["5", "boss", "Boss fight (5)"],
-	["T", "teleport", "Teleport to top (T)"], ["I", "hint", "Hint text (I)"],
-	[" ", "eraser", "Eraser (or right click)"],
+## Tool groups (Photoshop-style): each toolbar button holds a group; click it
+## to use its current tool, click it again (or right-click) to pick another.
+## Items: [level char, lucide icon, name]. Dialog letters are added to "events".
+const GROUPS := [
+	{"id": "platforms", "name": "Platforms", "items": [
+		["=", "rectangle-horizontal", "Platform (=)"],
+		["^", "triangle", "Spike (^)"],
+	]},
+	{"id": "enemies", "name": "Enemies", "items": [
+		["S", "bug", "Cramp – static (S)"],
+		["F", "ghost", "Cramp – floating (F)"],
+		["J", "zap", "Cramp – lunging (J)"],
+		["C", "footprints", "Cramp – chasing (C)"],
+	]},
+	{"id": "collectibles", "name": "Collectibles", "items": [
+		["O", "hexagon", "Iron (O)"],
+	]},
+	{"id": "events", "name": "Event triggers", "items": [
+		["2", "cookie", "Minigame: chocolate (2)"],
+		["3", "droplets", "Minigame: pipes (3)"],
+		["4", "euro", "Minigame: prices (4)"],
+		["5", "skull", "Boss fight (5)"],
+		["I", "lightbulb", "Hint text (I)"],
+	]},
+	{"id": "teleports", "name": "Spawn & teleports", "items": [
+		["P", "map-pin", "Spawn point (P)"],
+		["T", "arrow-up-to-line", "Teleport to top (T)"],
+	]},
+	{"id": "eraser", "name": "Eraser", "items": [
+		[" ", "eraser", "Eraser (or right click on the grid)"],
+	]},
 ]
-const ICONS := "res://assets/ui/icons/%s.png"
+const ICONS := "res://assets/ui/icons/%s.svg"
 
 ## Optional header (the developer menu's top bar) for the level actions.
 var header: HBoxContainer
 var _test_button: Button
-var _dialog_button: Button
 var _tool_label: Label
+## group id -> {button, menu, current: [char, icon, name]}
+var _groups := {}
+## level char -> [char, icon, name, group id] for every tool
+var _tool_info := {}
 
 
 func _build_sidebar() -> void:
@@ -119,40 +143,85 @@ func _build_sidebar() -> void:
 	panel.position = Vector2(0, top)
 	panel.size = Vector2(SIDEBAR, 600 - top)
 	add_child(panel)
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.position = Vector2(8, top + 10)
-	grid.add_theme_constant_override("h_separation", 4)
-	grid.add_theme_constant_override("v_separation", 4)
-	add_child(grid)
-	for t in TOOLS:
-		var b := UiKit.icon_button(ICONS % t[1], t[2], 36)
-		b.pressed.connect(_select_tool.bind(t[0]))
-		grid.add_child(b)
-		_tool_buttons[t[0]] = b
-	# Dialog triggers: one tool, the letter is picked from a popup.
-	_dialog_button = UiKit.icon_button(ICONS % "dialog", "Dialog trigger (a–x)", 36)
-	var menu := PopupMenu.new()
-	menu.add_theme_font_size_override("font_size", 12)
-	for i in 24:
-		var ch := char(97 + i)
-		var target := Text.dialog_for_letter(ch)
-		menu.add_item("%s%s" % [ch.to_upper(), ("  →  " + target) if target != "" else ""], i)
-	menu.id_pressed.connect(func(i): _select_tool(char(97 + i)))
-	_dialog_button.add_child(menu)
-	_dialog_button.pressed.connect(func():
-		menu.position = Vector2i(_dialog_button.get_screen_position() + Vector2(40, 0))
-		menu.popup())
-	grid.add_child(_dialog_button)
+	var col := VBoxContainer.new()
+	col.position = Vector2((SIDEBAR - 44) / 2, top + 12)
+	col.add_theme_constant_override("separation", 6)
+	add_child(col)
+	for g in GROUPS:
+		var items: Array = g.items.duplicate()
+		if g.id == "events":
+			for i in 24:
+				var ch := char(97 + i)
+				var target := Text.dialog_for_letter(ch)
+				items.append([ch, "message-square", "Dialog %s%s" % [ch.to_upper(), (" → " + target) if target != "" else ""]])
+		for it in items:
+			_tool_info[it[0]] = [it[0], it[1], it[2], g.id]
+		var b := UiKit.icon_button(ICONS % items[0][1], "", 44)
+		b.draw.connect(_draw_group_corner.bind(b, items.size() > 1))
+		var menu := PopupMenu.new()
+		var dialogs: PopupMenu = null
+		for i in items.size():
+			var it: Array = items[i]
+			var is_letter: bool = it[0] >= "a" and it[0] <= "z"
+			if is_letter and Text.dialog_for_letter(it[0]) == "":
+				# Unmapped letters go to a submenu so the main list stays short.
+				if dialogs == null:
+					dialogs = PopupMenu.new()
+					dialogs.id_pressed.connect(func(id): _select_tool(items[id][0]))
+				dialogs.add_icon_item(load(ICONS % it[1]), it[2], i)
+				continue
+			if is_letter and menu.get_item_count() > 0 and not menu.is_item_separator(menu.get_item_count() - 1) and not (items[i - 1][0] >= "a" and items[i - 1][0] <= "z"):
+				menu.add_separator()
+			menu.add_icon_item(load(ICONS % it[1]), it[2], i)
+		if dialogs:
+			menu.add_submenu_node_item("Other dialog letters", dialogs)
+		menu.id_pressed.connect(func(id): _select_tool(items[id][0]))
+		b.add_child(menu)
+		b.gui_input.connect(_group_input.bind(g.id))
+		b.pressed.connect(_group_pressed.bind(g.id))
+		col.add_child(b)
+		if g.id == "teleports":
+			col.add_child(HSeparator.new())
+		_groups[g.id] = {"button": b, "menu": menu, "current": items[0], "name": g.name, "multi": items.size() > 1}
 	_tool_label = UiKit.label("", 10, Color("#94a3b8"), true)
-	_tool_label.position = Vector2(6, 600 - 40)
-	_tool_label.size = Vector2(SIDEBAR - 12, 34)
+	_tool_label.position = Vector2(4, 600 - 52)
+	_tool_label.size = Vector2(SIDEBAR - 8, 46)
 	_tool_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_tool_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_tool_label.autowrap_mode = TextServer.AUTOWRAP_WORD
 	add_child(_tool_label)
 	_build_header()
 	_select_tool("=")
+
+
+## Small triangle in the corner of groups that hold more than one tool.
+func _draw_group_corner(b: Button, multi: bool) -> void:
+	if not multi:
+		return
+	var s := b.size
+	b.draw_colored_polygon(PackedVector2Array([s - Vector2(4, 11), s - Vector2(4, 4), s - Vector2(11, 4)]), Color("#94a3b8"))
+
+
+func _group_pressed(id: String) -> void:
+	var g: Dictionary = _groups[id]
+	var active: bool = _tool_info.get(tool, ["", "", "", ""])[3] == id
+	if active and g.multi:
+		_open_group_menu(id)
+	else:
+		_select_tool(g.current[0])
+
+
+func _group_input(event: InputEvent, id: String) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT and _groups[id].multi:
+		_open_group_menu(id)
+
+
+func _open_group_menu(id: String) -> void:
+	var g: Dictionary = _groups[id]
+	var b: Button = g.button
+	var menu: PopupMenu = g.menu
+	menu.position = Vector2i(b.get_screen_position() + Vector2(b.size.x + 6, 0))
+	menu.popup()
 
 
 func _build_header() -> void:
@@ -164,14 +233,14 @@ func _build_header() -> void:
 		add_child(header)
 	header.add_theme_constant_override("separation", 2)
 	var items := [
-		["test", "Test level (Enter)", start_test], null,
-		["use_in_game", "Use this level in the game", _use_in_game],
-		["bundled", "Back to the bundled level", _use_bundled], null,
-		["load", "Load the game level (cave.txt)", _load_game_level],
-		["new", "New empty level", _new_level],
-		["add_rows", "Add 20 rows at the bottom", _add_rows], null,
+		["play", "Test level (Enter)", start_test], null,
+		["gamepad-2", "Use this level in the game", _use_in_game],
+		["undo-2", "Back to the bundled level", _use_bundled], null,
+		["folder-open", "Load the game level (cave.txt)", _load_game_level],
+		["file-plus", "New empty level", _new_level],
+		["list-plus", "Add 20 rows at the bottom", _add_rows], null,
 		["import", "Import level text", _open_import],
-		["export", "Export: copy + download cave.txt", _export],
+		["download", "Export: copy + download cave.txt", _export],
 	]
 	for it in items:
 		if it == null:
@@ -182,25 +251,26 @@ func _build_header() -> void:
 		var b := UiKit.icon_button(ICONS % it[0], it[1], 34)
 		b.pressed.connect(it[2])
 		header.add_child(b)
-		if it[0] == "test":
+		if it[0] == "play":
 			_test_button = b
 			UiKit.set_icon_active(b, true)
 
 
 func _select_tool(t: String) -> void:
+	if not _tool_info.has(t):
+		return
 	tool = t
-	for k in _tool_buttons:
-		UiKit.set_icon_active(_tool_buttons[k], k == t)
-	var is_dialog := t >= "a" and t <= "z"
-	UiKit.set_icon_active(_dialog_button, is_dialog)
-	if is_dialog:
-		var target := Text.dialog_for_letter(t)
-		_tool_label.text = "Dialog %s" % t.to_upper()
-		_dialog_button.tooltip_text = "Dialog trigger %s%s" % [t.to_upper(), (" → " + target) if target != "" else ""]
-	else:
-		for it in TOOLS:
-			if it[0] == t:
-				_tool_label.text = it[2].split(" (")[0]
+	var info: Array = _tool_info[t]
+	for id in _groups:
+		var g: Dictionary = _groups[id]
+		var on: bool = id == info[3]
+		if on:
+			g.current = info
+			g.button.icon = load(ICONS % info[1])
+		UiKit.set_icon_active(g.button, on)
+		var cur: Array = g.current
+		g.button.tooltip_text = "%s: %s%s" % [g.name, cur[2], "\n(click again or right-click for more)" if g.multi else ""]
+	_tool_label.text = info[2].split(" (")[0]
 
 
 # --- painting -----------------------------------------------------------------

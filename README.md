@@ -36,10 +36,13 @@ Počas hry **Esc** (na gamepade **Start**) otvorí menu: **Pokračovať**,
 
 Na titulnej obrazovke klikni na **Developer mode → Level Editor**:
 
-- vľavo sú nástroje ako ikony (názov ukáže tooltip po prejdení myšou),
-  💬 otvorí výber písmena dialógu,
-- hore v lište sú akcie levelu: ▶ test, 🎮 použiť v hre, ↩ späť na pôvodný level,
-  📂 načítať level hry, 📄 nový, ➕ pridať riadky, 📥 import, 📤 export,
+- vľavo sú skupiny nástrojov: **plošiny** (plošina, bodák), **nepriatelia**
+  (4 druhy kŕčov), **zberateľné** (železo), **eventy** (minihry, boss, nápoveda,
+  dialógy) a **spawn a teleporty**, pod nimi guma. Klik vyberie nástroj skupiny,
+  druhý klik alebo pravý klik otvorí menu s ostatnými nástrojmi. Názvy ukáže
+  tooltip.
+- hore v lište sú akcie levelu: test, použiť v hre, späť na pôvodný level,
+  načítať level hry, nový, pridať riadky, import, export (názov ukáže tooltip),
 - ľavé tlačidlo myši kreslí, pravé maže, koliesko scrolluje,
 - **Test Level** (alebo Enter) spustí test levelu priamo v hre; späť sa vrátiš
   tlačidlom **Back to editor**, Enterom alebo Esc,
@@ -66,5 +69,5 @@ radšej pridávaj v kóde, nie do `.tscn`, aby sa projekt dal ďalej upravovať 
 Nápad: Nataša Juračková · Kód: Michal Kabát & Klaara · Vizuál: Alexandra Pavelová,
 Alexandra Just, Barbora Grellová, Hana Filipovičová, Emma Čičáková · Zvuk: Tomáš
 Farkaš · Hlasy: Aďa Farkašová, Alicka Farkašová. Písmo Comfortaa (SIL OFL,
-`godot/assets/fonts/OFL.txt`). Ikony editora Twemoji (CC-BY 4.0,
-`godot/assets/ui/icons/LICENSE.txt`).
+`godot/assets/fonts/OFL.txt`). Ikony editora Lucide (ISC,
+`godot/assets/ui/icons/LICENSE-lucide.txt`).
