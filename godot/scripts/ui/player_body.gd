@@ -49,6 +49,11 @@ var dash_timer := 0.0
 var dash_cooldown := 0.0
 ## A distraction touched the player: slowed down while > 0.
 var slow_timer := 0.0
+## Game feel (levels 2 and 3): coyote time, jump buffer, landing squash.
+var coyote := 0.0
+var jump_buffer := 0.0
+var squash := 0.0
+var jumped_from_ground := false
 
 
 func rect() -> Rect2:

@@ -469,7 +469,8 @@ func _restart_cave() -> void:
 func _retry_wave() -> void:
 	_panel_box.close()
 	_set_dim(false)
-	_start_summit(5, maxi(Game.iron, 5))
+	# Back to the last stage floor (the wave starts again below it).
+	_start_summit(maxi(1, mini(Game.checkpoint, 4)), maxi(Game.iron, 5))
 
 
 func _mg2_done() -> void:

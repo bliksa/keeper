@@ -42,8 +42,9 @@ daždi (Kráľovstvo Rastov podľa poznámok v game design dokumente). Sprevádz
 - Plošiny sú vo viacerých vrstvách ako v jaskyni: schody hore a dole, ostrovy
   a kamene nad riekou, koruny stromov, skryté vysoké miesta so semienkami.
 - **Rieka** pod plošinami je minulý cyklus, ktorý odteká: stará voda. Nie je to
-  smrť, len brodenie: ide sa ňou veľmi pomaly, prúd tlačí späť a skok je
-  krátky, tak sa oplatí vyliezť na breh.
+  smrť: Kyra v nej pláva, môže aj proti prúdu, ale prúd ju stále unáša späť,
+  takže skôr či neskôr musí pri hladine vyskočiť na plošinu a pokračovať
+  skákaním.
 - **Rosa (estrogén)** je nová voda, ktorú ráno nechalo na listoch hore; preto
   sa zbiera na vyšších plošinách a plní nádobu dole na obrazovke. Beh aj
   dvojskok Kyre z jaskyne ostávajú; nádoba odomyká niť: pri 25 % dosiahne
@@ -64,15 +65,28 @@ daždi (Kráľovstvo Rastov podľa poznámok v game design dokumente). Sprevádz
 
 ### Level 3: Vrchol (ovulácia, hore)
 
-Šplhanie v štýle Icy Tower: krátke plošiny striedavo na oboch stranách,
-rýchlejší pohyb, **skok od steny** (pri okraji obrazovky vo vzduchu stlač
-skok), **kombo** za sériu pristátí vyššie a vyššie (zrýchľuje a zvyšuje skok,
-pád ho zruší), bubliny, praskajúce bubliny, vzdušné prúdy a rozptýlenia.
-Minihry Tanier so železom, Chyť rytmus a Signály tela dávajú power-upy
-(vyšší skok, šprint, super dvojskok) a na konci je vlna LH namiesto bossa.
+Icy Tower: jedna krátka plošina na každom poschodí, čím vyššie, tým užšie.
+**Rozbeh sa mení na výšku skoku** (z miesta vyskočíš jedno poschodie,
+v plnom behu tri), **steny ťa odrazia** späť so zachovanou rýchlosťou (a pri
+stene sa dá aj kopnúť do skoku), **vlna LH stúpa od začiatku** a zrýchľuje,
+takže sa nedá zastaviť; pri dialógoch a minihrách počká a dá náskok. HUD
+počíta **poschodia** a **kombo** za skoky cez dve a viac poschodí (pád ho
+zruší). Každých 25 poschodí je plné „stage“ poschodie: tam sú minihry Tanier
+so železom, Chyť rytmus a Signály tela (power-upy: vyšší skok, šprint, super
+dvojskok) a tam sa vraciaš, keď ťa vlna dobehne. Na 200. poschodí vlna
+zrýchli na finálny šprint, hore je vrchol a vajíčko.
 
 Texty sú v troch jazykoch (`DIA_M*` lúka, `DIA_G*` vrchol, `MG5_*`–`MG10_*`).
 Fakty treba dať skontrolovať odborníčke.
+
+## Pocit z ovládania (level 2 a 3)
+
+Oproti jaskyni (ktorá je presný port webovej verzie) majú lúka a vrchol
+rýchlejšie zrýchlenie a brzdenie, coyote time (skok ešte chvíľu po zídení
+z okraja), buffer skoku (stlačené tesne pred dopadom), variabilnú výšku skoku
+(krátke stlačenie = nízky skok) a squash pri dopade. Konštanty `FEEL_*`,
+`SWIM_*`, `SUMMIT_*`, `MOMENTUM_JUMP`, `WALL_*` a `WAVE_*` sú v
+`godot/scripts/screens/platformer.gd`.
 
 ## Záloha
 

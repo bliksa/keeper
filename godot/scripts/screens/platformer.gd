@@ -41,10 +41,15 @@ const DASH_COOLDOWN := 0.9
 const WAVE_SPEED := 1.3
 const WAVE_MAX := 2.0
 const WAVE_ACCEL := 0.02
-## Level 2: the river, the focus thread and the shadows.
-const WADE_SPEED := 0.28
-const WADE_JUMP := 0.7
-const CURRENT := 0.12
+## Game feel in levels 2 and 3 (the cave keeps the web build's values).
+const FEEL_ACCEL := 2.0
+const FEEL_FRICTION := 0.6
+const COYOTE := 0.1
+const JUMP_BUFFER := 0.12
+## Level 2: the river (swimming against the current), the focus thread and the shadows.
+const SWIM_SPEED := 0.5
+const SWIM_JUMP := 0.9
+const CURRENT := 1.6
 const THREAD_RANGE := 220.0
 const THREAD_RANGE_LONG := 320.0
 const THREAD_CONE := 0.6 # radians
@@ -52,11 +57,15 @@ const PULL_SPEED := 110.0
 const PULL_SPEED_DODGE := 70.0
 const CATCH_DIST := 30.0
 const SHADOW_SPEED := 3.2
-## Level 3: faster, wall jumps, combos.
-const SUMMIT_SPEED := 1.35
+## Level 3 (Icy Tower): run speed becomes jump height, walls bounce, the wave
+## rises from the start, floors count and multi-floor jumps chain into combos.
+const SUMMIT_SPEED := 1.4
 const SUMMIT_ACCEL := 1.3
+const MOMENTUM_JUMP := 0.55
 const WALL_KICK := 10.0
-const WALL_SLIDE := 2.5
+const WALL_BOUNCE := 0.85
+const WAVE_START_SPEED := 0.55
+const WAVE_SPRINT := 1.2
 
 const PARALLAX := [
 	["res://assets/images/1.png", 0.1],
@@ -105,6 +114,11 @@ var on_wall := false
 var combo := 0
 var last_landing_y := 0.0
 var combo_flash := 0.0
+## Level 3: floor the player stands on (0 = the ground), the highest reached, the
+## floor of the last landing (for combos).
+var floor_now := 0
+var best_floor := 0
+var last_floor := 0
 var p := PlayerBody.new()
 var camera_y := 0.0
 var particles: Array[Dictionary] = []
@@ -148,6 +162,10 @@ func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
 	_start_checkpoint = checkpoint
 	_reset_boss()
 	_place_at_checkpoint(checkpoint)
+	if is_summit():
+		# Icy Tower: the LH wave rises from the very start (slowly at first).
+		start_wave(WAVE_START_SPEED, H)
+		last_floor = floor_of(p.y + p.height)
 
 
 func is_summit() -> bool:
@@ -156,6 +174,16 @@ func is_summit() -> bool:
 
 func is_meadow() -> bool:
 	return level_id == 2
+
+
+## Snappier controls, coyote time, jump buffer and squash (levels 2 and 3).
+func feel() -> bool:
+	return level_id >= 2
+
+
+## Level 3: floor index of a y (feet) — 0 at the bottom row.
+func floor_of(feet_y: float) -> int:
+	return maxi(0, int((level_h - feet_y) / LevelData.ROW_H + 0.5))
 
 
 ## Level 2 unlocks from the dew vessel: "thread" (25 %, longer), "pull" (50 %,
@@ -408,8 +436,25 @@ func _jump_force() -> float:
 	if has_upgrade("double") and p.jumps_left == 1:
 		f *= 1.2
 	if is_summit():
-		f *= 1.06 + 0.02 * mini(combo, 5)
+		# Icy Tower: a running start turns into height.
+		var run := clampf(absf(p.vx) / (MAX_SPEED * SUMMIT_SPEED), 0, 1)
+		f *= 1.0 + MOMENTUM_JUMP * run + 0.02 * mini(combo, 5)
 	return f
+
+
+func _do_jump() -> void:
+	Audio.jump_sound(p.jumps_left == 1)
+	p.vy = _jump_force() * (SWIM_JUMP if in_water else 1.0)
+	p.jumps_left -= 1
+	p.jumped_from_ground = p.is_grounded or p.coyote > 0
+	p.coyote = 0
+	p.is_grounded = false
+	p.is_sitting = false
+	if feel():
+		p.squash = -0.6
+	if focus:
+		# Jumping breaks the focus (the seed escapes, the shadows fade).
+		end_focus()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -430,18 +475,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			begin_focus()
 		elif event.is_action_released("focus"):
 			end_focus()
+	if event.is_action_released("jump") and feel() and p.vy < -4 and not in_water:
+		# Variable jump height: let go early for a short hop.
+		p.vy *= 0.55
 	if event.is_action_pressed("jump") and not event.is_echo():
 		if p.is_recharging or meadow_end > 0:
 			return
+		if in_water and p.y + p.height / 2 > level.water_top + 60:
+			# Too deep to jump out: swim up first.
+			return
 		if p.jumps_left > 0 and not boss.lost and not wave.lost and _can_jump_in_dialog():
-			Audio.jump_sound(p.jumps_left == 1)
-			p.vy = _jump_force() * (WADE_JUMP if in_water else 1.0)
-			p.jumps_left -= 1
-			p.is_grounded = false
-			p.is_sitting = false
-			if focus:
-				# Jumping breaks the focus (the seed escapes, the shadows fade).
-				end_focus()
+			_do_jump()
+		elif feel() and not boss.lost and not wave.lost and _can_jump_in_dialog() and not on_wall:
+			# Pressed a moment too early: jump as soon as we land.
+			p.jump_buffer = JUMP_BUFFER
 		elif on_wall and not wave.lost and not dialog_open:
 			# Wall jump (level 3): kick off the side wall.
 			Audio.jump_sound(true)
@@ -545,14 +592,26 @@ func _update(dt: float) -> void:
 		p.slow_timer -= dt
 		max_speed *= 0.45
 	if in_water:
-		# Wading: slow, and the current pushes back.
-		max_speed *= WADE_SPEED
-		if not (left or right):
-			p.vx -= CURRENT * d60
+		# Swimming: slow, and the current always carries you along.
+		max_speed *= SWIM_SPEED
 	var accel := ACCEL
+	var friction := FRICTION
+	if feel():
+		accel = FEEL_ACCEL
+		friction = FEEL_FRICTION
 	if is_summit():
-		max_speed *= SUMMIT_SPEED * (1.0 + 0.04 * mini(combo, 6))
+		max_speed *= SUMMIT_SPEED * (1.0 + 0.03 * mini(combo, 6))
 		accel *= SUMMIT_ACCEL
+	if in_water:
+		accel *= 0.6
+	if p.coyote > 0:
+		p.coyote -= dt
+		if p.coyote <= 0 and not p.is_grounded:
+			p.jumps_left = mini(p.jumps_left, _max_jumps() - 1)
+	if p.jump_buffer > 0:
+		p.jump_buffer -= dt
+	if p.squash != 0:
+		p.squash = move_toward(p.squash, 0, dt * 4)
 	if p.dash_cooldown > 0:
 		p.dash_cooldown -= dt
 	if p.invuln_timer > 0:
@@ -574,16 +633,21 @@ func _update(dt: float) -> void:
 		p.vx -= accel * d60
 		p.facing_right = false
 	else:
-		p.vx *= pow(FRICTION, d60)
+		p.vx *= pow(friction, d60)
 	if p.vx > max_speed: p.vx = maxf(max_speed, p.vx - accel * d60)
 	if p.vx < -max_speed: p.vx = minf(-max_speed, p.vx + accel * d60)
 	if absf(p.vx) < 0.1: p.vx = 0
 	p.x += p.vx * d60
+	if in_water:
+		p.x -= CURRENT * d60
+	var hit_wall := p.x < 0 or p.x > level_w - p.width
 	p.x = clampf(p.x, 0, level_w - p.width)
-	# Level 3: against a side wall in the air you slide slowly and can kick off.
+	# Level 3: the side walls bounce you back (Icy Tower) and let you kick off.
 	on_wall = is_summit() and not p.is_grounded and (p.x <= 0 or p.x >= level_w - p.width) and p.held_by_cramp == -1 and not p.is_recharging
-	if on_wall and p.vy > WALL_SLIDE:
-		p.vy = WALL_SLIDE
+	if is_summit() and hit_wall and absf(p.vx) > 2:
+		p.vx = -p.vx * WALL_BOUNCE
+		p.facing_right = p.vx > 0
+		Audio.footstep(0.4)
 
 	for pl in level.platforms:
 		pl.y = pl.base_y + sin(time_ms / 500.0 + pl.x) * 5
@@ -623,6 +687,13 @@ func _update(dt: float) -> void:
 				_spray_nuts(1)
 	elif p.dash_timer > 0:
 		p.vy = 0
+	elif in_water:
+		# Buoyancy: float with the head above the surface; ↑/↓ swim a little.
+		var target := level.water_top + 30 - p.height / 2
+		p.vy += (target - p.y) * 0.02 * d60
+		if up: p.vy -= 0.25 * d60
+		if down: p.vy += 0.25 * d60
+		p.vy *= pow(0.85, d60)
 	else:
 		p.vy = minf(p.vy + GRAVITY * d60, MAX_FALL)
 
@@ -678,21 +749,35 @@ func _update(dt: float) -> void:
 			on_dialog_floor = true
 			p.jumps_left = 2
 	p.is_grounded = grounded
+	if feel() and p.was_grounded and not grounded and not p.jumped_from_ground and p.vy >= 0 and not in_water:
+		# Walked off an edge: a moment of coyote time keeps the ground jump.
+		p.coyote = COYOTE
+	if grounded:
+		p.jumped_from_ground = false
 	if p.is_grounded and not p.was_grounded and p.held_by_cramp == -1 and not p.is_recharging:
 		Audio.footstep(0.8)
+		if feel():
+			p.squash = 0.8
 		if is_summit() and stood_on != null:
-			# Combo: each landing higher than the last one counts.
-			if stood_on.base_y < last_landing_y - 60:
-				combo += 1
-				if combo >= 2:
-					combo_flash = 0.8
-					if combo >= 3:
-						Audio.play_sfx("cink-%02d.wav" % (1 + mini(combo, 10)), 0.4)
-			elif stood_on.base_y > last_landing_y + 60:
+			# Icy Tower combo: jumps that clear two or more floors chain up.
+			var fl := floor_of(stood_on.base_y)
+			var gained := fl - last_floor
+			if gained >= 2:
+				combo += gained
+				combo_flash = 0.9
+				Audio.play_sfx("cink-%02d.wav" % (1 + mini(combo, 10)), 0.4)
+			else:
 				combo = 0
-			last_landing_y = stood_on.base_y
-	if is_summit() and combo > 0 and p.y > last_landing_y + 150:
-		combo = 0
+			last_floor = fl
+		if p.jump_buffer > 0 and feel():
+			p.jump_buffer = 0
+			_do_jump()
+	if is_summit():
+		floor_now = floor_of(p.y + p.height)
+		best_floor = maxi(best_floor, last_floor)
+		if combo > 0 and floor_now < last_floor - 2:
+			# Fell back down: the chain is broken.
+			combo = 0
 	if combo_flash > 0:
 		combo_flash -= dt
 	p.was_grounded = p.is_grounded
@@ -977,6 +1062,7 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 		# A minigame opens: put Kyra on the ground so she isn't frozen mid-jump.
 		_settle_on_ground()
 		end_focus()
+		wave_grace()
 	if e.trigger_type == "gate":
 		if Game.water >= 100 and Game.seeds >= Game.SEEDS_NEEDED:
 			end_focus()
@@ -991,7 +1077,12 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 	if e.trigger_type == "end":
 		start_boss(Game.iron)
 	elif e.trigger_type == "wave":
-		start_wave()
+		# The final sprint: the wave speeds up.
+		if wave.active:
+			wave.speed = maxf(wave.speed, WAVE_SPRINT)
+			wave_grace()
+		else:
+			start_wave()
 	elif e.trigger_type == "summit":
 		wave.won = true
 		wave.active = false
@@ -1230,14 +1321,20 @@ func _pop_bubble(pl: LevelData.Plat) -> void:
 
 
 ## The LH wave starts rising below the player (from the trigger, or a retry).
-func start_wave() -> void:
+func start_wave(speed := WAVE_SPEED, below := 260.0) -> void:
 	wave.active = true
 	wave.lost = false
 	wave.won = false
-	wave.y = p.y + p.height + 260
-	wave.speed = WAVE_SPEED
+	wave.y = p.y + p.height + below
+	wave.speed = speed
 	summit_timer = 0
 	p.slow_timer = 0
+
+
+## After a minigame or a dialog the wave gives a head start again.
+func wave_grace() -> void:
+	if wave.active and not wave.won:
+		wave.y = maxf(wave.y, p.y + p.height + H * 0.8)
 
 
 func _update_wave(dt: float, d60: float) -> void:
@@ -1245,6 +1342,9 @@ func _update_wave(dt: float, d60: float) -> void:
 		return
 	wave.speed = minf(WAVE_MAX, wave.speed + WAVE_ACCEL * dt)
 	wave.y -= wave.speed * d60
+	if is_summit():
+		# Never lets the player get more than ~1.5 screens ahead: keeps the pressure on.
+		wave.y = minf(wave.y, p.y + p.height + H * 1.5)
 	if p.y + p.height > wave.y + 12 and not p.is_dead:
 		wave.lost = true
 		_die_quiet()
@@ -1532,11 +1632,12 @@ func _draw_player() -> void:
 		"crouched": p.held_by_cramp != -1,
 		"pain": p.hit_timer > 0 or p.held_by_cramp != -1,
 		"sitting": p.is_sitting or meadow_end > 0,
-		"airborne": false if p.is_recharging else not p.is_grounded,
+		"airborne": false if (p.is_recharging or in_water) else not p.is_grounded,
+		"squash": p.squash,
 	})
 	if in_water:
-		# Wading: the river covers her legs.
-		ci.draw_rect(Rect2(p.x - 30, level.water_top + 14, p.width + 60, 60), Color(0.35, 0.65, 0.9, 0.7))
+		# Swimming: the river covers everything below the surface.
+		ci.draw_rect(Rect2(p.x - 40, level.water_top + 14, p.width + 80, 120), Color(0.35, 0.65, 0.9, 0.75))
 	if focus and thread_target != -1:
 		_draw_thread(ci, time_ms)
 	if is_meadow() and not dialog_open and meadow_end == 0:
@@ -1799,16 +1900,15 @@ func _acquire_seed() -> int:
 
 
 func _update_meadow(dt: float, d60: float) -> void:
-	# The river: wading. The bed is a shallow floor; moving through is slow.
+	# The river: swimming. You float, the current carries you back; jump out near the surface.
 	if level.water_top >= 0:
-		var bed := level.water_top + 44
 		var was := in_water
 		in_water = p.y + p.height > level.water_top + 18 and meadow_end == 0
-		if p.y + p.height > bed:
-			p.y = bed - p.height
-			p.vy = 0
-			p.is_grounded = true
-			p.jumps_left = _max_jumps()
+		if in_water:
+			p.jumps_left = _max_jumps() - 1 if _max_jumps() > 1 else 1
+			if p.jumps_left < 1:
+				p.jumps_left = 1
+			p.y = minf(p.y, level_h - p.height)
 		if in_water and not was:
 			end_focus()
 			Audio.play_sfx("breathoff.wav", 0.5)

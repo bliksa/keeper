@@ -133,9 +133,10 @@ For a local mock API, set `GitHubSave.api_base`, or use `?gh_api=` on the web.
 
 Same `Platformer` with `level_id = 2` (`is_meadow()`, `level.horizontal`): the
 camera follows `camera_x`, `level_w` is the row length × `CELL_W`. Mechanics in
-`_update_meadow`: the river (`level.water_top`; falling in = `river_timer`, then
-back to `last_ground`, −10 water), the vessel (`Game.water`, `water_unlock(name)`:
-run 25 / double 50 / thread 75, `_max_jumps()`), light seeds (entity `seed`, `tier`
+`_update_meadow`: the river (`level.water_top`; swimming = `in_water`: buoyancy
+keeps the head at the surface, `CURRENT` always carries her left, `SWIM_SPEED`,
+jump out near the surface), the dew vessel (`Game.water`, `water_unlock(name)`:
+thread 25 / pull 50 / shield 75; run and double jump stay from level 1), light seeds (entity `seed`, `tier`
 0–3 by x order; the focus thread: `begin_focus` / `end_focus`, `aim` + `aim_mode`
 mouse / keys / stick, `_acquire_seed`, `thread_target`, `CATCH_DIST`), shadows
 (`shadows`, spawn while a seed is on the thread, a hit = −15 water and
@@ -150,10 +151,15 @@ gets a code-drawn portrait (`DialogBox._portrait`). Strings `DIA_M*`,
 
 ## Level 3: the summit (ovulation)
 
-Same `Platformer` with `level_id = 3` (`is_summit()`): an Icy Tower style climb
-(`SUMMIT_SPEED` / `SUMMIT_ACCEL`, wall jump via `on_wall` + `WALL_KICK`, `combo`
-for landings higher than `last_landing_y`, shown in the HUD; `garden.txt` is
-generated as short alternating platforms), climbed upwards, procedural
+Same `Platformer` with `level_id = 3` (`is_summit()`): an Icy Tower (`SUMMIT_SPEED`
+/ `SUMMIT_ACCEL`; `_jump_force` scales with run speed by `MOMENTUM_JUMP`; the side
+walls bounce (`WALL_BOUNCE`) and `on_wall` + `WALL_KICK` wall-jumps; the wave is
+started in `setup` with `WAVE_START_SPEED` one screen below and never trails more
+than 1.5 screens, `wave_grace()` after dialogs / minigames, trigger `9` = sprint
+`WAVE_SPRINT`; `floor_of()`, `floor_now`, `combo` for jumps clearing ≥ 2 floors,
+reset on a fall, shown in the HUD; `_retry_wave` restarts at the last stage
+checkpoint; `garden.txt` is generated: one platform per floor, a full stage floor
+every 25), climbed upwards, procedural
 dusk→morning background (`_draw_garden_bg`, by `_climb()`), bubble platforms
 (`Plat.kind` bubble/pop, `_pop_bubble`), updrafts (entity `updraft`), distractions
 (enemy behaviour `distract`: slow, no iron loss), power-ups in `Game.upgrades`
@@ -164,6 +170,14 @@ player on the trigger row's platform (or column, in the meadow). Flow in
 `main.gd`: `_start_summit(1, iron)` after the meadow; `_mg5_done`…`_mg7_done`;
 `garden_end` → title.
 Dialog letters g/h/k/m/n → `garden_*` nodes; strings `DIA_G*`, `MG5_*`–`MG7_*`.
+
+## Game feel (levels 2 and 3)
+
+`feel()` (level_id ≥ 2) switches on `FEEL_ACCEL` / `FEEL_FRICTION`, coyote time
+(`p.coyote`, `COYOTE`), the jump buffer (`p.jump_buffer`, `JUMP_BUFFER`), variable
+jump height (releasing `jump` early halves `vy`) and squash / stretch (`p.squash`,
+passed to `PlayerArt.draw` as `o.squash`). `_do_jump()` is the one place a jump
+starts. The cave keeps the web build's physics.
 
 ## Backup of the game before level 2
 

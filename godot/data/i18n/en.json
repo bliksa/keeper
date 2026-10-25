@@ -335,5 +335,6 @@
  "MARKET_19": "Mushrooms",
  "MARKET_20": "Cherries",
  "UPGRADE_PULL": "faster pull",
- "UPGRADE_SHIELD": "dew shield"
+ "UPGRADE_SHIELD": "dew shield",
+ "HUD_FLOOR": "Floor"
 }

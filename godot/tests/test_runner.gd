@@ -257,19 +257,26 @@ func _run() -> void:
 	check(Game.water == Game.WATER_PER_DROP, "a water drop fills the vessel")
 	Game.water = 20
 	# The river carries her back to the last ground she stood on.
-	# The river: wading is slow and pushes back, no harm done.
+	# The river: she floats, the current carries her, she can jump out near the surface.
 	var bank := Vector2(pf.p.x, pf.p.y)
 	pf.p.x = bank.x + 1200
 	pf.p.y = pf.level.water_top + 10
 	pf.p.vy = 0
-	await seconds(0.3)
-	check(pf.in_water and pf.p.is_grounded and Game.water == 20, "she wades in the river, no water is lost")
+	await seconds(0.6)
+	check(pf.in_water and not pf.p.is_grounded and Game.water == 20 and absf(pf.p.y + pf.p.height / 2 - (pf.level.water_top + 30)) < 25, "she floats in the river, no water is lost")
 	var wx := pf.p.x
+	await seconds(0.5)
+	check(pf.p.x < wx - 20, "the current carries her back")
+	wx = pf.p.x
 	Input.action_press("move_right")
 	await seconds(1.0)
 	Input.action_release("move_right")
-	var waded := pf.p.x - wx
-	check(waded > 20 and waded < 160, "wading is slow (%.0f px/s)" % waded)
+	var swum := pf.p.x - wx
+	check(swum > 10 and swum < 160, "swimming against the current is slow (%.0f px/s)" % swum)
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	check(pf.p.vy < -5, "a jump near the surface gets her out of the water")
 	Game.water = 10
 	check(pf._max_jumps() == 2 and not pf.water_unlock("thread"), "double jump stays; the thread is short with an empty vessel")
 	Game.water = 50
@@ -417,6 +424,9 @@ func _run() -> void:
 	await finish_dialog("garden_start")
 	pf = main.platformer
 	check(pf.is_summit() and pf.p.y > pf.level_h - 500, "starts at the bottom of the summit")
+	check(pf.wave.active and pf.wave.y > pf.p.y + 300, "the LH wave rises from the start, well below the player")
+	# The tests teleport around; keep the wave out of the way until its own step.
+	pf.wave.active = false
 	# Wall jump: out of jumps, touching the left wall.
 	pf.p.x = 0
 	pf.p.y = pf.level_h - 400
@@ -429,19 +439,26 @@ func _run() -> void:
 	await frames(2)
 	_key(KEY_SPACE, false)
 	check(pf.p.vy < -5 and pf.p.vx > 5, "a wall jump kicks off the wall")
-	# Combo: landing higher and higher.
+	# Momentum: a running jump is higher than a standing one.
+	pf.p.vx = 0
+	var standing := pf._jump_force()
+	pf.p.vx = Platformer.MAX_SPEED * Platformer.SUMMIT_SPEED
+	check(pf._jump_force() < standing * 1.3, "a running start jumps much higher")
+	pf.p.vx = 0
+	# Combo: jumps that clear two or more floors chain up.
 	var ups: Array = pf.level.platforms.filter(func(pl): return pl.kind == "rock")
 	ups.sort_custom(func(a, b): return a.base_y > b.base_y)
 	pf.combo = 0
-	pf.last_landing_y = pf.level_h
+	pf.last_floor = 0
 	var landed := 0
-	var prev_y: float = pf.level_h
+	var prev_floor := 0
 	for pl in ups:
 		if landed >= 3:
 			break
-		if pl.base_y > prev_y - 100:
+		var fl: int = pf.floor_of(pl.base_y)
+		if fl < prev_floor + 2:
 			continue
-		prev_y = pl.base_y
+		prev_floor = fl
 		landed += 1
 		pf.p.x = pl.x + 4
 		pf.p.y = pl.base_y - pf.p.height - 6
@@ -449,9 +466,9 @@ func _run() -> void:
 		pf.p.is_grounded = false
 		pf.p.was_grounded = false
 		await frames(4)
-	check(pf.combo == 3, "three landings higher up build a combo of 3")
+	check(pf.combo >= 6 and pf.floor_now == prev_floor, "three multi-floor jumps chain into a combo (x%d) on floor %d" % [pf.combo, pf.floor_now])
 	pf.p.y = pf.p.y + 400
-	await frames(3)
+	await seconds(0.5)
 	check(pf.combo == 0, "falling back down resets the combo")
 	await seconds(1.0)
 	check(pf.p.is_grounded, "stands on the garden floor")
@@ -564,7 +581,7 @@ func _run() -> void:
 	panel_box()._press(0)
 	var old_pf := pf.get_instance_id()
 	var retried := await until(func(): return main.platformer != null and main.platformer.get_instance_id() != old_pf and main.platformer.wave.active, 5)
-	check(retried, "try again restarts the climb with the wave")
+	check(retried and Game.checkpoint == 4, "try again restarts from the last stage floor with the wave")
 	pf = main.platformer
 	await _go_trigger(pf, "summit")
 	await frames(3)

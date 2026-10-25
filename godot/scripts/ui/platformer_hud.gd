@@ -61,10 +61,16 @@ func _draw() -> void:
 		_draw_breath(font)
 	if platformer.is_summit():
 		_draw_upgrades(font, r.end.y + 8)
+		# Floor counter (Icy Tower) and the combo.
+		var ft := "%s %d" % [Text.plain(Text.t("HUD_FLOOR")), platformer.floor_now]
+		var fw := font.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		var fr := Rect2(1066 / 2 - fw / 2 - 14, 16, fw + 28, 34)
+		Draw.panel(self, fr, BG, 17, Color(TEAL, 0.2), 2)
+		draw_string(font, Vector2(fr.position.x + 14, fr.position.y + 24), ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, INK)
 		if platformer.combo >= 2:
 			var ct := "COMBO x%d" % platformer.combo
 			var cw := font.get_string_size(ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-			var cr := Rect2(1066 / 2 - cw / 2 - 14, 16, cw + 28, 34)
+			var cr := Rect2(1066 / 2 - cw / 2 - 14, 56, cw + 28, 34)
 			Draw.panel(self, cr, Color("#78350f"), 17, Color("#fbbf24"), 2)
 			draw_string(font, Vector2(cr.position.x + 14, cr.position.y + 24), ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#fef3c7"))
 
