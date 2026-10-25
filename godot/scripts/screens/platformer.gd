@@ -4,6 +4,11 @@ extends Node2D
 ##
 ## Physics constants and behaviours are copied 1:1 from the prototype; all
 ## per-frame values are scaled by dt60 (= delta * 60) like the original.
+##
+## Level 2 (the garden, level_id 2) reuses everything and adds: climbing up
+## instead of down, bubble platforms, updrafts, distractions instead of cramps,
+## power-ups from its minigames (jump, dash, double) and the LH wave chase that
+## replaces the boss (reach the summit before the wave catches you).
 
 signal trigger(name: String)
 signal boss_defeated
@@ -19,6 +24,16 @@ const FRICTION := 0.75
 const MAX_FALL := 15.0
 const HEX_W := 48.0
 const HEX_H := 42.0
+## Level 2: a popping bubble bursts after standing on it this long, regrows after REGROW.
+const POP_AFTER := 0.7
+const REGROW := 3.5
+const DASH_TIME := 0.22
+const DASH_SPEED := 15.0
+const DASH_COOLDOWN := 0.9
+## LH wave: start speed and max speed (px per frame at 60 fps) and acceleration.
+const WAVE_SPEED := 1.3
+const WAVE_MAX := 2.0
+const WAVE_ACCEL := 0.02
 
 const PARALLAX := [
 	["res://assets/images/1.png", 0.1],
@@ -36,6 +51,12 @@ var hide_platforms := false
 
 var level: LevelData
 var level_h := 0.0
+## 1 = the cave (down, cramps, boss), 2 = the garden (up, bubbles, LH wave).
+var level_id := 1
+## The LH wave (level 2): rises from below once triggered; reach the summit first.
+var wave := {"active": false, "y": 0.0, "speed": 0.0, "lost": false, "won": false}
+## Seconds since the summit was reached (egg release animation).
+var summit_timer := 0.0
 var p := PlayerBody.new()
 var camera_y := 0.0
 var particles: Array[Dictionary] = []
@@ -64,13 +85,29 @@ var hud_layer := 6
 var player_layer := 9
 
 
-## rows: level text rows. checkpoint: 0/1 = start, 2..4 = after minigame N, 5 = boss.
-func setup(rows: PackedStringArray, checkpoint: int) -> void:
+## rows: level text rows. checkpoint: 0/1 = start, 2..4 = after minigame N,
+## 5 = boss (level 2: the LH wave). lvl: 1 cave, 2 garden.
+func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
 	level = LevelData.build(rows)
 	level_h = level.height()
+	level_id = lvl
 	_start_checkpoint = checkpoint
 	_reset_boss()
 	_place_at_checkpoint(checkpoint)
+
+
+func is_garden() -> bool:
+	return level_id == 2
+
+
+## Trigger kinds that mark progress in this level (checkpoint 2..5).
+func progress_kinds() -> Array:
+	return LevelData.PROGRESS.get(level_id, LevelData.PROGRESS[1])
+
+
+## Earned power-ups (level 2).
+func has_upgrade(name: String) -> bool:
+	return Game.upgrades.has(name)
 
 
 func _ready() -> void:
@@ -112,18 +149,19 @@ func _place_at_checkpoint(cp: int) -> void:
 		p.y = s.y
 		camera_y = maxf(0, s.y - H / 2)
 		return
-	if cp >= 5:
+	if cp >= 5 and not is_garden():
 		return
-	var want: String = ["mg2", "mg3", "mg4", "end"][cp - 2]
+	var kinds := progress_kinds()
+	var want: String = kinds[mini(cp, 5) - 2]
 	for e in level.entities:
 		if e.type == "trigger" and e.trigger_type == want:
-			e.collected = true
-			p.x = W / 2 - 15
-			p.y = e.y + 100 - 30
-			camera_y = maxf(0, p.y - H / 2)
-			# Earlier triggers are done too.
+			# The wave checkpoint re-arms the chase; minigame checkpoints are done.
+			e.collected = want != "wave"
+			_stand_at_trigger(e)
+			# Earlier triggers are done too (above in the cave, below in the garden).
 			for e2 in level.entities:
-				if e2.type == "trigger" and e2.y < e.y and e2.trigger_type in ["mg2", "mg3", "mg4"]:
+				var earlier: bool = e2.y > e.y if is_garden() else e2.y < e.y
+				if e2.type == "trigger" and earlier and e2.trigger_type in kinds.slice(0, 3):
 					e2.collected = true
 			return
 
@@ -208,7 +246,7 @@ func _process(delta: float) -> void:
 
 
 func _send_initial_dialog() -> void:
-	trigger.emit("dialog_a")
+	trigger.emit("dialog_g" if is_garden() else "dialog_a")
 
 
 func _clear_breath_failed() -> void:
@@ -226,15 +264,44 @@ func teleport_to_trigger(kind: String) -> void:
 	for e in level.entities:
 		if e.type == "trigger" and e.trigger_type == kind:
 			e.collected = false
-			p.x = W / 2 - 15
-			p.y = e.y - 120
+			if is_garden():
+				_stand_at_trigger(e)
+			else:
+				p.x = W / 2 - 15
+				p.y = e.y - 120
+				camera_y = maxf(0, p.y - H / 2)
 			p.vy = 0
-			camera_y = maxf(0, p.y - H / 2)
 			return
 
 
+## Puts the player in a trigger's row: in the garden on the nearest platform at
+## or below it near the middle (the row's own platform), in the cave just inside it.
+func _stand_at_trigger(e: LevelData.Ent) -> void:
+	p.x = W / 2 - 15
+	p.y = e.y + 100 - 30
+	if is_garden():
+		var best: LevelData.Plat = null
+		for pl in level.platforms:
+			if pl.base_y >= e.y + 99 and pl.x <= W / 2 + 60 and pl.x + pl.w >= W / 2 - 60 and (best == null or pl.base_y < best.base_y):
+				best = pl
+		if best:
+			p.x = clampf(W / 2 - 15, best.x + 4, best.x + best.w - p.width - 4)
+			p.y = best.base_y - p.height
+	camera_y = maxf(0, p.y - H / 2)
+
+
 func _can_jump_in_dialog() -> bool:
-	return not dialog_open or active_dialog_id in ["cave_start", "first_cramp"]
+	return not dialog_open or active_dialog_id in ["cave_start", "first_cramp", "garden_start"]
+
+
+## Jump impulse with the level-2 power-ups (jump: +15 %, double: second jump +20 %).
+func _jump_force() -> float:
+	var f := JUMP_FORCE
+	if has_upgrade("jump"):
+		f *= 1.15
+	if has_upgrade("double") and p.jumps_left == 1:
+		f *= 1.2
+	return f
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -243,12 +310,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("jump") and not event.is_echo():
 		if p.is_recharging:
 			return
-		if p.jumps_left > 0 and not boss.lost and _can_jump_in_dialog():
+		if p.jumps_left > 0 and not boss.lost and not wave.lost and _can_jump_in_dialog():
 			Audio.jump_sound(p.jumps_left == 1)
-			p.vy = JUMP_FORCE
+			p.vy = _jump_force()
 			p.jumps_left -= 1
 			p.is_grounded = false
 			p.is_sitting = false
+	elif event.is_action_pressed("run") and not event.is_echo() and has_upgrade("dash"):
+		# Dash (level 2): a short burst in the facing direction.
+		if p.dash_cooldown <= 0 and p.dash_timer <= 0 and not dialog_open and not p.is_recharging and not p.is_dead and not wave.lost:
+			p.dash_timer = DASH_TIME
+			p.dash_cooldown = DASH_COOLDOWN
+			p.slow_timer = 0
+			Audio.play_sfx("breathoff.wav", 0.4)
 	elif event.is_action_pressed("breathe") and not event.is_echo():
 		if dialog_open:
 			return
@@ -326,9 +400,20 @@ func _update(dt: float) -> void:
 	var max_speed := MAX_SPEED
 	if Game.control_mode == "gamepad" and not Input.is_action_pressed("run"):
 		max_speed = MAX_SPEED * 0.5
+	if p.slow_timer > 0:
+		p.slow_timer -= dt
+		max_speed *= 0.45
+	if p.dash_cooldown > 0:
+		p.dash_cooldown -= dt
 	if p.invuln_timer > 0:
 		p.invuln_timer -= dt
-	if p.hit_timer > 0 or boss.lost or p.held_by_cramp != -1 or p.is_dead or p.is_recharging:
+	if p.dash_timer > 0:
+		p.dash_timer -= dt
+		p.vx = DASH_SPEED if p.facing_right else -DASH_SPEED
+		max_speed = DASH_SPEED
+		particles.append({"x": p.x + p.width / 2, "y": p.y + p.height / 2 + (randf() - 0.5) * 30,
+			"vx": -p.vx * 0.1, "vy": (randf() - 0.5) * 2, "rot": 0.0, "rot_speed": 0.0, "type": "dash", "life": 0.35, "max_life": 0.35})
+	elif p.hit_timer > 0 or boss.lost or wave.lost or p.held_by_cramp != -1 or p.is_dead or p.is_recharging:
 		if p.hit_timer > 0:
 			p.hit_timer -= dt
 		p.vx = 0
@@ -348,6 +433,10 @@ func _update(dt: float) -> void:
 
 	for pl in level.platforms:
 		pl.y = pl.base_y + sin(time_ms / 500.0 + pl.x) * 5
+		if pl.regrow > 0:
+			pl.regrow -= dt
+			if pl.regrow <= 0:
+				pl.pop_timer = 0
 
 	# --- breathing
 	if Game.has_breathing:
@@ -378,6 +467,8 @@ func _update(dt: float) -> void:
 				Game.iron = n
 				Audio.nut_sound()
 				_spray_nuts(1)
+	elif p.dash_timer > 0:
+		p.vy = 0
 	else:
 		p.vy = minf(p.vy + GRAVITY * d60, MAX_FALL)
 
@@ -394,12 +485,25 @@ func _update(dt: float) -> void:
 		floor_pl.h = 40
 		solids.append(floor_pl)
 	p.is_hanging = false
+	var stood_on: LevelData.Plat = null
 	for pl in solids:
+		if not pl.solid():
+			continue
 		if p.vy >= 0 and prev_bottom <= pl.y + 20 and p.y + p.height >= pl.y - 10 and p.x + p.width > pl.x and p.x < pl.x + pl.w:
 			p.y = pl.y - p.height
 			p.vy = 0
 			grounded = true
 			p.jumps_left = 2
+			stood_on = pl
+	for pl in level.platforms:
+		if pl.kind != "pop" or pl.regrow > 0:
+			continue
+		if pl == stood_on:
+			pl.pop_timer += dt
+			if pl.pop_timer >= POP_AFTER:
+				_pop_bubble(pl)
+		else:
+			pl.pop_timer = maxf(0, pl.pop_timer - dt * 2)
 	if boss.active:
 		for hx in hexes:
 			if not hx.active:
@@ -429,8 +533,8 @@ func _update(dt: float) -> void:
 		p.step_animation(d60)
 	p.is_sitting = p.is_dead or (p.is_recharging and p.held_by_cramp == -1) or (on_dialog_floor and absf(p.vx) < 0.1 and p.is_grounded)
 
-	# --- camera
-	var target := p.y - H / 3
+	# --- camera (the garden is climbed, so keep more of the screen above the player)
+	var target := p.y - (H / 2 if is_garden() else H / 3)
 	if down and p.is_grounded and not p.is_sitting and absf(p.vx) < 0.5 and not p.is_recharging:
 		p.look_down_timer += dt
 	else:
@@ -458,6 +562,10 @@ func _update(dt: float) -> void:
 	_update_particles(dt, d60)
 	if boss.active:
 		_update_boss(dt, d60)
+	if wave.active:
+		_update_wave(dt, d60)
+	if summit_timer > 0:
+		summit_timer += dt
 
 
 func _update_recharge(dt: float, up: bool, down: bool) -> void:
@@ -556,6 +664,11 @@ func _update_entities(dt: float, d60: float) -> void:
 			"trigger":
 				if touching and active:
 					_hit_trigger(e)
+			"updraft":
+				if touching and not p.is_dead and not p.is_recharging and p.held_by_cramp == -1:
+					p.vy = maxf(p.vy - 1.1 * d60, -9.0)
+					p.jumps_left = 2
+					p.is_grounded = false
 
 
 func _update_enemy(e: LevelData.Ent, dt: float, d60: float, touching: bool) -> void:
@@ -570,6 +683,17 @@ func _update_enemy(e: LevelData.Ent, dt: float, d60: float, touching: bool) -> v
 		"float":
 			e.x = e.base_x + sin(time_ms / 1000.0 + e.id) * 30
 			e.y = e.base_y + cos(time_ms / 800.0 + e.id) * 20
+		"distract":
+			# Hovers around home and drifts towards a nearby player.
+			var hx := e.base_x + sin(time_ms / 900.0 + e.id) * 40
+			var hy := e.base_y + cos(time_ms / 700.0 + e.id) * 25
+			var to_p := Vector2(p.x - e.x, p.y - e.y)
+			if to_p.length() < 320 and not dialog_open:
+				e.x += to_p.normalized().x * 0.9 * d60
+				e.y += to_p.normalized().y * 0.9 * d60
+			else:
+				e.x += (hx - e.x) * 0.04 * d60
+				e.y += (hy - e.y) * 0.04 * d60
 		"chase":
 			var home := Vector2(p.x - e.base_x, p.y - e.base_y)
 			var dir: Vector2
@@ -620,6 +744,20 @@ func _update_enemy(e: LevelData.Ent, dt: float, d60: float, touching: bool) -> v
 	if p.held_by_cramp == e.id:
 		e.x = p.x + p.width / 2 - e.w / 2
 		e.y = p.y + p.height / 2 - e.h / 2
+	if e.behavior == "distract":
+		# A distraction only slows you down (dashing through it shrugs it off).
+		if touching and not e.defeated and not dialog_open and p.is_breathing <= 0 and not p.is_dead:
+			e.defeated = true
+			e.knocked_back = true
+			e.vx = 6.0 if e.x > p.x else -6.0
+			e.vy = -8
+			if p.dash_timer <= 0:
+				p.slow_timer = 2.0
+				p.vx *= 0.3
+				Audio.play_sfx("au%d.wav" % randi_range(1, 5), 0.6)
+			else:
+				Audio.play_sfx("krcoff.wav", 0.5)
+		return
 	if touching and not p.is_dead and p.hit_timer <= 0 and p.invuln_timer <= 0 and not e.defeated and Game.iron > 0 and not dialog_open and p.is_breathing <= 0:
 		if Game.has_breathing:
 			if p.held_by_cramp == -1:
@@ -655,6 +793,13 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 	p.vy = 0
 	if e.trigger_type == "end":
 		start_boss(Game.iron)
+	elif e.trigger_type == "wave":
+		start_wave()
+	elif e.trigger_type == "summit":
+		wave.won = true
+		wave.active = false
+		summit_timer = 0.01
+		Audio.play_sfx("finished.wav")
 	trigger.emit(e.trigger_type)
 
 
@@ -664,7 +809,7 @@ func _update_particles(dt: float, d60: float) -> void:
 		q.x += q.vx * d60
 		q.y += q.vy * d60
 		q.rot += q.rot_speed * d60
-		if q.type == "boss_body_part":
+		if q.type == "boss_body_part" or q.type == "dash" or q.type == "pollen":
 			q.vx *= pow(0.95, d60)
 			q.vy *= pow(0.95, d60)
 		else:
@@ -875,9 +1020,47 @@ func _hex_particle(hx: Dictionary) -> void:
 	})
 
 
+# --- level 2: bubbles, the LH wave --------------------------------------------------
+
+func _pop_bubble(pl: LevelData.Plat) -> void:
+	pl.regrow = REGROW
+	pl.pop_timer = 0
+	Audio.play_sfx("breathoff.wav", 0.5)
+	for i in 12:
+		particles.append({"x": pl.x + randf() * pl.w, "y": pl.y + randf() * 20,
+			"vx": (randf() - 0.5) * 6, "vy": -randf() * 4 - 1, "rot": 0.0, "rot_speed": 0.0,
+			"type": "pollen", "life": 0.6, "max_life": 0.6})
+
+
+## The LH wave starts rising below the player (from the trigger, or a retry).
+func start_wave() -> void:
+	wave.active = true
+	wave.lost = false
+	wave.won = false
+	wave.y = p.y + p.height + 260
+	wave.speed = WAVE_SPEED
+	summit_timer = 0
+	p.slow_timer = 0
+
+
+func _update_wave(dt: float, d60: float) -> void:
+	if wave.lost or wave.won or dialog_open:
+		return
+	wave.speed = minf(WAVE_MAX, wave.speed + WAVE_ACCEL * dt)
+	wave.y -= wave.speed * d60
+	if p.y + p.height > wave.y + 12 and not p.is_dead:
+		wave.lost = true
+		_die_quiet()
+		Game.iron = maxi(Game.iron, 1)
+		trigger.emit("wave_lost")
+
+
 # --- drawing ------------------------------------------------------------------
 
 func _draw_bg() -> void:
+	if is_garden():
+		_draw_garden_bg()
+		return
 	var ci := _bg
 	ci.draw_rect(Rect2(0, 0, W, H), Color("#1a0505"))
 	for l in _layers:
@@ -910,7 +1093,12 @@ func _draw_world() -> void:
 	for pl in level.platforms:
 		if pl.y < top or pl.y > bottom:
 			continue
-		_draw_platform(ci, pl, t)
+		if pl.kind != "rock":
+			_draw_bubble(ci, pl, t)
+		elif is_garden():
+			_draw_garden_platform(ci, pl, t)
+		else:
+			_draw_platform(ci, pl, t)
 	for e in level.entities:
 		if e.collected or (e.defeated and not e.knocked_back):
 			continue
@@ -920,20 +1108,31 @@ func _draw_world() -> void:
 			"iron":
 				Draw.iron_nut(ci, Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3), e.w / 2, t / 800.0 + e.id)
 			"enemy", "spike":
-				_draw_cramp(ci, e, t)
+				if e.behavior == "distract":
+					_draw_distraction(ci, e, t)
+				elif e.type == "spike" and is_garden():
+					_draw_thorn(ci, e, t)
+				else:
+					_draw_cramp(ci, e, t)
+			"updraft":
+				_draw_updraft(ci, e, t)
 			"trigger":
 				if e.trigger_type == "teleport":
 					ci.draw_rect(e.rect(), Color(190 / 255.0, 24 / 255.0, 93 / 255.0, 0.1))
-				elif e.trigger_type in ["mg2", "mg3", "mg4", "end"]:
+				elif e.trigger_type in ["mg2", "mg3", "mg4", "end", "mg5", "mg6", "mg7", "wave", "summit"]:
 					_draw_orb(ci, e, t)
 			"text":
 				ci.draw_string(_font, Vector2(e.x, e.y + e.h / 2 + 8), Text.plain(Text.t(e.text)), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1, 1, 1, 0.8))
 	if boss.active:
 		_draw_arena(ci, t, top, bottom)
+	if summit_timer > 0:
+		_draw_summit_egg(ci, t)
 	for q in particles:
 		_draw_particle(ci, q)
 	if boss.defeated_timer > 1.5:
 		_draw_egg(ci, t)
+	if wave.active or wave.lost:
+		_draw_wave(ci, t)
 
 
 func _draw_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
@@ -986,11 +1185,22 @@ func _draw_cramp(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 func _draw_orb(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 500.0) * 10)
 	var r := 30 + sin(t / 300.0) * 5
-	Draw.radial_glow(ci, c, r * 2, Color(95 / 255.0, 155 / 255.0, 153 / 255.0, 0.6))
-	ci.draw_circle(c, r * 0.5, Color("#c7e1e0"))
+	var glow := Color(95 / 255.0, 155 / 255.0, 153 / 255.0, 0.6)
+	var core := Color("#c7e1e0")
+	var dots := Color("#9fcbcb")
+	if e.trigger_type in ["wave", "summit"]:
+		glow = Color(250 / 255.0, 204 / 255.0, 21 / 255.0, 0.55)
+		core = Color("#fef3c7")
+		dots = Color("#fde68a")
+	elif is_garden():
+		glow = Color(134 / 255.0, 239 / 255.0, 172 / 255.0, 0.55)
+		core = Color("#ecfdf5")
+		dots = Color("#86efac")
+	Draw.radial_glow(ci, c, r * 2, glow)
+	ci.draw_circle(c, r * 0.5, core)
 	for i in 3:
 		var a := t / 1000.0 + i * TAU / 3
-		ci.draw_circle(c + Vector2(cos(a), sin(a)) * r * 1.2, 4, Color("#9fcbcb"))
+		ci.draw_circle(c + Vector2(cos(a), sin(a)) * r * 1.2, 4, dots)
 
 
 func _draw_arena(ci: CanvasItem, t: float, top: float, bottom: float) -> void:
@@ -1068,6 +1278,12 @@ func _draw_particle(ci: CanvasItem, q: Dictionary) -> void:
 			ci.draw_set_transform(pos, q.rot, Vector2.ONE)
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(-10, -5), Vector2(15, 0), Vector2(-10, 5)]), Color("#b15827"))
 			ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+		"dash":
+			var a: float = q.life / q.max_life
+			ci.draw_circle(pos, 3 + 6 * a, Color(1, 1, 1, 0.5 * a))
+		"pollen":
+			var a: float = q.life / q.max_life
+			ci.draw_circle(pos, 2 + 2 * a, Color(1, 0.95, 0.75, 0.8 * a))
 
 
 func _draw_egg(ci: CanvasItem, t: float) -> void:
@@ -1097,3 +1313,182 @@ func _draw_player() -> void:
 		Draw.vignette(ci, screen, Color(80 / 255.0, 5 / 255.0, 23 / 255.0, clampf(a, 0, 1)), 0.0)
 	elif p.breath_success:
 		Draw.vignette(ci, screen, Color(95 / 255.0, 155 / 255.0, 153 / 255.0, 0.4), 0.0)
+
+
+# --- level 2 drawing -----------------------------------------------------------------
+
+## Progress up the garden: 0 at the bottom (dusk), 1 at the top (morning).
+func _climb() -> float:
+	return clampf(1.0 - (camera_y + H / 2) / maxf(1, level_h), 0, 1)
+
+
+func _draw_garden_bg() -> void:
+	var ci := _bg
+	var k := _climb()
+	# Dusk (dark indigo & pink) → dawn → spring morning.
+	var stops_top := [Color("#1c1533"), Color("#4a2a5e"), Color("#c76a8a"), Color("#8fd0c4")]
+	var stops_bot := [Color("#0e0c18"), Color("#2a1e3a"), Color("#5a3a6a"), Color("#f2d9a0")]
+	var f := k * 3.0
+	var i := int(floorf(f))
+	var u := f - i
+	var top_c: Color = stops_top[mini(i, 3)].lerp(stops_top[mini(i + 1, 3)], u)
+	var bot_c: Color = stops_bot[mini(i, 3)].lerp(stops_bot[mini(i + 1, 3)], u)
+	var bands := 16
+	for b in bands:
+		var y0 := H * b / bands
+		ci.draw_rect(Rect2(0, y0, W, H / bands + 1), top_c.lerp(bot_c, (b + 0.5) / bands))
+	# Sun rising behind the summit.
+	if k > 0.45:
+		var sk := (k - 0.45) / 0.55
+		var sc := Vector2(W * 0.72, H * (1.1 - sk * 0.9))
+		Draw.radial_glow(ci, sc, 220 + sk * 120, Color(1, 0.92, 0.6, 0.35 * sk), Color(1, 0.98, 0.85, 0.9 * sk))
+	# Vines along the edges (parallax) and drifting pollen.
+	var t := time_ms
+	for v in 6:
+		var side := -1.0 if v % 2 == 0 else 1.0
+		var depth := 0.3 + 0.12 * v
+		var off := camera_y * depth
+		var x0 := (W / 2) + side * (W / 2 - 40 - v * 35)
+		var pts := PackedVector2Array()
+		var yy := -40.0
+		while yy < H + 40:
+			pts.append(Vector2(x0 + sin((yy + off) * 0.012 + v) * 18, yy))
+			yy += 24
+		var vc := Color(0.1, 0.35, 0.2, 0.25 + 0.06 * v).lerp(Color(0.2, 0.55, 0.3, 0.35), k)
+		ci.draw_polyline(pts, vc, 3 + v, true)
+		var ly := fmod(-off * 0.5, 160.0)
+		while ly < H:
+			var lp := Vector2(x0 + sin((ly + off) * 0.012 + v) * 18, ly)
+			ci.draw_set_transform(lp, side * 0.6 + sin(t / 900.0 + ly) * 0.1, Vector2(1, 0.45))
+			ci.draw_circle(Vector2.ZERO, 12 + v, vc)
+			ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+			ly += 160
+	for i2 in 36:
+		var px := fmod(i2 * 173.0 + sin(t / 1500.0 + i2) * 30 + W, W)
+		var py := fmod(H - fmod(t * (0.02 + 0.01 * (i2 % 3)) + i2 * 97.0, H), H)
+		ci.draw_circle(Vector2(px, py), 1.5 + (i2 % 3) * 0.7, Color(1, 0.95, 0.7, 0.25 + 0.3 * k))
+	Draw.vignette(ci, Rect2(0, 0, W, H), Color(0, 0, 0, 0.35 - 0.2 * k), 0.45)
+
+
+func _draw_garden_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
+	var pts := PackedVector2Array()
+	var top_line := PackedVector2Array()
+	var m := 0.0
+	while m <= pl.w:
+		var yy := pl.y + sin((pl.x + m) * 0.03 + t * 0.0015) * 2
+		pts.append(Vector2(pl.x + m, yy))
+		top_line.append(Vector2(pl.x + m, yy))
+		m += 10
+	m = pl.w
+	while m >= 0:
+		var f := m / pl.w
+		var hh := 8 + sin(f * PI) * (pl.h * 1.2)
+		pts.append(Vector2(pl.x + m, pl.y + hh + sin((pl.x + m) * 0.05 + t * 0.002) * 3))
+		m -= 10
+	Draw.polygon_safe(ci, pts, Color("#2f5d3f"))
+	if top_line.size() > 1:
+		ci.draw_polyline(top_line, Color("#86efac"), 4.0, true)
+	# Small leaves along the top, roots underneath.
+	m = 14
+	while m < pl.w - 8:
+		var lp := Vector2(pl.x + m, pl.y - 2)
+		ci.draw_set_transform(lp, -0.5 + sin(t / 700.0 + m) * 0.15, Vector2(1, 0.5))
+		ci.draw_circle(Vector2.ZERO, 6, Color("#4ade80"))
+		ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+		Draw.quad_curve(ci, Vector2(pl.x + m + 6, pl.y + 10), Vector2(pl.x + m + 14, pl.y + 24), Vector2(pl.x + m + 2, pl.y + 30), Color("#1e3d2a"), 2.0)
+		m += 36
+
+
+func _draw_bubble(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
+	var c := Vector2(pl.x + pl.w / 2, pl.y + 14)
+	var near := clampf(1.0 - Vector2(p.x + p.width / 2 - c.x, p.y + p.height - c.y).length() / 220.0, 0, 1)
+	var grow := 1.0 + 0.22 * near
+	var base := Color("#f9a8d4") if pl.kind == "bubble" else Color("#fde68a")
+	if pl.regrow > 0:
+		# Regrowing: a small faint bubble swelling back.
+		var g := 1.0 - pl.regrow / REGROW
+		ci.draw_set_transform(c, 0, Vector2(1, 0.7))
+		ci.draw_circle(Vector2.ZERO, maxf(1, (pl.w / 2 + 6) * g * 0.6), Color(base, 0.15 * g))
+		ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+		return
+	var jitter := Vector2.ZERO
+	if pl.kind == "pop" and pl.pop_timer > 0:
+		var k := pl.pop_timer / POP_AFTER
+		jitter = Vector2((randf() - 0.5) * 6 * k, (randf() - 0.5) * 4 * k)
+	# A cluster: one follicle per cell of the platform.
+	var n := maxi(1, int(roundf(pl.w / LevelData.CELL_W)))
+	var cw := pl.w / n
+	for i in n:
+		var cc := Vector2(pl.x + cw * (i + 0.5), pl.y + 12) + jitter
+		var r := cw / 2 + 5 + sin(t / 400.0 + pl.x + i) * 2
+		ci.draw_set_transform(cc, 0, Vector2(grow, 0.8 * grow))
+		ci.draw_circle(Vector2.ZERO, r, Color(base, 0.35))
+		ci.draw_arc(Vector2.ZERO, r, 0, TAU, 32, Color(1, 1, 1, 0.8), 2.0, true)
+		ci.draw_circle(Vector2(-r * 0.4, -r * 0.35), r * 0.18, Color(1, 1, 1, 0.75))
+		if pl.kind == "pop":
+			# A tiny follicle inside: these are about to burst.
+			ci.draw_circle(Vector2(r * 0.2, r * 0.15), r * 0.25, Color("#f472b6", 0.5))
+		ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+
+
+func _draw_updraft(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var r := e.rect()
+	ci.draw_rect(r, Color(1, 1, 0.8, 0.05))
+	for i in 7:
+		var yy := r.end.y - fmod(t * 0.12 + i * 37.0, r.size.y)
+		var xx := r.position.x + 6 + fmod(i * 13.0, r.size.x - 12)
+		var a := clampf((yy - r.position.y) / r.size.y, 0, 1)
+		ci.draw_line(Vector2(xx, yy), Vector2(xx, yy - 14), Color(1, 1, 0.85, 0.5 * a), 2.0)
+
+
+func _draw_thorn(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var c := Vector2(e.x + e.w / 2, e.y + e.h)
+	for i in 3:
+		var bx := c.x + (i - 1) * 10
+		var pts := PackedVector2Array([Vector2(bx - 6, c.y), Vector2(bx + (i - 1) * 3, c.y - 26 - (3 if i == 1 else 0)), Vector2(bx + 6, c.y)])
+		ci.draw_colored_polygon(pts, Color("#166534"))
+		ci.draw_line(pts[0], pts[1], Color("#4ade80"), 1.5, true)
+
+
+func _draw_distraction(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 180.0 + e.id) * 3)
+	var r := Rect2(c.x - 22, c.y - 15, 44, 30)
+	Draw.panel(ci, r, Color("#e2e8f0"), 8, Color("#94a3b8"), 1)
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(c.x - 6, r.end.y), Vector2(c.x + 6, r.end.y), Vector2(c.x, r.end.y + 7)]), Color("#e2e8f0"))
+	ci.draw_line(Vector2(r.position.x + 9, c.y - 4), Vector2(r.end.x - 9, c.y - 4), Color("#94a3b8"), 2.0)
+	ci.draw_line(Vector2(r.position.x + 9, c.y + 3), Vector2(r.end.x - 15, c.y + 3), Color("#cbd5e1"), 2.0)
+	ci.draw_circle(Vector2(r.end.x - 4, r.position.y + 4), 6 + sin(t / 120.0) * 1.0, Color("#ef4444"))
+	ci.draw_string(_font, Vector2(r.end.x - 7, r.position.y + 8), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
+
+
+func _draw_wave(ci: CanvasItem, t: float) -> void:
+	var yy: float = wave.y
+	var pts := PackedVector2Array()
+	var x := 0.0
+	while x <= W:
+		pts.append(Vector2(x, yy + sin(t / 180.0 + x / 60.0) * 8 + cos(t / 260.0 + x / 35.0) * 4))
+		x += 20
+	pts.append(Vector2(W, camera_y + H + 50))
+	pts.append(Vector2(0, camera_y + H + 50))
+	Draw.polygon_safe(ci, pts, Color(0.98, 0.75, 0.3, 0.85))
+	var glow := PackedVector2Array()
+	for i in range(0, pts.size() - 2):
+		glow.append(pts[i])
+	ci.draw_polyline(glow, Color(1, 0.97, 0.8, 0.95), 5.0, true)
+	for i in 14:
+		var bx := fmod(t / 15.0 + i * 83.0, W)
+		var by := yy + 16 + sin(t / 140.0 + i) * 9
+		ci.draw_circle(Vector2(bx, by), maxf(0.5, 2.5 + sin(t / 90.0 + i) * 1.5), Color(1, 1, 0.85, 0.7))
+	ci.draw_string(_font, Vector2(W / 2 - 40, yy + 46), "LH ↑", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color(0.5, 0.25, 0.05, 0.8))
+
+
+func _draw_summit_egg(ci: CanvasItem, t: float) -> void:
+	var k := clampf(summit_timer / 2.0, 0, 1)
+	var c := Vector2(W / 2, p.y - 60 - k * 120)
+	var r := 10 + 30 * k
+	Draw.radial_glow(ci, c, r * 2.5 + sin(t / 200.0) * 4, Color(1, 0.9, 0.55, 0.6 * k), Color(1, 1, 0.9, 0.95 * k))
+	ci.draw_circle(c, r * 0.8, Color("#fff7df", k))
+	ci.draw_circle(c + Vector2(-r * 0.2, -r * 0.2), maxf(0.1, r * 0.3), Color("#f9a8d4", k))
+	for i in 8:
+		var a := t / 600.0 + i * TAU / 8
+		ci.draw_circle(c + Vector2(cos(a), sin(a)) * (r + 24 + sin(t / 300.0 + i) * 6), 3, Color(1, 0.95, 0.7, 0.8 * k))

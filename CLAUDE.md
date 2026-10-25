@@ -10,14 +10,17 @@ web and deploys it to GitHub Pages, so changes are tested in a browser.
 godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
   project.godot            minimal engine config (autoloads, window)
   scenes/main.tscn         the only real scene — everything else is built in code
-  scripts/main.gd          game flow / state machine (boot → title → forest → cave → boss)
+  scripts/main.gd          game flow / state machine (boot → title → forest → cave → boss → garden)
   scripts/autoload/        Game (state + input actions), Text (strings, dialogs, fonts), Audio
-  scripts/screens/         boot, title, forest_intro, platformer (cave + boss)
-  scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4)
+  scripts/screens/         boot, title, forest_intro, platformer (cave + boss; garden + LH wave)
+  scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4),
+                           iron_plate (mg5), rhythm (mg6), signals (mg7) — level 2
   scripts/ui/              dialog_box, platformer_hud, player_art (sprite anim), draw helpers
   scripts/dev/             dev_menu + level_editor (in-game, DEV button on the first/boot screen)
   scripts/level_data.gd    level text → platforms/entities (THE LEGEND lives here)
   data/levels/cave.txt     the cave level, one text row per 120 px band, 25 columns
+  data/levels/garden.txt   level 2 (climbed upwards: spawn at the bottom, summit E at the top)
+  docs/                    GDD drafts (gdd_levely_fazy_cyklu.md = level 2 design, implemented)
   data/dialogs.json        dialog nodes (parts, speaker, buttons), voice overrides, letter→dialog map
   data/i18n/{en,sk,pt}.json  all strings; <KB>…</KB> keyboard-only, <GP>…</GP> gamepad-only
   assets/                  images, audio, font (from the web prototype)
@@ -29,10 +32,12 @@ tools/                     setup_godot.sh, test.sh, export_web.sh
 
 ## Common edits
 
-- **Level**: edit `godot/data/levels/cave.txt`. `.` = empty. Legend is in the
-  header of `scripts/level_data.gd` (`=` platform, `O` iron, `^` spike,
-  `S/F/J/C` cramps, `P` spawn, `2/3/4` minigames, `5` boss, `a–z` dialogs).
-  Keep 25 columns. Minigame/boss triggers span the whole row.
+- **Level**: edit `godot/data/levels/cave.txt` (or `garden.txt`). `.` = empty.
+  Legend is in the header of `scripts/level_data.gd` (`=` platform, `O` iron,
+  `^` spike, `S/F/J/C` cramps, `P` spawn, `2/3/4` minigames, `5` boss, `a–z`
+  dialogs; level 2: `@` bubble, `%` popping bubble, `~` updraft, `N` distraction,
+  `6/7/8` minigames, `9` LH wave, `E` summit). Keep 25 columns. Minigame / boss /
+  wave / summit triggers span the whole row. `Game.LEVELS` maps level id → file.
 - **Dialog text**: change the string in `data/i18n/*.json` (all three languages).
   New dialog = add node in `data/dialogs.json` + keys in every i18n file;
   voice = `assets/audio/<KEY>.wav` (or `voice_overrides`).
@@ -124,6 +129,24 @@ Commits land on the repo's default branch and trigger the deploy. **Run `git pul
 before editing**, because the branch may contain commits made from the browser.
 For a local mock API, set `GitHubSave.api_base`, or use `?gh_api=` on the web.
 
+## Level 2: the garden (follicular phase)
+
+Same `Platformer` with `level_id = 2` (`is_garden()`): climbed upwards, procedural
+dusk→morning background (`_draw_garden_bg`, by `_climb()`), bubble platforms
+(`Plat.kind` bubble/pop, `_pop_bubble`), updrafts (entity `updraft`), distractions
+(enemy behaviour `distract`: slow, no iron loss), power-ups in `Game.upgrades`
+(`jump`, `dash` on the `run` action = Shift, `double`; see `_jump_force`), and the
+LH wave chase (`start_wave`, `_update_wave`, trigger `wave_lost`; `summit` ends the
+level). Checkpoints 1–5 use `LevelData.PROGRESS[2]`; `_stand_at_trigger` puts the
+player on the trigger row's platform. Flow in `main.gd`: `boss_win` →
+`_start_garden(1, iron)`; `_mg5_done`…`_mg7_done`; `garden_end` → title.
+Dialog letters g/h/k/m/n → `garden_*` nodes; strings `DIA_G*`, `MG5_*`–`MG7_*`.
+
+## Backup of the game before level 2
+
+Branch `backup/v1-jaskyna` (commit pinned as `V1_SHA` in `.github/workflows/web.yml`)
+is built into the site at `/v1/`. Tags cannot be pushed from sessions (403).
+
 ## Pause menu
 
 `Esc` / gamepad Start during play (forest, cave, minigames) opens
@@ -134,6 +157,8 @@ started before a restart can't act on the new run.
 
 ## Debug shortcuts (in the cave)
 
-`1–4` restart at checkpoint · `Shift+2…5` jump to minigame/boss trigger · `5` boss ·
-`C` breathing + 20 iron · `X` skip a minigame. Developer mode (DEV on the boot screen) has
-checkpoints, skip-to-boss and the level editor (paint, test with Enter, export/import).
+`1–4` restart at checkpoint · `Shift+2…5` jump to minigame / boss (garden: LH wave)
+trigger · `5` boss (garden: wave) · `G` garden with all power-ups · `C` breathing +
+20 iron · `X` skip a minigame. Developer mode (DEV on the boot screen) has checkpoints
+for both levels, skip-to-boss and the level editor (level picker in the header, paint,
+test with Enter, export/import, save to repo).

@@ -16,6 +16,14 @@ extends RefCounted
 ##   T      teleport to the top of the level
 ##   I      on-screen hint text (double jump)
 ##   . or space   empty
+## Level 2 (the garden) adds:
+##   @      bubble platform (a follicle; inflates when the player is near)
+##   %      popping bubble (bursts shortly after you stand on it, regrows later)
+##   ~      updraft (a column of warm air that lifts the player)
+##   N      distraction (floating "notification": slows the player on touch)
+##   6 7 8  minigame trigger (6 iron plate, 7 rhythm, 8 body signals) — whole row
+##   9      the LH wave starts rising — whole row
+##   E      summit / level end — whole row
 
 const COLS := 25
 const ROW_H := 120.0
@@ -26,7 +34,13 @@ const PALETTE := {
 	"S": "Cramp static", "F": "Cramp floating", "J": "Cramp lunging", "C": "Cramp chasing",
 	"2": "Minigame: chocolate", "3": "Minigame: pipes", "4": "Minigame: prices", "5": "Boss",
 	"T": "Teleport to top", "I": "Hint text",
+	"@": "Bubble platform", "%": "Popping bubble", "~": "Updraft", "N": "Distraction",
+	"6": "Minigame: iron plate", "7": "Minigame: rhythm", "8": "Minigame: body signals",
+	"9": "LH wave", "E": "Summit",
 }
+
+## Trigger kinds that mark progress, in level order (checkpoints 2..5).
+const PROGRESS := {1: ["mg2", "mg3", "mg4", "end"], 2: ["mg5", "mg6", "mg7", "wave"]}
 
 
 class Plat:
@@ -35,6 +49,14 @@ class Plat:
 	var w: float
 	var h := 20.0
 	var base_y: float
+	## "rock" (cave), "bubble" (stable follicle) or "pop" (bursts when stood on).
+	var kind := "rock"
+	## Popping bubbles: time stood on (> POP_AFTER bursts it) and regrow timer.
+	var pop_timer := 0.0
+	var regrow := 0.0
+
+	func solid() -> bool:
+		return regrow <= 0
 
 
 class Ent:
@@ -44,11 +66,11 @@ class Ent:
 	var y: float
 	var w: float
 	var h: float
-	var trigger_type := "" # dialog | first_cramp | teleport | mg2 | mg3 | mg4 | end
+	var trigger_type := "" # dialog | first_cramp | teleport | mg2..mg7 | end | wave | summit
 	var dialog_id := ""
 	var target := Vector2.ZERO
 	var text := ""
-	var behavior := "" # static | float | lunge | chase
+	var behavior := "" # static | float | lunge | chase | distract
 	var lunge_timer := 0.0
 	var base_x := 0.0
 	var base_y := 0.0
@@ -87,11 +109,15 @@ static func build(level_rows: PackedStringArray, rh := ROW_H) -> LevelData:
 		var row := level_rows[r]
 		var y := r * rh
 		var start := -1.0
+		var kind := ""
 		for c in range(row.length() + 1):
 			var ch := row[c] if c < row.length() else " "
 			var x := c * CELL_W
-			if ch == "=":
-				if start < 0: start = x
+			var k: String = {"=": "rock", "@": "bubble", "%": "pop"}.get(ch, "")
+			if k != "" and (start < 0 or k == kind):
+				if start < 0:
+					start = x
+					kind = k
 				continue
 			if start >= 0:
 				var p := Plat.new()
@@ -99,8 +125,13 @@ static func build(level_rows: PackedStringArray, rh := ROW_H) -> LevelData:
 				p.y = y
 				p.w = x - start
 				p.base_y = y
+				p.kind = kind
 				L.platforms.append(p)
 				start = -1
+				if k != "":
+					start = x
+					kind = k
+					continue
 			var e: Ent = null
 			match ch:
 				"O", "*":
@@ -110,9 +141,9 @@ static func build(level_rows: PackedStringArray, rh := ROW_H) -> LevelData:
 				"X":
 					e = _ent("trigger", x, y, CELL_W, rh)
 					e.trigger_type = "first_cramp"
-				"S", "F", "L", "J", "C":
+				"S", "F", "L", "J", "C", "N":
 					e = _ent("enemy", x + CELL_W / 2 - 20, y + rh - 45, 40, 40)
-					e.behavior = {"S": "static", "F": "float", "L": "lunge", "J": "lunge", "C": "chase"}[ch]
+					e.behavior = {"S": "static", "F": "float", "L": "lunge", "J": "lunge", "C": "chase", "N": "distract"}[ch]
 					if e.behavior == "lunge":
 						e.lunge_timer = randf() * 2
 				"T":
@@ -124,9 +155,12 @@ static func build(level_rows: PackedStringArray, rh := ROW_H) -> LevelData:
 					e.text = "HINT_DOUBLE_JUMP"
 				"P":
 					L.spawn = Vector2(x + 5, y - 60)
-				"1", "2", "3", "4", "5", "B":
+				"~":
+					e = _ent("updraft", x, y, CELL_W, rh)
+				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E":
 					e = _ent("trigger", 0, y - 100, 1066, 200)
-					e.trigger_type = {"1": "mg1", "2": "mg2", "3": "mg3", "4": "mg4", "5": "end", "B": "end"}[ch]
+					e.trigger_type = {"1": "mg1", "2": "mg2", "3": "mg3", "4": "mg4", "5": "end", "B": "end",
+						"6": "mg5", "7": "mg6", "8": "mg7", "9": "wave", "E": "summit"}[ch]
 				_:
 					if ch >= "a" and ch <= "z":
 						e = _ent("trigger", x, y, CELL_W, rh)

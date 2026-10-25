@@ -83,6 +83,19 @@ func _run() -> void:
 		check(types.has(t), "level has trigger " + t)
 	check(L.platforms.size() > 50, "level has %d platforms" % L.platforms.size())
 	check(LevelData.parse_text(LevelData.to_text(rows)) == rows, "level text round-trips")
+	var rows2: PackedStringArray = Game.level_rows(2)
+	var L2 := LevelData.build(rows2)
+	check(rows2.size() > 80 and L2.has_spawn(), "garden level has %d rows and a spawn" % rows2.size())
+	var types2 := {}
+	var kinds := {}
+	for e in L2.entities:
+		types2[e.trigger_type if e.type == "trigger" else e.type] = true
+	for pl in L2.platforms:
+		kinds[pl.kind] = true
+	for t in ["mg5", "mg6", "mg7", "wave", "summit", "updraft", "dialog"]:
+		check(types2.has(t), "garden has " + t)
+	check(kinds.has("bubble") and kinds.has("pop") and kinds.has("rock"), "garden has rock, bubble and popping platforms")
+	check(LevelData.parse_text(LevelData.to_text(rows2)) == rows2, "garden text round-trips")
 
 	step("pipes layouts are solvable")
 	_check_pipe_layouts()
@@ -213,8 +226,131 @@ func _run() -> void:
 	var won := await until(func(): return node_box().node_id() == "boss_win", 5)
 	check(won, "boss defeated")
 	await finish_dialog("boss_win")
+	var garden := await until(func(): return main.state == "platformer" and Game.level == 2 and main.platformer != null, 5)
+	check(garden, "the garden (level 2) starts after the boss")
+
+	step("level 2 – the garden")
+	await finish_dialog("garden_start")
+	pf = main.platformer
+	check(pf.is_garden() and pf.p.y > pf.level_h - 500, "starts at the bottom of the garden")
+	await seconds(1.0)
+	check(pf.p.is_grounded, "stands on the garden floor")
+	# A popping bubble bursts after standing on it and regrows later.
+	var pop: LevelData.Plat = null
+	for pl in pf.level.platforms:
+		if pl.kind == "pop":
+			pop = pl
+			break
+	pf.p.x = pop.x + 6
+	pf.p.y = pop.base_y - pf.p.height - 2
+	pf.p.vy = 0
+	pf.camera_y = pf.p.y - 300
+	await seconds(1.3)
+	check(pop.regrow > 0 and pf.p.y > pop.base_y, "a yellow bubble bursts after standing on it")
+	await seconds(4.0)
+	check(pop.regrow <= 0, "the bubble regrows")
+	# An updraft lifts the player.
+	var draft: LevelData.Ent = null
+	for e in pf.level.entities:
+		if e.type == "updraft":
+			draft = e
+	pf.p.x = draft.x + 6
+	pf.p.y = draft.y + draft.h - pf.p.height
+	pf.p.vy = 0
+	var y_in := pf.p.y
+	await seconds(0.5)
+	check(pf.p.vy < 0 and pf.p.y < y_in - 40, "the updraft lifts the player")
+	# Distractions only slow the player down.
+	var iron_now := Game.iron
+	_teleport_to_entity(pf, "enemy")
+	await frames(4)
+	check(pf.p.slow_timer > 0 and Game.iron == iron_now and pf.p.held_by_cramp == -1, "a distraction slows the player, costs no iron")
+
+	step("minigame 5 – iron plate")
+	await _go_trigger(pf, "mg5")
+	check(main.state == "mg5", "state mg5")
+	await finish_dialog("mg5_start")
+	var ip: IronPlateGame = main.minigame
+	var bad_i := -1
+	var good_i := []
+	for i in 8:
+		if ip._item(i).good: good_i.append(i)
+		elif bad_i < 0: bad_i = i
+	for i in [good_i[0], good_i[1], good_i[2], bad_i]:
+		ip.toggle(i)
+	await frames(2)
+	check(ip.chosen.size() == 4 and panel_box().is_open(), "4 foods on the plate, serve button offered")
+	panel_box()._press(0)
+	await frames(2)
+	check(ip.evaluated and not ip.perfect, "a plate with tea is not accepted")
+	panel_box()._press(0)
+	await frames(2)
+	check(not ip.evaluated and ip.chosen.is_empty(), "try again clears the plate")
+	for i in good_i:
+		ip.toggle(i)
+	await frames(2)
+	panel_box()._press(0)
+	await frames(2)
+	check(ip.perfect, "the iron-friendly plate is accepted")
+	await finish_dialog("mg5_after")
+	await frames(3)
+	check(main.state == "platformer" and Game.checkpoint == 2 and Game.upgrades.has("jump"), "back in the garden, checkpoint 2, higher jump")
+	check(pf._jump_force() < Platformer.JUMP_FORCE, "jump power-up applies")
+
+	step("minigame 6 – rhythm")
+	await _go_trigger(pf, "mg6")
+	await finish_dialog("mg6_start")
+	var rg: RhythmGame = main.minigame
+	rg._time = rg._beat_time(0) + 0.4
+	rg.tap()
+	check(rg.misses == 1 and rg.hits == 0, "a tap off the beat is a miss")
+	for i in range(1, 11):
+		rg._time = rg._beat_time(i)
+		rg.tap()
+	check(rg.hits == 10, "ten taps on the beat")
+	await finish_dialog("mg6_after")
+	await frames(3)
+	check(Game.checkpoint == 3 and Game.upgrades.has("dash"), "checkpoint 3, dash unlocked")
+	_key(KEY_SHIFT, true)
+	await frames(2)
+	_key(KEY_SHIFT, false)
+	check(pf.p.dash_timer > 0 and absf(pf.p.vx) >= Platformer.DASH_SPEED - 0.1, "Shift dashes")
+
+	step("minigame 7 – body signals")
+	await _go_trigger(pf, "mg7")
+	await finish_dialog("mg7_start")
+	var sg: SignalsGame = main.minigame
+	var phase_ids := ["m", "f", "o", "l"]
+	sg.place((phase_ids.find(sg.card().phase) + 1) % 4)
+	check(sg.wrong == 1 and sg.current == 0, "a wrong phase shakes the card")
+	while not sg.all_placed():
+		sg.place(phase_ids.find(sg.card().phase))
+	check(sg.all_placed(), "all signals sorted")
+	await finish_dialog("mg7_after")
+	await frames(3)
+	check(Game.checkpoint == 4 and Game.upgrades.has("double"), "checkpoint 4, super double jump")
+
+	step("LH wave and the summit")
+	await _go_trigger(pf, "wave")
+	await finish_dialog("wave_start")
+	await frames(2)
+	check(pf.wave.active and Game.checkpoint == 5, "the LH wave rises")
+	var wy: float = pf.wave.y
+	await seconds(0.5)
+	check(pf.wave.y < wy, "the wave moves up")
+	var caught := await until(func(): return panel_box().is_open(), 15)
+	check(caught and pf.wave.lost, "standing still, the wave catches the player")
+	panel_box()._press(0)
+	var old_pf := pf.get_instance_id()
+	var retried := await until(func(): return main.platformer != null and main.platformer.get_instance_id() != old_pf and main.platformer.wave.active, 5)
+	check(retried, "try again restarts the climb with the wave")
+	pf = main.platformer
+	await _go_trigger(pf, "summit")
+	await frames(3)
+	check(pf.wave.won and pf.summit_timer > 0, "reaching the summit stops the wave")
+	await finish_dialog("garden_end")
 	await frames(5)
-	check(main.state == "title", "back to the title after the win")
+	check(main.state == "title" and Game.level == 1, "back to the title after the garden")
 
 	step("game over")
 	main._dev_action("checkpoint", 1)
@@ -275,6 +411,12 @@ func _run() -> void:
 	await frames(3)
 	var ed: LevelEditor = dev._editor
 	check(ed != null and ed.rows.size() > 100, "editor loaded the level")
+	ed.select_level(2)
+	await frames(2)
+	check(ed.rows.size() == Game.level_rows(2).size() and ed._tool_info.has("@") and ed._tool_info.has("E"), "editor switches to the garden and has its tools")
+	ed.select_level(1)
+	await frames(2)
+	check(ed.rows.size() == Game.level_rows(1).size(), "editor switches back to the cave")
 	# Real clicks: pick the Spike tool, then paint the top-left cell.
 	var enemies: Button = ed._groups["enemies"].button
 	await _click(enemies.get_global_rect().get_center())

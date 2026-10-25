@@ -43,6 +43,13 @@ var breath_success := false
 var held_by_cramp := -1
 var cramp_drain_timer := 0.0
 
+# --- level 2 (garden) state ---
+## Dash (after the rhythm minigame): time left in the dash and its cooldown.
+var dash_timer := 0.0
+var dash_cooldown := 0.0
+## A distraction touched the player: slowed down while > 0.
+var slow_timer := 0.0
+
 
 func rect() -> Rect2:
 	return Rect2(x, y, width, height)

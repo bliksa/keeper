@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Commit of the backed-up game (level 1 only), see docs/ + README "Záloha".
+  V1_SHA: e28f70129a4057e2e876f2266ba864b35dabb898
+
 concurrency:
   group: web-${{ github.ref }}
   cancel-in-progress: true
@@ -35,6 +39,22 @@ jobs:
       - name: Export web build
         run: tools/export_web.sh
 
+      # Playable backup of the game before level 2 (branch backup/v1-jaskyna),
+      # served at /v1/. Built once per pinned commit and cached.
+      - name: Cache v1 build
+        id: v1cache
+        uses: actions/cache@v4
+        with:
+          path: build/v1
+          key: v1-${{ env.V1_SHA }}
+      - name: Build v1 (backup)
+        if: steps.v1cache.outputs.cache-hit != 'true'
+        run: |
+          git fetch --depth=1 origin "$V1_SHA"
+          rm -rf /tmp/v1 && git worktree add /tmp/v1 "$V1_SHA"
+          /tmp/v1/tools/export_web.sh
+          mkdir -p build/v1 && cp -r /tmp/v1/build/web/. build/v1/
+
       - name: Assemble site
         run: |
           mkdir -p site
@@ -48,6 +68,11 @@ jobs:
           # The original vibe-coded web prototype, for side-by-side comparison.
           mkdir -p site/original
           cp -r web-export/. site/original/
+          # Backup of the game before level 2.
+          mkdir -p site/v1
+          cp -r build/v1/. site/v1/
+          mv site/v1/index.pck "site/v1/index-${V1_SHA::8}.pck"
+          sed -i "s/GODOT_CONFIG = {/GODOT_CONFIG = {\"mainPack\":\"index-${V1_SHA::8}.pck\",/; s/\"index.pck\":/\"index-${V1_SHA::8}.pck\":/" site/v1/index.html
           touch site/.nojekyll
 
       # Publish to the gh-pages branch (GitHub Pages serves it at

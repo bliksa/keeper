@@ -57,8 +57,8 @@ func _ready() -> void:
 	header_tools.add_theme_constant_override("separation", 2)
 	add_child(header_tools)
 	_help = UiKit.label("", 10, Color("#64748b"))
-	_help.position = Vector2(700, 0)
-	_help.size = Vector2(270, BAR_H)
+	_help.position = Vector2(800, 0)
+	_help.size = Vector2(172, BAR_H)
 	_help.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	add_child(_help)
@@ -99,7 +99,7 @@ func _show(tab: String) -> void:
 		_editor = LevelEditor.new()
 		_editor.top = BAR_H
 		_editor.header = header_tools
-		_help.text = "Left click paint · right click erase\nWheel scroll · Enter test · autosaved"
+		_help.text = "Left paint · right erase\nWheel scroll · Enter test"
 		add_child(_editor)
 		move_child(_editor, 1)
 	else:
@@ -114,8 +114,8 @@ func _build_shortcuts() -> void:
 	sb.border_color = Color("#334155")
 	sb.set_border_width_all(1)
 	card.add_theme_stylebox_override("panel", sb)
-	card.position = Vector2(83, 32)
-	card.size = Vector2(900, 440)
+	card.position = Vector2(83, 24)
+	card.size = Vector2(900, 500)
 	_content.add_child(card)
 
 	var h1 := UiKit.label("CORE ACTIONS", 13, Color("#94a3b8"), true)
@@ -148,11 +148,23 @@ func _build_shortcuts() -> void:
 	card.add_child(h2)
 	var cps := [[1, "Cave start"], [2, "After chocolate puzzle"], [3, "After pipes"], [4, "After prices"]]
 	for i in cps.size():
-		var b := UiKit.button(cps[i][1], Vector2(380, 44), 14)
-		b.position = Vector2(480, 60 + i * 54)
+		var b := UiKit.button(cps[i][1], Vector2(380, 38), 13)
+		b.position = Vector2(480, 56 + i * 44)
 		b.pressed.connect(func(): action.emit("checkpoint", cps[i][0]))
 		card.add_child(b)
+	var h4 := UiKit.label("CHECKPOINTS (garden, level 2)", 13, Color("#94a3b8"), true)
+	h4.position = Vector2(480, 244)
+	card.add_child(h4)
+	var cps2 := [[1, "Garden start"], [2, "After iron plate"], [3, "After rhythm"], [4, "After body signals"], [5, "LH wave (summit climb)"]]
+	for i in cps2.size():
+		var b := UiKit.button(cps2[i][1], Vector2(380, 38), 13, Color("#14532d"))
+		b.position = Vector2(480, 272 + i * 44)
+		b.pressed.connect(func(): action.emit("checkpoint2", cps2[i][0]))
+		card.add_child(b)
 
-	var h3 := UiKit.label("CAVE DEBUG KEYS: 1–4 restart at checkpoint · Shift+2–5 jump to minigame/boss · 5 boss · C breath + 20 iron · X skip minigame", 11, Color("#64748b"))
-	h3.position = Vector2(32, 400)
+	var h3 := UiKit.label("DEBUG KEYS: 1–4 restart at checkpoint · Shift+2–5 jump to minigame / boss / LH wave · 5 boss (garden: wave) · G garden with power-ups · C breath + 20 iron · X skip minigame", 11, Color("#64748b"))
+	h3.autowrap_mode = TextServer.AUTOWRAP_WORD
+	h3.custom_minimum_size = Vector2(420, 0)
+	h3.position = Vector2(32, 300)
+	h3.size = Vector2(420, 120)
 	card.add_child(h3)

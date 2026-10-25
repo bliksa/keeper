@@ -9,6 +9,9 @@ const VIEW_H := 600.0
 
 const LEVEL_PATH := "res://data/levels/cave.txt"
 const CUSTOM_LEVEL_PATH := "user://custom_level.txt"
+## Level id -> level text. 1 = the cave (menstruation), 2 = the garden (follicular phase).
+const LEVELS := {1: "res://data/levels/cave.txt", 2: "res://data/levels/garden.txt"}
+const LEVEL_NAMES := {1: "Cave", 2: "Garden"}
 
 ## "keyboard" or "gamepad" — decides which <KB>/<GP> hint text is shown.
 var control_mode := "keyboard":
@@ -25,8 +28,12 @@ var has_breathing := false
 ## Skip the forest intro on restart (set after it was finished once).
 var intro_done := false
 ## Checkpoint index: 0 = level start (first run), 1 = cave start,
-## 2..4 = after minigame N, 5 = boss.
+## 2..4 = after minigame N, 5 = boss (level 2: the LH wave).
 var checkpoint := 0
+## Current level: 1 cave, 2 garden.
+var level := 1
+## Level 2 power-ups earned in the minigames: "jump", "dash", "double".
+var upgrades := {}
 
 
 func _ready() -> void:
@@ -41,11 +48,14 @@ func reset_run() -> void:
 	has_breathing = false
 	intro_done = false
 	checkpoint = 0
+	level = 1
+	upgrades = {}
 
 
-## Level rows used by the cave. A level edited in the dev menu can replace the
-## bundled one for this session ("Use in game" in the level editor).
+## Level rows used by the game. A level edited in the dev menu can replace the
+## bundled one of `custom_level_id` for this session ("Use in game" in the editor).
 var custom_level_rows := PackedStringArray()
+var custom_level_id := 0
 
 
 ## Level rows. Empty cells may be written as ' ' or '.' in the file.
@@ -57,10 +67,14 @@ func load_level_rows(path: String = LEVEL_PATH) -> PackedStringArray:
 	return LevelData.parse_text(f.get_as_text())
 
 
-func current_level_rows() -> PackedStringArray:
-	if custom_level_rows.size() > 0:
+func level_rows(id: int) -> PackedStringArray:
+	return load_level_rows(LEVELS.get(id, LEVEL_PATH))
+
+
+func current_level_rows(id: int = level) -> PackedStringArray:
+	if custom_level_rows.size() > 0 and custom_level_id == id:
 		return custom_level_rows
-	return load_level_rows()
+	return level_rows(id)
 
 
 # --- input -------------------------------------------------------------------
@@ -73,7 +87,8 @@ func _setup_input() -> void:
 	_action("move_up", [KEY_UP, KEY_W], [JOY_BUTTON_DPAD_UP], [[JOY_AXIS_LEFT_Y, -1.0]])
 	_action("move_down", [KEY_DOWN, KEY_S], [JOY_BUTTON_DPAD_DOWN], [[JOY_AXIS_LEFT_Y, 1.0]])
 	_action("jump", [KEY_UP, KEY_W, KEY_SPACE], [JOY_BUTTON_X], [])
-	_action("run", [], [JOY_BUTTON_Y], [])
+	# Shift on the keyboard: run (level 1) / dash (level 2, after the rhythm minigame).
+	_action("run", [KEY_SHIFT], [JOY_BUTTON_Y], [])
 	_action("breathe", [KEY_CTRL], [JOY_BUTTON_B, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER],
 		[[JOY_AXIS_TRIGGER_LEFT, 1.0], [JOY_AXIS_TRIGGER_RIGHT, 1.0]])
 	_action("confirm", [KEY_ENTER, KEY_KP_ENTER], [JOY_BUTTON_A], [])

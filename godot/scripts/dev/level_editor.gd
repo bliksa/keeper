@@ -17,8 +17,13 @@ const END_PAD := 96.0
 const SIDEBAR := 48.0
 const ICON := 36.0
 const AUTOSAVE := "user://custom_level.txt"
+## Autosave of the level being edited, per level id (1 cave, 2 garden).
+const AUTOSAVE_FMT := "user://custom_level_%d.txt"
 
 var rows: PackedStringArray = []
+## Which game level is being edited (Game.LEVELS).
+var level_id := 1
+var _level_pick: OptionButton
 ## Space reserved at the top (the developer menu's tab bar).
 var top := 0.0
 var tool := "="
@@ -73,13 +78,36 @@ func _ready() -> void:
 	_load_initial()
 
 
+func _autosave_path() -> String:
+	# The cave keeps the old path so earlier autosaves still load.
+	return AUTOSAVE if level_id == 1 else AUTOSAVE_FMT % level_id
+
+
 func _load_initial() -> void:
-	if FileAccess.file_exists(AUTOSAVE):
-		var f := FileAccess.open(AUTOSAVE, FileAccess.READ)
+	rows = PackedStringArray()
+	if FileAccess.file_exists(_autosave_path()):
+		var f := FileAccess.open(_autosave_path(), FileAccess.READ)
 		rows = LevelData.parse_text(f.get_as_text())
 	if rows.is_empty():
-		rows = Game.load_level_rows()
+		rows = Game.level_rows(level_id)
 	_resize_grid()
+
+
+func _level_file() -> String:
+	return String(Game.LEVELS[level_id]).get_file()
+
+
+## Switch the editor to another game level (its own autosave).
+func select_level(id: int) -> void:
+	if id == level_id:
+		return
+	_autosave()
+	level_id = id
+	if _level_pick:
+		_level_pick.select(Game.LEVELS.keys().find(id))
+	_load_initial()
+	_scroll.scroll_vertical = 0
+	_toast_msg("Editing %s (%s)" % [Game.LEVEL_NAMES[id], _level_file()])
 
 
 func _resize_grid() -> void:
@@ -88,7 +116,7 @@ func _resize_grid() -> void:
 
 
 func _autosave() -> void:
-	var f := FileAccess.open(AUTOSAVE, FileAccess.WRITE)
+	var f := FileAccess.open(_autosave_path(), FileAccess.WRITE)
 	if f:
 		f.store_string(LevelData.to_text(rows))
 
@@ -128,6 +156,17 @@ const GROUPS := [
 	{"id": "teleports", "name": "Spawn & teleports", "items": [
 		["P", "map-pin", "Spawn point (P)"],
 		["T", "arrow-up-to-line", "Teleport to top (T)"],
+	]},
+	{"id": "garden", "name": "Garden (level 2)", "items": [
+		["@", "circle", "Bubble platform (@)"],
+		["%", "circle-dashed", "Popping bubble (%)"],
+		["~", "wind", "Updraft (~)"],
+		["N", "bell", "Distraction (N)"],
+		["6", "utensils", "Minigame: iron plate (6)"],
+		["7", "music", "Minigame: rhythm (7)"],
+		["8", "calendar-heart", "Minigame: body signals (8)"],
+		["9", "waves", "LH wave starts (9)"],
+		["E", "flag", "Summit / level end (E)"],
 	]},
 	{"id": "eraser", "name": "Eraser", "items": [
 		[" ", "eraser", "Eraser (or right click on the grid)"],
@@ -187,7 +226,7 @@ func _build_sidebar() -> void:
 		b.gui_input.connect(_group_input.bind(g.id))
 		b.pressed.connect(_group_pressed.bind(g.id))
 		col.add_child(b)
-		if g.id == "teleports":
+		if g.id == "garden":
 			col.add_child(HSeparator.new())
 		_groups[g.id] = {"button": b, "menu": menu, "current": items[0], "name": g.name, "multi": items.size() > 1}
 	_build_header()
@@ -231,16 +270,26 @@ func _build_header() -> void:
 		header.position = Vector2(SIDEBAR + 8, (SIDEBAR - ICON) / 2)
 		add_child(header)
 	header.add_theme_constant_override("separation", 2)
+	_level_pick = OptionButton.new()
+	_level_pick.focus_mode = Control.FOCUS_NONE
+	_level_pick.add_theme_font_size_override("font_size", 12)
+	_level_pick.custom_minimum_size = Vector2(96, ICON)
+	_level_pick.tooltip_text = "Which game level to edit"
+	for id in Game.LEVELS:
+		_level_pick.add_item(Game.LEVEL_NAMES[id])
+	_level_pick.select(Game.LEVELS.keys().find(level_id))
+	_level_pick.item_selected.connect(func(i): select_level(Game.LEVELS.keys()[i]))
+	header.add_child(_level_pick)
 	var items := [
 		["play", "Test level (Enter)", start_test], null,
 		["gamepad-2", "Use this level in the game", _use_in_game],
 		["undo-2", "Back to the bundled level", _use_bundled], null,
-		["folder-open", "Load the game level (cave.txt)", _load_game_level],
+		["folder-open", "Load the game level from the build", _load_game_level],
 		["file-plus", "New empty level", _new_level],
 		["list-plus", "Add 20 rows at the bottom", _add_rows], null,
 		["import", "Import level text", _open_import],
-		["download", "Export: copy + download cave.txt", _export], null,
-		["git-commit-horizontal", "Save to repo (commits cave.txt to GitHub)", save_to_repo],
+		["download", "Export: copy + download the level text", _export], null,
+		["git-commit-horizontal", "Save to repo (commits the level to GitHub)", save_to_repo],
 	]
 	for it in items:
 		if it == null:
@@ -335,10 +384,27 @@ func _draw_grid() -> void:
 				"P":
 					ci.draw_circle(mid, 12, Color("#22c55e"))
 					Draw.text_center(ci, font, mid, "P", 12, Color.WHITE)
-				"1", "2", "3", "4", "5", "B":
+				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E":
 					ci.draw_rect(cell.grow(-1), Color("#581c87", 0.8))
 					ci.draw_rect(cell.grow(-1), Color("#c084fc"), false, 1.0)
 					Draw.text_center(ci, font, mid, ch, 12, Color.WHITE)
+				"@":
+					ci.draw_circle(mid, 13, Color("#f9a8d4", 0.5))
+					ci.draw_arc(mid, 13, 0, TAU, 24, Color("#fbcfe8"), 2.0, true)
+				"%":
+					ci.draw_circle(mid, 13, Color("#fde68a", 0.4))
+					for k in 8:
+						ci.draw_arc(mid, 13, k * TAU / 8, k * TAU / 8 + TAU / 16, 4, Color("#fde68a"), 2.0, true)
+				"~":
+					ci.draw_rect(cell.grow(-2), Color("#fef9c3", 0.12))
+					for k in 3:
+						var yy := cell.position.y + 6 + k * 8
+						ci.draw_line(Vector2(mid.x - 2, yy + 6), Vector2(mid.x - 2, yy), Color("#fef08a", 0.8), 2.0)
+						ci.draw_line(Vector2(mid.x + 8, yy + 8), Vector2(mid.x + 8, yy + 2), Color("#fef08a", 0.5), 2.0)
+				"N":
+					ci.draw_rect(Rect2(mid - Vector2(12, 9), Vector2(24, 18)), Color("#e2e8f0"))
+					ci.draw_circle(mid + Vector2(10, -8), 4, Color("#ef4444"))
+					Draw.text_center(ci, font, mid, "!", 12, Color("#334155"))
 				_:
 					ci.draw_rect(cell.grow(-1), Color("#1e3a8a", 0.8))
 					ci.draw_rect(cell.grow(-1), Color("#60a5fa"), false, 1.0)
@@ -365,19 +431,20 @@ func _draw_grid() -> void:
 
 func _use_in_game() -> void:
 	Game.custom_level_rows = rows.duplicate()
-	_toast_msg("This level is now used by the game (until reload).")
+	Game.custom_level_id = level_id
+	_toast_msg("The game now uses this %s level (until reload)." % Game.LEVEL_NAMES[level_id].to_lower())
 
 
 func _use_bundled() -> void:
 	Game.custom_level_rows = PackedStringArray()
-	_toast_msg("Game uses the bundled level again.")
+	_toast_msg("Game uses the bundled levels again.")
 
 
 func _load_game_level() -> void:
-	rows = Game.load_level_rows()
+	rows = Game.level_rows(level_id)
 	_resize_grid()
 	_autosave()
-	_toast_msg("Loaded data/levels/cave.txt")
+	_toast_msg("Loaded data/levels/" + _level_file())
 
 
 func _new_level() -> void:
@@ -400,11 +467,11 @@ func _export() -> void:
 	var txt := LevelData.to_text(rows)
 	DisplayServer.clipboard_set(txt)
 	if OS.has_feature("web"):
-		JavaScriptBridge.download_buffer(txt.to_utf8_buffer(), "cave.txt", "text/plain")
+		JavaScriptBridge.download_buffer(txt.to_utf8_buffer(), _level_file(), "text/plain")
 	_toast_msg("Level copied to clipboard%s!" % (" and downloaded" if OS.has_feature("web") else ""))
 
 
-## Commits the level as godot/data/levels/cave.txt (the game rebuilds with it).
+## Commits the level as godot/data/levels/<level>.txt (the game rebuilds with it).
 func save_to_repo() -> void:
 	if not GitHubSave.has_token():
 		GitHubSave.token_dialog(self, _on_token)
@@ -412,8 +479,8 @@ func save_to_repo() -> void:
 	var gh := GitHubSave.new()
 	add_child(gh)
 	gh.progress.connect(_toast_msg)
-	var res := await gh.commit({"godot/data/levels/cave.txt": LevelData.to_text(rows).to_utf8_buffer()},
-		"Level editor: update the cave level\n\nSaved from Developer mode > Level editor in the browser.")
+	var res := await gh.commit({"godot/data/levels/" + _level_file(): LevelData.to_text(rows).to_utf8_buffer()},
+		"Level editor: update the %s level\n\nSaved from Developer mode > Level editor in the browser." % Game.LEVEL_NAMES[level_id].to_lower())
 	gh.queue_free()
 	if not res.ok:
 		_toast_msg("Save failed: " + res.error)
@@ -483,7 +550,10 @@ func start_test() -> void:
 	_test = Platformer.new()
 	_test.hud_layer = 32
 	_test.player_layer = 31
-	_test.setup(rows, 0)
+	Game.level = level_id
+	if level_id == 2:
+		Game.upgrades = {"jump": true, "dash": true, "double": true}
+	_test.setup(rows, 0, level_id)
 	_test.active = true
 	_test.trigger.connect(_on_test_trigger)
 	_test.boss_defeated.connect(func(): _toast_msg("Boss defeated!"))
@@ -526,7 +596,12 @@ func stop_test() -> void:
 
 
 func _on_test_trigger(name: String) -> void:
-	if name in ["white_fade", "first_enemy", "dialog_a"]:
+	if name in ["white_fade", "first_enemy", "dialog_a", "dialog_g"]:
+		return
+	if name == "wave_lost":
+		_toast_msg("The LH wave caught you — restarting test")
+		stop_test()
+		start_test.call_deferred()
 		return
 	if name.begins_with("game_over"):
 		_toast_msg("Out of iron — restarting test")

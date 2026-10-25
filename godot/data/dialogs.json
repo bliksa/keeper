@@ -2,7 +2,12 @@
  "_comment": "Dialog nodes. 'text' and 'buttons' are string keys from data/i18n/<lang>.json. Voice file = voice_overrides[key] or <key>.wav if it exists in assets/audio. 'letter_dialogs' maps lowercase level letters (a-z) to dialog nodes; unmapped letters use node 'DIA_<LETTER>' if it exists.",
  "letter_dialogs": {
   "a": "cave_start",
-  "x": "first_cramp"
+  "x": "first_cramp",
+  "g": "garden_start",
+  "h": "garden_bubbles",
+  "k": "garden_updraft",
+  "m": "garden_distraction",
+  "n": "garden_wave_hint"
  },
  "voice_overrides": {
   "DIA_001": "Kyra-001.wav",
@@ -361,7 +366,7 @@
     }
    ],
    "buttons": [
-    "BTN_BACK_MENU"
+    "BTN_NEXT_PHASE"
    ]
   },
   "boss_loss": {
@@ -385,6 +390,201 @@
    ],
    "buttons": [
     "BTN_RESTART"
+   ]
+  },
+  "garden_start": {
+   "parts": [
+    {
+     "speaker": "Kyra",
+     "text": "DIA_G01"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G02"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G03"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G04"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_CLIMB"
+   ]
+  },
+  "garden_bubbles": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G05"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "garden_updraft": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G06"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "garden_distraction": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G07"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "garden_wave_hint": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G08"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "mg5_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G10"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G11"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_DO_THIS"
+   ]
+  },
+  "mg5_after": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G12"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G13"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "mg6_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G14"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G15"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_DO_THIS"
+   ]
+  },
+  "mg6_after": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G16"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G17"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "mg7_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G18"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G19"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_DO_THIS"
+   ]
+  },
+  "mg7_after": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G20"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G21"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G22"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "wave_start": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G23"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G24"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_CLIMB"
+   ]
+  },
+  "garden_end": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G25"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G26"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_G27"
+    }
+   ],
+   "buttons": [
+    "BTN_BACK_MENU"
    ]
   }
  },

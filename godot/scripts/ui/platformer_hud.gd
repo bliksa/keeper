@@ -54,6 +54,26 @@ func _draw() -> void:
 
 	if Game.has_breathing:
 		_draw_breath(font)
+	if platformer.is_garden():
+		_draw_upgrades(font, r.end.y + 8)
+
+
+## Level 2 power-ups earned so far (and the dash cooldown).
+func _draw_upgrades(font: Font, y: float) -> void:
+	var x := 16.0
+	for u in [["jump", "UPGRADE_JUMP"], ["dash", "UPGRADE_DASH"], ["double", "UPGRADE_DOUBLE"]]:
+		if not Game.upgrades.has(u[0]):
+			continue
+		var label := Text.plain(Text.t(u[1]))
+		var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+		var r := Rect2(x, y, tw + 24, 26)
+		Draw.panel(self, r, BG, 13, Color(TEAL, 0.2), 2)
+		if u[0] == "dash":
+			var cd: float = platformer.p.dash_cooldown
+			if cd > 0:
+				Draw.panel(self, Rect2(r.position, Vector2(r.size.x * (1.0 - clampf(cd / 0.9, 0, 1)), r.size.y)), Color(TEAL, 0.25), 13)
+		draw_string(font, Vector2(r.position.x + 12, r.position.y + 18), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, INK)
+		x += r.size.x + 6
 
 
 func _draw_breath(font: Font) -> void:

@@ -6,6 +6,9 @@ a hráč pochopí, že nič z toho nie je „chyba“, ale rytmus.
 
 Metafora: štyri ročné obdobia (zima, jar, leto, jeseň).
 
+**Stav:** level 2 (Jarná záhrada) je implementovaný, pozri „Ako je level 2
+spravený“ na konci. Levely 3 a 4 sú zatiaľ len návrh.
+
 Tento návrh pridáva nové mechaniky a svety nad rámec súčasnej hry. Jeho
 alternatíva, ktorá ostáva pri existujúcich mechanikách, je
 v `gdd_levely_jaskyna.md`.
@@ -113,3 +116,25 @@ Každý level je nový textový súbor levelu s vlastnými prvkami v legende
 a dialógy v troch jazykoch. Level editor sa rozšíri o výber levelu. Nové
 prostredia potrebujú novú grafiku (pozadia, plošiny, bubliny, mráčiky);
 začať sa dá s dočasnou grafikou a obrázky grafičiek potom vymeniť.
+
+## Ako je level 2 spravený (stav implementácie)
+
+- `godot/data/levels/garden.txt` (105 riadkov, šplhá sa hore; spawn dole,
+  vrchol `E` hore). Nové znaky legendy: `@` bublina, `%` praskajúca bublina,
+  `~` vzdušný prúd, `N` rozptýlenie, `6 7 8` minihry, `9` vlna LH, `E` vrchol.
+- Pozadie je procedurálne: prechod zo súmraku (indigo, ružová) cez úsvit do
+  rána so slnkom; popínavé rastliny po stranách, peľ.
+- Power-upy: po minihre 1 vyšší skok, po minihre 2 šprint (Shift), po minihre
+  3 vyšší dvojskok (`Game.upgrades`).
+- Minihry: Tanier so železom (`iron_plate_game.gd`), Chyť rytmus
+  (`rhythm_game.gd`), Signály tela (`signals_game.gd`).
+- Vyvrcholenie: vlna LH (`9`) stúpa zospodu, prehra = panel „Vlna ťa dobehla“
+  a návrat na checkpoint vlny; vrchol (`E`) uvoľní vajíčko a Estra uzavrie
+  level (`garden_end`), potom hlavné menu.
+- Dialógy: `garden_start`, `garden_bubbles`, `garden_updraft`,
+  `garden_distraction`, `garden_wave_hint`, `mg5_*`, `mg6_*`, `mg7_*`,
+  `wave_start`, `garden_end` v troch jazykoch.
+- Zatiaľ bez novej grafiky od grafičiek (plošiny, bubliny, rozptýlenia aj
+  pozadie sú kreslené kódom); obrázky sa dajú vymeniť neskôr.
+- Rýchlosť vlny (`WAVE_SPEED`, `WAVE_MAX` v `platformer.gd`) a rozloženie
+  plošín treba doladiť podľa hrania.
