@@ -150,7 +150,10 @@ gets a code-drawn portrait (`DialogBox._portrait`). Strings `DIA_M*`,
 
 ## Level 3: the summit (ovulation)
 
-Same `Platformer` with `level_id = 2` (`is_garden()`): climbed upwards, procedural
+Same `Platformer` with `level_id = 3` (`is_summit()`): an Icy Tower style climb
+(`SUMMIT_SPEED` / `SUMMIT_ACCEL`, wall jump via `on_wall` + `WALL_KICK`, `combo`
+for landings higher than `last_landing_y`, shown in the HUD; `garden.txt` is
+generated as short alternating platforms), climbed upwards, procedural
 dusk→morning background (`_draw_garden_bg`, by `_climb()`), bubble platforms
 (`Plat.kind` bubble/pop, `_pop_bubble`), updrafts (entity `updraft`), distractions
 (enemy behaviour `distract`: slow, no iron loss), power-ups in `Game.upgrades`

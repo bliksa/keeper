@@ -213,10 +213,10 @@
  "BTN_DONE": "Feito!",
  "DIA_M01": "Hm? Estou... lá fora. Está tudo verde e molhado, como depois da chuva.",
  "DIA_M02": "Olá olá olá! Finalmente acordada! Eu sou a Iskra. Eu acordo as coisas: a ti, o jardim, as sementinhas. Anda, anda, por aqui!",
- "DIA_M03": "Calma, Iskra. Kyra, esta é a fase folicular: o teu corpo está a reconstruir-se, o estrogénio sobe e a tua energia também. O rio lá em baixo corre ao contrário; se caíres, leva-te para trás.",
- "DIA_M04": "Apanha as gotas de água para o teu recipiente; quanto mais cheio, mais consegues fazer. E as sementes de luz? Essas não se agarram. Aponta a uma e mantém <KB>o botão do rato ou E</KB><GP>LB</GP>: o fio puxa-a.",
+ "DIA_M03": "Calma, Iskra. Kyra, esta é a fase folicular: o teu corpo está a reconstruir-se e o estrogénio sobe. O rio lá em baixo é o último ciclo a escoar: água velha, fria, lenta de atravessar a pé. Fica em cima, nas folhas, sempre que puderes.",
+ "DIA_M04": "O recipiente quer água nova: o orvalho que a manhã deixou nas folhas lá em cima. Quanto mais cheio, mais o teu fio consegue. E as sementes de luz? Essas não se agarram. Aponta a uma e mantém <KB>o botão do rato ou E</KB><GP>LB</GP>: o fio puxa-a.",
  "DIA_M05": "Uma semente! Vês como brilha? Aponta, mantém, e não largues até a teres na mão. Se largares cedo demais, foge. Dez sementes, mais o recipiente cheio, e o portão abre-se.",
- "DIA_M06": "O rio é o último ciclo a escoar. Se caíres, leva-te de volta à última pedra onde estiveste e entorna um pouco de água. Não faz mal, é só um desvio.",
+ "DIA_M06": "Aquele rio é o que escoa: o último ciclo, já gasto. Podes atravessá-lo a pé, mas é lento e empurra-te para trás, por isso sai dele onde puderes. Não enche o recipiente; só o orvalho nas folhas enche.",
  "DIA_M07": "Quando te concentras, podem vir sombras: stress, preocupações, barulho. Só magoam enquanto seguras o fio. Larga, ou salta, e passam. Se uma te atingir, perdes água e o portão afasta-se. O stress atrasa mesmo a ovulação.",
  "DIA_M08": "O portão está perto! Abre-se quando o recipiente estiver cheio e tiveres dez sementes. Falta alguma? Volta atrás, o prado não vai a lado nenhum.",
  "DIA_M09": "Ainda não! O portão quer o recipiente cheio e dez sementes. Olha à volta, ainda há mais para encontrar.",
@@ -272,9 +272,7 @@
  "SIG_IRREGULAR": "Ciclos de durações diferentes nos primeiros anos",
  "EXP_IRREGULAR": "Normal enquanto o ciclo assenta; 21 a 35 dias é o intervalo habitual.",
  "HINT_IRREGULAR": "Não há nada de errado; o relógio ainda se está a acertar.",
- "HUD_WATER": "água",
- "UPGRADE_RUN": "correr",
- "UPGRADE_DOUBLE_JUMP": "salto duplo",
+ "HUD_WATER": "orvalho",
  "UPGRADE_THREAD": "fio mais longo",
  "ROOM_01": "Cama",
  "ROOM_02": "Candeeiro",
@@ -335,5 +333,7 @@
  "MARKET_17": "Uvas",
  "MARKET_18": "Ervas",
  "MARKET_19": "Cogumelos",
- "MARKET_20": "Cerejas"
+ "MARKET_20": "Cerejas",
+ "UPGRADE_PULL": "puxa mais depressa",
+ "UPGRADE_SHIELD": "orvalho protege"
 }

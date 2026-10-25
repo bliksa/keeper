@@ -213,10 +213,10 @@
  "BTN_DONE": "Hotovo!",
  "DIA_M01": "Hm? Som... vonku. Všetko je zelené a mokré, ako po daždi.",
  "DIA_M02": "Ahoj ahoj ahoj! Konečne hore! Ja som Iskra. Ja veci prebúdzam: teba, záhradu, malé semienka. Poď, poď, tadiaľto!",
- "DIA_M03": "Pomaly, Iskra. Kyra, toto je folikulárna fáza: telo sa znova stavia, estrogén stúpa a s ním aj tvoja energia. Rieka dole tečie opačným smerom; keď do nej spadneš, odnesie ťa späť.",
- "DIA_M04": "Zbieraj kvapky vody do nádoby; čím je plnšia, tým viac dokážeš. A svetelné semienka? Tie sa nechytajú rukou. Zamieriš na jedno a podržíš <KB>tlačidlo myši alebo E</KB><GP>LB</GP>: niť si ho pritiahne.",
+ "DIA_M03": "Pomaly, Iskra. Kyra, toto je folikulárna fáza: telo sa znova stavia a estrogén stúpa. Rieka dole je minulý cyklus, ktorý odteká: stará voda, studená, brodí sa pomaly. Drž sa hore na listoch, kde sa dá.",
+ "DIA_M04": "Nádoba chce novú vodu: rosu, ktorú ráno nechalo na listoch tam hore. Čím je plnšia, tým viac dokáže tvoja niť. A svetelné semienka? Tie sa nechytajú rukou. Zamieriš na jedno a podržíš <KB>tlačidlo myši alebo E</KB><GP>LB</GP>: niť si ho pritiahne.",
  "DIA_M05": "Semienko! Vidíš, ako svieti? Zamier naň, podrž a nepusti, kým ho nemáš v ruke. Keď pustíš priskoro, unikne. Desať semienok a plná nádoba, a brána sa otvorí.",
- "DIA_M06": "Rieka je minulý cyklus, ktorý odteká. Keď do nej spadneš, odnesie ťa k poslednému kameňu, na ktorom si stála, a vyleje trochu vody. Nič sa nestane, len obchádzka.",
+ "DIA_M06": "Tá rieka je to, čo odteká: minulý cyklus, už použitý. Dá sa ňou brodiť, ale pomaly a tlačí ťa späť, tak vylez von, kde sa dá. Nádobu nenaplní; to dokáže len rosa hore na listoch.",
  "DIA_M07": "Keď sa sústredíš, môžu prísť tiene: stres, starosti, hluk. Ubližujú, len kým držíš niť. Pusti ju alebo vyskoč a prejdú. Keď ťa jeden zasiahne, stratíš vodu a brána sa posunie ďalej. Stres naozaj oddiali ovuláciu.",
  "DIA_M08": "Brána je blízko! Otvorí sa, keď bude nádoba plná a budeš mať desať semienok. Chýba ti niečo? Vráť sa po to, lúka nikam neutečie.",
  "DIA_M09": "Ešte nie! Brána chce plnú nádobu a desať semienok. Poobzeraj sa, ešte je čo nájsť.",
@@ -272,9 +272,7 @@
  "SIG_IRREGULAR": "V prvých rokoch rôzne dlhé cykly",
  "EXP_IRREGULAR": "Normálne, kým sa cyklus ustáli; 21 až 35 dní je bežné rozpätie.",
  "HINT_IRREGULAR": "Nič nie je zle; hodiny sa ešte nastavujú.",
- "HUD_WATER": "voda",
- "UPGRADE_RUN": "beh",
- "UPGRADE_DOUBLE_JUMP": "dvojskok",
+ "HUD_WATER": "rosa",
  "UPGRADE_THREAD": "dlhšia niť",
  "ROOM_01": "Posteľ",
  "ROOM_02": "Lampa",
@@ -335,5 +333,7 @@
  "MARKET_17": "Hrozno",
  "MARKET_18": "Bylinky",
  "MARKET_19": "Huby",
- "MARKET_20": "Čerešne"
+ "MARKET_20": "Čerešne",
+ "UPGRADE_PULL": "rýchlejšie ťahá",
+ "UPGRADE_SHIELD": "rosa chráni"
 }

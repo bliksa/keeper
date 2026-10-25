@@ -61,6 +61,12 @@ func _draw() -> void:
 		_draw_breath(font)
 	if platformer.is_summit():
 		_draw_upgrades(font, r.end.y + 8)
+		if platformer.combo >= 2:
+			var ct := "COMBO x%d" % platformer.combo
+			var cw := font.get_string_size(ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+			var cr := Rect2(1066 / 2 - cw / 2 - 14, 16, cw + 28, 34)
+			Draw.panel(self, cr, Color("#78350f"), 17, Color("#fbbf24"), 2)
+			draw_string(font, Vector2(cr.position.x + 14, cr.position.y + 24), ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#fef3c7"))
 
 
 ## Level 2 power-ups earned so far (and the dash cooldown).
@@ -227,7 +233,7 @@ func _draw_meadow(font: Font) -> void:
 		var x := inner.position.x + inner.size.x * k / 100.0
 		var on := Game.water >= k
 		draw_line(Vector2(x, inner.position.y), Vector2(x, inner.end.y), Color(INK, 0.35), 2.0)
-		var tag: String = {25: "UPGRADE_RUN", 50: "UPGRADE_DOUBLE_JUMP", 75: "UPGRADE_THREAD"}[k]
+		var tag: String = {25: "UPGRADE_THREAD", 50: "UPGRADE_PULL", 75: "UPGRADE_SHIELD"}[k]
 		var txt := Text.plain(Text.t(tag))
 		Draw.text_center(self, Text.font, Vector2(x, v.position.y - 8), txt, 10, Color(INK if on else Color(INK, 0.45)))
 	draw_string(font, Vector2(v.position.x + 12, v.position.y + 20), "%d %%" % Game.water, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, INK)

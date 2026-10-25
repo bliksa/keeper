@@ -39,10 +39,15 @@ Po porazení Veľkého kŕču Kyra vstane, odíde doprava a ocitne sa na lúke p
 daždi (Kráľovstvo Rastov podľa poznámok v game design dokumente). Sprevádza ju
 **Iskra (FSH)**, malá bytosť z iskier.
 
-- **Rieka** pod plošinami tečie proti smeru hry. Keď do nej Kyra spadne, prúd ju
-  odnesie späť na posledný kameň, kde stála, a vyleje trochu vody z nádoby.
-- **Kvapky vody (estrogén)** plnia nádobu dole na obrazovke. Pri 25 % beží
-  rýchlejšie, pri 50 % sa odomkne dvojskok, pri 75 % niť dosiahne ďalej.
+- Plošiny sú vo viacerých vrstvách ako v jaskyni: schody hore a dole, ostrovy
+  a kamene nad riekou, koruny stromov, skryté vysoké miesta so semienkami.
+- **Rieka** pod plošinami je minulý cyklus, ktorý odteká: stará voda. Nie je to
+  smrť, len brodenie: ide sa ňou veľmi pomaly, prúd tlačí späť a skok je
+  krátky, tak sa oplatí vyliezť na breh.
+- **Rosa (estrogén)** je nová voda, ktorú ráno nechalo na listoch hore; preto
+  sa zbiera na vyšších plošinách a plní nádobu dole na obrazovke. Beh aj
+  dvojskok Kyre z jaskyne ostávajú; nádoba odomyká niť: pri 25 % dosiahne
+  ďalej, pri 50 % ťahá rýchlejšie, pri 75 % rosa vstrebe prvý zásah tieňa.
 - **Svetelné semienka (folikuly)** sa nechytajú dotykom. Zamieriš myšou
   (na gamepade pravou páčkou), podržíš ľavé tlačidlo / `E` / `LB` a niť
   sústredenia semienko priťahuje. Keď pustíš priskoro, unikne. Semienka sú
@@ -59,10 +64,12 @@ daždi (Kráľovstvo Rastov podľa poznámok v game design dokumente). Sprevádz
 
 ### Level 3: Vrchol (ovulácia, hore)
 
-Pôvodný návrh záhrady (dnes `garden.txt`): šplhanie hore, bubliny, vzdušné
-prúdy, rozptýlenia, minihry Tanier so železom, Chyť rytmus a Signály tela
-s power-upmi, a vlna LH namiesto bossa. Plán: zrýchliť v štýle Icy Tower /
-TowerFall a pridať skok od steny a kombá.
+Šplhanie v štýle Icy Tower: krátke plošiny striedavo na oboch stranách,
+rýchlejší pohyb, **skok od steny** (pri okraji obrazovky vo vzduchu stlač
+skok), **kombo** za sériu pristátí vyššie a vyššie (zrýchľuje a zvyšuje skok,
+pád ho zruší), bubliny, praskajúce bubliny, vzdušné prúdy a rozptýlenia.
+Minihry Tanier so železom, Chyť rytmus a Signály tela dávajú power-upy
+(vyšší skok, šprint, super dvojskok) a na konci je vlna LH namiesto bossa.
 
 Texty sú v troch jazykoch (`DIA_M*` lúka, `DIA_G*` vrchol, `MG5_*`–`MG10_*`).
 Fakty treba dať skontrolovať odborníčke.

@@ -257,28 +257,34 @@ func _run() -> void:
 	check(Game.water == Game.WATER_PER_DROP, "a water drop fills the vessel")
 	Game.water = 20
 	# The river carries her back to the last ground she stood on.
-	await seconds(0.6)
-	var home: Vector2 = pf.last_ground
-	check(pf.p.is_grounded and home.y > 0, "the last ground is remembered")
-	pf.p.x = home.x + 1200
-	pf.p.y = pf.level.water_top
+	# The river: wading is slow and pushes back, no harm done.
+	var bank := Vector2(pf.p.x, pf.p.y)
+	pf.p.x = bank.x + 1200
+	pf.p.y = pf.level.water_top + 10
 	pf.p.vy = 0
 	await seconds(0.3)
-	check(pf.river_timer > 0 and Game.water == 10, "falling in the river spills water")
-	await seconds(1.3)
-	check(pf.river_timer <= 0 and absf(pf.p.x - home.x) < 40 and pf.p.y < pf.level.water_top - 50, "the current carries her back to the last ground")
-	check(pf._max_jumps() == 1 and not pf.water_unlock("run"), "no double jump and no fast run with an empty vessel")
+	check(pf.in_water and pf.p.is_grounded and Game.water == 20, "she wades in the river, no water is lost")
+	var wx := pf.p.x
+	Input.action_press("move_right")
+	await seconds(1.0)
+	Input.action_release("move_right")
+	var waded := pf.p.x - wx
+	check(waded > 20 and waded < 160, "wading is slow (%.0f px/s)" % waded)
+	Game.water = 10
+	check(pf._max_jumps() == 2 and not pf.water_unlock("thread"), "double jump stays; the thread is short with an empty vessel")
 	Game.water = 50
-	check(pf._max_jumps() == 2 and pf.water_unlock("run") and not pf.water_unlock("thread"), "50 % water: fast run and double jump unlock")
+	check(pf.water_unlock("thread") and pf.water_unlock("pull") and not pf.water_unlock("shield"), "50 % dew: longer thread and faster pull")
+	pf.p.x = bank.x
+	pf.p.y = bank.y
+	pf.p.vy = 0
+	await frames(3)
 	# The focus thread pulls a seed in.
 	var seeds: Array = pf.level.entities.filter(func(e): return e.type == "seed")
 	seeds.sort_custom(func(a, b): return a.base_x < b.base_x)
 	var seed0: LevelData.Ent = seeds[0]
-	var seed1: LevelData.Ent = seeds[3]
-	check(seed0.tier == 0 and seed1.tier == 1 and seeds[11].tier == 3, "seeds get harder from left to right")
-	pf.p.x = seed0.base_x - 90
-	pf.p.y = 7 * LevelData.ROW_H_H - pf.p.height
-	pf.p.vy = 0
+	var seed1: LevelData.Ent = seeds.filter(func(e): return e.tier == 1)[0]
+	check(seed0.tier == 0 and seeds[1].tier == 0 and seeds.back().tier == 3, "seeds get harder from left to right")
+	_stand_under(pf, seed0)
 	pf.aim_mode = "mouse"
 	pf.aim = Vector2(seed0.x + 14, seed0.y + 14)
 	pf.begin_focus()
@@ -289,7 +295,7 @@ func _run() -> void:
 	pf.end_focus()
 	# Letting go early: the seed drifts back.
 	var seed2: LevelData.Ent = seeds[1]
-	pf.p.x = seed2.base_x - 90
+	_stand_under(pf, seed2, 140)
 	pf.aim = Vector2(seed2.x + 14, seed2.y + 14)
 	pf.begin_focus()
 	await seconds(0.4)
@@ -298,7 +304,7 @@ func _run() -> void:
 	await seconds(1.0)
 	check(not seed2.collected and absf(seed2.x - seed2.base_x) < absf(pulled - seed2.base_x), "letting go early loses the seed, it drifts home")
 	# A blinking seed can't be caught while dark.
-	pf.p.x = seed1.base_x - 90
+	_stand_under(pf, seed1)
 	pf.time_ms = (3.0 - seed1.id * 0.7) * 1000.0
 	await frames(2)
 	check(not seed1.visible, "a blinking seed goes dark")
@@ -308,17 +314,23 @@ func _run() -> void:
 	check(pf.thread_target == -1, "the thread finds nothing while the seed is dark")
 	pf.end_focus()
 	# A shadow hits while focusing: water spills, the gate moves.
-	pf.p.x = seed2.base_x - 120
+	_stand_under(pf, seed2, 140)
 	pf.aim = Vector2(seed2.x + 14, seed2.y + 14)
 	pf.begin_focus()
 	pf.shadow_timer = 0
 	await frames(3)
 	check(pf.thread_target == seed2.id and pf.shadows.size() == 1, "a shadow appears while the thread is held")
+	Game.water = 80
 	pf.shadows[0].x = pf.p.center().x
 	pf.shadows[0].y = pf.p.center().y
-	var w_before := Game.water
 	await frames(3)
-	check(not pf.focus and Game.water == w_before - 15 and Game.gate_shift == 3, "the shadow breaks the focus, spills water and pushes the gate")
+	check(pf.focus and pf.shield_used and Game.water == 80 and (pf.shadows.is_empty() or pf.shadows[0].fading), "at 75 % the dew absorbs the first shadow hit")
+	pf.shadow_timer = 0
+	await frames(3)
+	pf.shadows[0].x = pf.p.center().x
+	pf.shadows[0].y = pf.p.center().y
+	await frames(3)
+	check(not pf.focus and Game.water == 65 and Game.gate_shift == 3, "the second shadow breaks the focus, spills water and pushes the gate")
 	var gate: LevelData.Ent = null
 	for e in pf.level.entities:
 		if e.trigger_type == "gate":
@@ -405,6 +417,42 @@ func _run() -> void:
 	await finish_dialog("garden_start")
 	pf = main.platformer
 	check(pf.is_summit() and pf.p.y > pf.level_h - 500, "starts at the bottom of the summit")
+	# Wall jump: out of jumps, touching the left wall.
+	pf.p.x = 0
+	pf.p.y = pf.level_h - 400
+	pf.p.vy = 2
+	pf.p.jumps_left = 0
+	pf.p.is_grounded = false
+	await frames(2)
+	check(pf.on_wall, "touching the wall in the air")
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	check(pf.p.vy < -5 and pf.p.vx > 5, "a wall jump kicks off the wall")
+	# Combo: landing higher and higher.
+	var ups: Array = pf.level.platforms.filter(func(pl): return pl.kind == "rock")
+	ups.sort_custom(func(a, b): return a.base_y > b.base_y)
+	pf.combo = 0
+	pf.last_landing_y = pf.level_h
+	var landed := 0
+	var prev_y: float = pf.level_h
+	for pl in ups:
+		if landed >= 3:
+			break
+		if pl.base_y > prev_y - 100:
+			continue
+		prev_y = pl.base_y
+		landed += 1
+		pf.p.x = pl.x + 4
+		pf.p.y = pl.base_y - pf.p.height - 6
+		pf.p.vy = 2
+		pf.p.is_grounded = false
+		pf.p.was_grounded = false
+		await frames(4)
+	check(pf.combo == 3, "three landings higher up build a combo of 3")
+	pf.p.y = pf.p.y + 400
+	await frames(3)
+	check(pf.combo == 0, "falling back down resets the combo")
 	await seconds(1.0)
 	check(pf.p.is_grounded, "stands on the garden floor")
 	# A popping bubble bursts after standing on it and regrows later.
@@ -574,6 +622,10 @@ func _run() -> void:
 	check(not main._pause.is_open(), "no pause menu on the title screen")
 
 	step("developer menu + level editor")
+	for i in [1, 2, 3]:
+		var path := LevelEditor.AUTOSAVE if i == 1 else LevelEditor.AUTOSAVE_FMT % i
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(path)
 	main._go_boot()
 	await frames(3)
 	await _click((main._menu as BootScreen)._dev.get_global_rect().get_center())
@@ -739,6 +791,18 @@ func _teleport_to_entity(pf: Platformer, type: String) -> LevelData.Ent:
 			return e
 	check(false, "found a %s entity" % type)
 	return null
+
+
+## Stands the player on the highest platform under a seed, a little to its left.
+func _stand_under(pf: Platformer, e: LevelData.Ent, dx := 50.0) -> void:
+	var best: LevelData.Plat = null
+	for pl in pf.level.platforms:
+		if pl.base_y > e.base_y and pl.x <= e.base_x + 20 and pl.x + pl.w >= e.base_x - 20 and (best == null or pl.base_y < best.base_y):
+			best = pl
+	pf.p.x = e.base_x - dx
+	pf.p.y = (best.base_y if best else 7 * LevelData.ROW_H_H) - pf.p.height
+	pf.p.vy = 0
+	pf.camera_x = clampf(pf.p.x - 400, 0, pf.level_w - 1066)
 
 
 func _go_trigger(pf: Platformer, kind: String) -> void:

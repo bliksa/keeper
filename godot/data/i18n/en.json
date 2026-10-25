@@ -213,10 +213,10 @@
  "BTN_DONE": "Done!",
  "DIA_M01": "Hm? I'm... outside. Everything is green and wet, like after rain.",
  "DIA_M02": "Hi hi hi! Finally awake! I'm Iskra. I wake things up: you, the garden, the little seeds. Come on, come on, this way!",
- "DIA_M03": "Easy, Iskra. Kyra, this is the follicular phase: your body is rebuilding, estrogen is rising and so will your energy. The river below flows the other way; fall in and it carries you back.",
- "DIA_M04": "Collect the water drops into your vessel; the fuller it is, the more you can do. And the light seeds? You don't grab those. Aim at one and hold <KB>the mouse button or E</KB><GP>LB</GP>: the thread pulls it in.",
+ "DIA_M03": "Easy, Iskra. Kyra, this is the follicular phase: your body is rebuilding and estrogen is rising. The river below is the last cycle flowing away: old water, cold and slow to wade through. Stay up on the leaves where you can.",
+ "DIA_M04": "The vessel wants new water: the dew the morning left on the leaves up there. The fuller it is, the more your thread can do. And the light seeds? You don't grab those. Aim at one and hold <KB>the mouse button or E</KB><GP>LB</GP>: the thread pulls it in.",
  "DIA_M05": "A seed! See it glow? Aim at it, hold, and don't let go until it's in your hand. Let go too early and it slips away. Ten of them, plus a full vessel, and the gate opens.",
- "DIA_M06": "The river is the last cycle flowing away. Fall in and it carries you back to the last stone you stood on, and spills a little water. No harm done, just a detour.",
+ "DIA_M06": "That river is what's flowing away: the last cycle, used up. You can wade through it, but it's slow and it pushes you back, so climb out where you can. It won't fill the vessel; only the dew up on the leaves does.",
  "DIA_M07": "When you focus, shadows may come: stress, worries, noise. They only hurt while you hold the thread. Let go, or jump, and they pass. If one hits you, you lose water and the gate moves further away. Stress really does delay ovulation.",
  "DIA_M08": "The gate is close! It opens when the vessel is full and you've got ten seeds. Missing some? Go back for them, the meadow isn't going anywhere.",
  "DIA_M09": "Not yet! The gate wants a full vessel and ten seeds. Look around, there's more to find.",
@@ -272,9 +272,7 @@
  "SIG_IRREGULAR": "Cycles of different lengths in the first years",
  "EXP_IRREGULAR": "Normal while the cycle settles; 21 to 35 days is the usual range.",
  "HINT_IRREGULAR": "Nothing is wrong; the clock is still being set.",
- "HUD_WATER": "water",
- "UPGRADE_RUN": "run",
- "UPGRADE_DOUBLE_JUMP": "double jump",
+ "HUD_WATER": "dew",
  "UPGRADE_THREAD": "longer thread",
  "ROOM_01": "Bed",
  "ROOM_02": "Lamp",
@@ -335,5 +333,7 @@
  "MARKET_17": "Grapes",
  "MARKET_18": "Herbs",
  "MARKET_19": "Mushrooms",
- "MARKET_20": "Cherries"
+ "MARKET_20": "Cherries",
+ "UPGRADE_PULL": "faster pull",
+ "UPGRADE_SHIELD": "dew shield"
 }

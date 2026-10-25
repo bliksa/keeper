@@ -5,12 +5,14 @@ extends Node2D
 ## Physics constants and behaviours are copied 1:1 from the prototype; all
 ## per-frame values are scaled by dt60 (= delta * 60) like the original.
 ##
-## Level 2 (the meadow, level_id 2) is horizontal (left → right): a river below
-## carries you back to the last ground you stood on, water drops fill the vessel
-## (estrogen: 25 % faster run, 50 % double jump, 75 % longer thread), light seeds
-## are caught with the focus thread (aim + hold), shadows attack while you focus
-## and push the gate further away.
-## Level 3 (the summit, level_id 3) reuses everything and adds: climbing up
+## Level 2 (the meadow, level_id 2) is horizontal (left → right): the river below
+## is the old cycle flowing away (wading through it is slow, the current pushes
+## back), dew drops on the leaves fill the vessel (estrogen: 25 % longer thread,
+## 50 % faster pull, 75 % the dew absorbs one shadow hit), light seeds are caught
+## with the focus thread (aim + hold), shadows attack while you focus and push
+## the gate further away.
+## Level 3 (the summit, level_id 3) is an Icy Tower style climb: faster movement,
+## wall jumps off the sides, a combo for landing higher and higher, and adds: climbing up
 ## instead of down, bubble platforms, updrafts, distractions instead of cramps,
 ## power-ups from its minigames (jump, dash, double) and the LH wave chase that
 ## replaces the boss (reach the summit before the wave catches you).
@@ -40,7 +42,9 @@ const WAVE_SPEED := 1.3
 const WAVE_MAX := 2.0
 const WAVE_ACCEL := 0.02
 ## Level 2: the river, the focus thread and the shadows.
-const RIVER_TIME := 1.2
+const WADE_SPEED := 0.28
+const WADE_JUMP := 0.7
+const CURRENT := 0.12
 const THREAD_RANGE := 220.0
 const THREAD_RANGE_LONG := 320.0
 const THREAD_CONE := 0.6 # radians
@@ -48,6 +52,11 @@ const PULL_SPEED := 110.0
 const PULL_SPEED_DODGE := 70.0
 const CATCH_DIST := 30.0
 const SHADOW_SPEED := 3.2
+## Level 3: faster, wall jumps, combos.
+const SUMMIT_SPEED := 1.35
+const SUMMIT_ACCEL := 1.3
+const WALL_KICK := 10.0
+const WALL_SLIDE := 2.5
 
 const PARALLAX := [
 	["res://assets/images/1.png", 0.1],
@@ -69,7 +78,9 @@ var level_w := W
 var camera_x := 0.0
 ## Level 2 state.
 var last_ground := Vector2.ZERO
-var river_timer := 0.0
+## Wading through the river right now.
+var in_water := false
+var shield_used := false
 var focus := false
 var aim := Vector2.ZERO
 var aim_mode := "keys" # keys | mouse | stick
@@ -89,6 +100,11 @@ var level_id := 1
 var wave := {"active": false, "y": 0.0, "speed": 0.0, "lost": false, "won": false}
 ## Seconds since the summit was reached (egg release animation).
 var summit_timer := 0.0
+## Level 3: touching a side wall in the air (wall jump), combo of higher landings.
+var on_wall := false
+var combo := 0
+var last_landing_y := 0.0
+var combo_flash := 0.0
 var p := PlayerBody.new()
 var camera_y := 0.0
 var particles: Array[Dictionary] = []
@@ -124,6 +140,7 @@ func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
 	level_h = level.height()
 	level_w = level.width() if level.horizontal else W
 	level_id = lvl
+	last_landing_y = level_h
 	for e in level.entities:
 		if e.trigger_type == "gate":
 			e.base_x = e.x
@@ -141,13 +158,14 @@ func is_meadow() -> bool:
 	return level_id == 2
 
 
-## Level 2 unlocks from the water vessel: "run" (25 %), "double" (50 %), "thread" (75 %).
+## Level 2 unlocks from the dew vessel: "thread" (25 %, longer), "pull" (50 %,
+## faster), "shield" (75 %, the first shadow hit while focusing is absorbed).
 func water_unlock(name: String) -> bool:
-	return Game.water >= {"run": 25, "double": 50, "thread": 75}[name]
+	return Game.water >= {"thread": 25, "pull": 50, "shield": 75}[name]
 
 
 func _max_jumps() -> int:
-	return 1 if is_meadow() and not water_unlock("double") else 2
+	return 2
 
 
 func thread_range() -> float:
@@ -389,6 +407,8 @@ func _jump_force() -> float:
 		f *= 1.15
 	if has_upgrade("double") and p.jumps_left == 1:
 		f *= 1.2
+	if is_summit():
+		f *= 1.06 + 0.02 * mini(combo, 5)
 	return f
 
 
@@ -411,17 +431,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.is_action_released("focus"):
 			end_focus()
 	if event.is_action_pressed("jump") and not event.is_echo():
-		if p.is_recharging or river_timer > 0 or meadow_end > 0:
+		if p.is_recharging or meadow_end > 0:
 			return
 		if p.jumps_left > 0 and not boss.lost and not wave.lost and _can_jump_in_dialog():
 			Audio.jump_sound(p.jumps_left == 1)
-			p.vy = _jump_force()
+			p.vy = _jump_force() * (WADE_JUMP if in_water else 1.0)
 			p.jumps_left -= 1
 			p.is_grounded = false
 			p.is_sitting = false
 			if focus:
 				# Jumping breaks the focus (the seed escapes, the shadows fade).
 				end_focus()
+		elif on_wall and not wave.lost and not dialog_open:
+			# Wall jump (level 3): kick off the side wall.
+			Audio.jump_sound(true)
+			p.vy = _jump_force()
+			p.vx = WALL_KICK if p.x <= 0 else -WALL_KICK
+			p.facing_right = p.x <= 0
+			p.jumps_left = 1
+			p.is_grounded = false
 	elif event.is_action_pressed("run") and not event.is_echo() and has_upgrade("dash"):
 		# Dash (level 2): a short burst in the facing direction.
 		if p.dash_cooldown <= 0 and p.dash_timer <= 0 and not dialog_open and not p.is_recharging and not p.is_dead and not wave.lost:
@@ -500,7 +528,7 @@ func _update(dt: float) -> void:
 		scripted_walk -= dt
 		left = false
 		right = true
-	if river_timer > 0 or meadow_end > 0:
+	if meadow_end > 0:
 		left = false
 		right = false
 	var up := Input.is_action_pressed("move_up")
@@ -516,8 +544,15 @@ func _update(dt: float) -> void:
 	if p.slow_timer > 0:
 		p.slow_timer -= dt
 		max_speed *= 0.45
-	if is_meadow() and water_unlock("run"):
-		max_speed *= 1.25
+	if in_water:
+		# Wading: slow, and the current pushes back.
+		max_speed *= WADE_SPEED
+		if not (left or right):
+			p.vx -= CURRENT * d60
+	var accel := ACCEL
+	if is_summit():
+		max_speed *= SUMMIT_SPEED * (1.0 + 0.04 * mini(combo, 6))
+		accel *= SUMMIT_ACCEL
 	if p.dash_cooldown > 0:
 		p.dash_cooldown -= dt
 	if p.invuln_timer > 0:
@@ -533,18 +568,22 @@ func _update(dt: float) -> void:
 			p.hit_timer -= dt
 		p.vx = 0
 	elif right:
-		p.vx += ACCEL * d60
+		p.vx += accel * d60
 		p.facing_right = true
 	elif left:
-		p.vx -= ACCEL * d60
+		p.vx -= accel * d60
 		p.facing_right = false
 	else:
 		p.vx *= pow(FRICTION, d60)
-	if p.vx > max_speed: p.vx = maxf(max_speed, p.vx - ACCEL * d60)
-	if p.vx < -max_speed: p.vx = minf(-max_speed, p.vx + ACCEL * d60)
+	if p.vx > max_speed: p.vx = maxf(max_speed, p.vx - accel * d60)
+	if p.vx < -max_speed: p.vx = minf(-max_speed, p.vx + accel * d60)
 	if absf(p.vx) < 0.1: p.vx = 0
 	p.x += p.vx * d60
 	p.x = clampf(p.x, 0, level_w - p.width)
+	# Level 3: against a side wall in the air you slide slowly and can kick off.
+	on_wall = is_summit() and not p.is_grounded and (p.x <= 0 or p.x >= level_w - p.width) and p.held_by_cramp == -1 and not p.is_recharging
+	if on_wall and p.vy > WALL_SLIDE:
+		p.vy = WALL_SLIDE
 
 	for pl in level.platforms:
 		pl.y = pl.base_y + sin(time_ms / 500.0 + pl.x) * 5
@@ -582,7 +621,7 @@ func _update(dt: float) -> void:
 				Game.iron = n
 				Audio.nut_sound()
 				_spray_nuts(1)
-	elif p.dash_timer > 0 or river_timer > 0:
+	elif p.dash_timer > 0:
 		p.vy = 0
 	else:
 		p.vy = minf(p.vy + GRAVITY * d60, MAX_FALL)
@@ -641,6 +680,21 @@ func _update(dt: float) -> void:
 	p.is_grounded = grounded
 	if p.is_grounded and not p.was_grounded and p.held_by_cramp == -1 and not p.is_recharging:
 		Audio.footstep(0.8)
+		if is_summit() and stood_on != null:
+			# Combo: each landing higher than the last one counts.
+			if stood_on.base_y < last_landing_y - 60:
+				combo += 1
+				if combo >= 2:
+					combo_flash = 0.8
+					if combo >= 3:
+						Audio.play_sfx("cink-%02d.wav" % (1 + mini(combo, 10)), 0.4)
+			elif stood_on.base_y > last_landing_y + 60:
+				combo = 0
+			last_landing_y = stood_on.base_y
+	if is_summit() and combo > 0 and p.y > last_landing_y + 150:
+		combo = 0
+	if combo_flash > 0:
+		combo_flash -= dt
 	p.was_grounded = p.is_grounded
 	if p.is_recharging:
 		p.anim_progress = 0
@@ -1286,6 +1340,9 @@ func _draw_world() -> void:
 		_draw_arena(ci, t, top, bottom)
 	if summit_timer > 0:
 		_draw_summit_egg(ci, t)
+	if combo_flash > 0 and combo >= 2:
+		var ck := combo_flash / 0.8
+		Draw.text_center(ci, _font, Vector2(p.x + p.width / 2, p.y - 20 - (1 - ck) * 30), "x%d" % combo, 22, Color(1, 0.9, 0.4, ck))
 	if is_meadow():
 		_draw_meadow_front(ci, t, left, right)
 	for q in particles:
@@ -1475,15 +1532,14 @@ func _draw_player() -> void:
 		"crouched": p.held_by_cramp != -1,
 		"pain": p.hit_timer > 0 or p.held_by_cramp != -1,
 		"sitting": p.is_sitting or meadow_end > 0,
-		"airborne": false if (p.is_recharging or river_timer > 0) else not p.is_grounded,
-		"hanging": river_timer > 0,
+		"airborne": false if p.is_recharging else not p.is_grounded,
 	})
-	if river_timer > 0:
-		# Half under water: the river covers her legs.
-		ci.draw_rect(Rect2(p.x - 30, level.water_top + 14, p.width + 60, 60), Color(0.35, 0.65, 0.9, 0.75))
+	if in_water:
+		# Wading: the river covers her legs.
+		ci.draw_rect(Rect2(p.x - 30, level.water_top + 14, p.width + 60, 60), Color(0.35, 0.65, 0.9, 0.7))
 	if focus and thread_target != -1:
 		_draw_thread(ci, time_ms)
-	if is_meadow() and not dialog_open and river_timer <= 0 and meadow_end == 0:
+	if is_meadow() and not dialog_open and meadow_end == 0:
 		# The aim: a small ring where the thread would go (brighter while focusing).
 		var ap := _aim_point()
 		var hand := _hand()
@@ -1685,10 +1741,11 @@ func _draw_summit_egg(ci: CanvasItem, t: float) -> void:
 # --- level 2: the meadow (river, vessel, seeds, shadows, gate) --------------------------
 
 func begin_focus() -> void:
-	if not is_meadow() or dialog_open or river_timer > 0 or meadow_end > 0 or p.is_dead:
+	if not is_meadow() or dialog_open or meadow_end > 0 or p.is_dead:
 		return
 	focus = true
 	thread_target = -1
+	shield_used = false
 
 
 func end_focus() -> void:
@@ -1742,34 +1799,26 @@ func _acquire_seed() -> int:
 
 
 func _update_meadow(dt: float, d60: float) -> void:
-	# The river.
+	# The river: wading. The bed is a shallow floor; moving through is slow.
 	if level.water_top >= 0:
-		if river_timer > 0:
-			river_timer -= dt
-			p.vx = -4.0
-			p.y = level.water_top + 14 - p.height * 0.5
-			if randf() < 0.3:
-				particles.append({"x": p.x + randf() * p.width, "y": level.water_top + 16, "vx": (randf() - 0.5) * 3, "vy": -randf() * 3,
-					"rot": 0.0, "rot_speed": 0.0, "type": "splash", "life": 0.5, "max_life": 0.5})
-			if river_timer <= 0:
-				# Carried back to the last ground she stood on.
-				p.x = last_ground.x
-				p.y = last_ground.y
-				p.vx = 0
-				p.vy = 0
-				p.invuln_timer = 1.0
-				p.jumps_left = _max_jumps()
-		elif p.y + p.height > level.water_top + 26 and not p.is_dead and meadow_end == 0:
-			river_timer = RIVER_TIME
-			end_focus()
-			Game.water = maxi(0, Game.water - 10)
+		var bed := level.water_top + 44
+		var was := in_water
+		in_water = p.y + p.height > level.water_top + 18 and meadow_end == 0
+		if p.y + p.height > bed:
+			p.y = bed - p.height
 			p.vy = 0
-			p.slow_timer = 0
-			Audio.play_sfx("breathoff.wav", 0.6)
-			for i in 16:
-				particles.append({"x": p.x + randf() * p.width, "y": level.water_top + 10, "vx": (randf() - 0.5) * 8, "vy": -randf() * 7 - 2,
+			p.is_grounded = true
+			p.jumps_left = _max_jumps()
+		if in_water and not was:
+			end_focus()
+			Audio.play_sfx("breathoff.wav", 0.5)
+			for i in 12:
+				particles.append({"x": p.x + randf() * p.width, "y": level.water_top + 10, "vx": (randf() - 0.5) * 8, "vy": -randf() * 6 - 2,
 					"rot": 0.0, "rot_speed": 0.0, "type": "splash", "life": 0.7, "max_life": 0.7})
-		elif p.is_grounded and p.y + p.height < level.water_top - 2:
+		if in_water and absf(p.vx) > 0.3 and randf() < 0.25:
+			particles.append({"x": p.x + randf() * p.width, "y": level.water_top + 16, "vx": (randf() - 0.5) * 3, "vy": -randf() * 3,
+				"rot": 0.0, "rot_speed": 0.0, "type": "splash", "life": 0.5, "max_life": 0.5})
+		if p.is_grounded and not in_water:
 			last_ground = Vector2(p.x, p.y)
 	# The focus thread.
 	if focus:
@@ -1796,7 +1845,7 @@ func _update_meadow(dt: float, d60: float) -> void:
 						particles.append({"x": c.x, "y": c.y, "vx": (randf() - 0.5) * 6, "vy": (randf() - 0.5) * 6 - 2,
 							"rot": 0.0, "rot_speed": 0.0, "type": "sparkle", "life": 0.8, "max_life": 0.8})
 				else:
-					var spd := (PULL_SPEED_DODGE if e.tier == 3 else PULL_SPEED) * dt
+					var spd := (PULL_SPEED_DODGE if e.tier == 3 else PULL_SPEED) * dt * (1.5 if water_unlock("pull") else 1.0)
 					var step := to.normalized() * spd
 					e.x += step.x
 					e.y += step.y
@@ -1823,6 +1872,15 @@ func _update_meadow(dt: float, d60: float) -> void:
 			if not focus or thread_target == -1:
 				sh.fading = true
 			elif absf(sh.x - p.center().x) < 26 and absf(sh.y - p.center().y) < 44:
+				if water_unlock("shield") and not shield_used:
+					# The dew absorbs the first hit of this focus.
+					shield_used = true
+					sh.fading = true
+					Audio.play_sfx("krcoff.wav", 0.4)
+					for k in 10:
+						particles.append({"x": p.center().x, "y": p.center().y, "vx": (randf() - 0.5) * 8, "vy": (randf() - 0.5) * 8,
+							"rot": 0.0, "rot_speed": 0.0, "type": "splash", "life": 0.6, "max_life": 0.6})
+					continue
 				# Stress hits: the focus breaks, water spills, the gate moves away.
 				end_focus()
 				Game.water = maxi(0, Game.water - 15)
