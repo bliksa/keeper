@@ -152,19 +152,28 @@ func _build_shortcuts() -> void:
 		b.position = Vector2(480, 56 + i * 44)
 		b.pressed.connect(func(): action.emit("checkpoint", cps[i][0]))
 		card.add_child(b)
-	var h4 := UiKit.label("CHECKPOINTS (garden, level 2)", 13, Color("#94a3b8"), true)
-	h4.position = Vector2(480, 244)
+	var h4 := UiKit.label("MEADOW (level 2)", 13, Color("#94a3b8"), true)
+	h4.position = Vector2(32, 230)
 	card.add_child(h4)
-	var cps2 := [[1, "Garden start"], [2, "After iron plate"], [3, "After rhythm"], [4, "After body signals"], [5, "LH wave (summit climb)"]]
+	var cps2 := [[1, "Meadow start"], [2, "After memory"], [3, "After catch"], [4, "After pairs"], [5, "The gate (vessel full, 10 seeds)"]]
 	for i in cps2.size():
-		var b := UiKit.button(cps2[i][1], Vector2(380, 38), 13, Color("#14532d"))
-		b.position = Vector2(480, 272 + i * 44)
+		var b := UiKit.button(cps2[i][1], Vector2(400, 34), 12, Color("#1e3a5f"))
+		b.position = Vector2(32, 256 + i * 40)
 		b.pressed.connect(func(): action.emit("checkpoint2", cps2[i][0]))
 		card.add_child(b)
+	var h5 := UiKit.label("SUMMIT (level 3)", 13, Color("#94a3b8"), true)
+	h5.position = Vector2(480, 244)
+	card.add_child(h5)
+	var cps3 := [[1, "Summit start"], [2, "After iron plate"], [3, "After rhythm"], [4, "After body signals"], [5, "LH wave (summit climb)"]]
+	for i in cps3.size():
+		var b := UiKit.button(cps3[i][1], Vector2(380, 34), 12, Color("#14532d"))
+		b.position = Vector2(480, 272 + i * 40)
+		b.pressed.connect(func(): action.emit("checkpoint3", cps3[i][0]))
+		card.add_child(b)
 
-	var h3 := UiKit.label("DEBUG KEYS: 1–4 restart at checkpoint · Shift+2–5 jump to minigame / boss / LH wave · 5 boss (garden: wave) · G garden with power-ups · C breath + 20 iron · X skip minigame", 11, Color("#64748b"))
+	var h3 := UiKit.label("DEBUG KEYS: 1–4 restart at checkpoint · Shift+2–5 jump to minigame / boss / gate / wave · 5 boss (meadow: gate, summit: wave) · H meadow full vessel · G summit with power-ups · C breath + 20 iron · X skip minigame", 11, Color("#64748b"))
 	h3.autowrap_mode = TextServer.AUTOWRAP_WORD
-	h3.custom_minimum_size = Vector2(420, 0)
-	h3.position = Vector2(32, 300)
-	h3.size = Vector2(420, 120)
+	h3.custom_minimum_size = Vector2(840, 0)
+	h3.position = Vector2(32, 462)
+	h3.size = Vector2(840, 36)
 	card.add_child(h3)

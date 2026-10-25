@@ -5,7 +5,12 @@ extends Node2D
 ## Physics constants and behaviours are copied 1:1 from the prototype; all
 ## per-frame values are scaled by dt60 (= delta * 60) like the original.
 ##
-## Level 2 (the garden, level_id 2) reuses everything and adds: climbing up
+## Level 2 (the meadow, level_id 2) is horizontal (left → right): a river below
+## carries you back to the last ground you stood on, water drops fill the vessel
+## (estrogen: 25 % faster run, 50 % double jump, 75 % longer thread), light seeds
+## are caught with the focus thread (aim + hold), shadows attack while you focus
+## and push the gate further away.
+## Level 3 (the summit, level_id 3) reuses everything and adds: climbing up
 ## instead of down, bubble platforms, updrafts, distractions instead of cramps,
 ## power-ups from its minigames (jump, dash, double) and the LH wave chase that
 ## replaces the boss (reach the summit before the wave catches you).
@@ -34,6 +39,15 @@ const DASH_COOLDOWN := 0.9
 const WAVE_SPEED := 1.3
 const WAVE_MAX := 2.0
 const WAVE_ACCEL := 0.02
+## Level 2: the river, the focus thread and the shadows.
+const RIVER_TIME := 1.2
+const THREAD_RANGE := 220.0
+const THREAD_RANGE_LONG := 320.0
+const THREAD_CONE := 0.6 # radians
+const PULL_SPEED := 110.0
+const PULL_SPEED_DODGE := 70.0
+const CATCH_DIST := 30.0
+const SHADOW_SPEED := 3.2
 
 const PARALLAX := [
 	["res://assets/images/1.png", 0.1],
@@ -51,6 +65,24 @@ var hide_platforms := false
 
 var level: LevelData
 var level_h := 0.0
+var level_w := W
+var camera_x := 0.0
+## Level 2 state.
+var last_ground := Vector2.ZERO
+var river_timer := 0.0
+var focus := false
+var aim := Vector2.ZERO
+var aim_mode := "keys" # keys | mouse | stick
+var _stick := Vector2.ZERO
+var thread_target := -1
+var shadows: Array[Dictionary] = []
+var shadow_timer := 2.0
+var gate_locked_timer := 0.0
+## Seconds since the gate opened (pouring the water, the golden flower).
+var meadow_end := 0.0
+var _meadow_done_sent := false
+## Scripted walk to the right after the boss (seconds left).
+var scripted_walk := 0.0
 ## 1 = the cave (down, cramps, boss), 2 = the garden (up, bubbles, LH wave).
 var level_id := 1
 ## The LH wave (level 2): rises from below once triggered; reach the summit first.
@@ -88,16 +120,38 @@ var player_layer := 9
 ## rows: level text rows. checkpoint: 0/1 = start, 2..4 = after minigame N,
 ## 5 = boss (level 2: the LH wave). lvl: 1 cave, 2 garden.
 func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
-	level = LevelData.build(rows)
+	level = LevelData.build(rows, LevelData.ROW_H, Game.is_horizontal(lvl))
 	level_h = level.height()
+	level_w = level.width() if level.horizontal else W
 	level_id = lvl
+	for e in level.entities:
+		if e.trigger_type == "gate":
+			e.base_x = e.x
+			e.has_base = true
 	_start_checkpoint = checkpoint
 	_reset_boss()
 	_place_at_checkpoint(checkpoint)
 
 
-func is_garden() -> bool:
+func is_summit() -> bool:
+	return level_id == 3
+
+
+func is_meadow() -> bool:
 	return level_id == 2
+
+
+## Level 2 unlocks from the water vessel: "run" (25 %), "double" (50 %), "thread" (75 %).
+func water_unlock(name: String) -> bool:
+	return Game.water >= {"run": 25, "double": 50, "thread": 75}[name]
+
+
+func _max_jumps() -> int:
+	return 1 if is_meadow() and not water_unlock("double") else 2
+
+
+func thread_range() -> float:
+	return THREAD_RANGE_LONG if water_unlock("thread") else THREAD_RANGE
 
 
 ## Trigger kinds that mark progress in this level (checkpoint 2..5).
@@ -148,19 +202,23 @@ func _place_at_checkpoint(cp: int) -> void:
 		p.x = s.x
 		p.y = s.y
 		camera_y = maxf(0, s.y - H / 2)
+		if level.horizontal:
+			camera_y = 0
+			camera_x = clampf(s.x - W * 0.4, 0, maxf(0, level_w - W))
+			last_ground = s
 		return
-	if cp >= 5 and not is_garden():
+	if cp >= 5 and not is_summit() and not level.horizontal:
 		return
 	var kinds := progress_kinds()
 	var want: String = kinds[mini(cp, 5) - 2]
 	for e in level.entities:
 		if e.type == "trigger" and e.trigger_type == want:
-			# The wave checkpoint re-arms the chase; minigame checkpoints are done.
-			e.collected = want != "wave"
+			# The wave / gate checkpoints re-arm; minigame checkpoints are done.
+			e.collected = not want in ["wave", "gate"]
 			_stand_at_trigger(e)
-			# Earlier triggers are done too (above in the cave, below in the garden).
+			# Earlier triggers are done too (above in the cave, below in the summit, left in the meadow).
 			for e2 in level.entities:
-				var earlier: bool = e2.y > e.y if is_garden() else e2.y < e.y
+				var earlier: bool = e2.x < e.x if level.horizontal else (e2.y > e.y if is_summit() else e2.y < e.y)
 				if e2.type == "trigger" and earlier and e2.trigger_type in kinds.slice(0, 3):
 					e2.collected = true
 			return
@@ -237,8 +295,8 @@ func _process(delta: float) -> void:
 	elif p.held_by_cramp != -1:
 		_shake = Vector2((randf() - 0.5) * 4, (randf() - 0.5) * 4)
 	_bg.position = _shake
-	_world.position = _shake + Vector2(0, -camera_y)
-	_player_layer.position = (_shake if shake_timer > 0 else Vector2.ZERO) + Vector2(0, -camera_y)
+	_world.position = _shake + Vector2(-camera_x, -camera_y)
+	_player_layer.position = (_shake if shake_timer > 0 else Vector2.ZERO) + Vector2(-camera_x, -camera_y)
 	_bg.queue_redraw()
 	_world.queue_redraw()
 	_player_layer.queue_redraw()
@@ -246,7 +304,7 @@ func _process(delta: float) -> void:
 
 
 func _send_initial_dialog() -> void:
-	trigger.emit("dialog_g" if is_garden() else "dialog_a")
+	trigger.emit({1: "dialog_a", 2: "dialog_b", 3: "dialog_g"}[level_id])
 
 
 func _clear_breath_failed() -> void:
@@ -264,7 +322,7 @@ func teleport_to_trigger(kind: String) -> void:
 	for e in level.entities:
 		if e.type == "trigger" and e.trigger_type == kind:
 			e.collected = false
-			if is_garden():
+			if is_summit() or level.horizontal:
 				_stand_at_trigger(e)
 			else:
 				p.x = W / 2 - 15
@@ -296,7 +354,20 @@ func _settle_on_ground() -> void:
 func _stand_at_trigger(e: LevelData.Ent) -> void:
 	p.x = W / 2 - 15
 	p.y = e.y + 100 - 30
-	if is_garden():
+	if level.horizontal:
+		# The trigger column: stand on the highest ground there.
+		var cx := e.x + e.w / 2
+		p.x = cx - p.width / 2
+		var best: LevelData.Plat = null
+		for pl in level.platforms:
+			if pl.x <= cx + 40 and pl.x + pl.w >= cx - 40 and (level.water_top < 0 or pl.base_y < level.water_top) and (best == null or pl.base_y < best.base_y):
+				best = pl
+		p.y = (best.base_y - p.height) if best else 200.0
+		camera_x = clampf(p.x - W * 0.4, 0, maxf(0, level_w - W))
+		camera_y = 0
+		last_ground = Vector2(p.x, p.y)
+		return
+	if is_summit():
 		var best: LevelData.Plat = null
 		for pl in level.platforms:
 			if pl.base_y >= e.y + 99 and pl.x <= W / 2 + 60 and pl.x + pl.w >= W / 2 - 60 and (best == null or pl.base_y < best.base_y):
@@ -308,7 +379,7 @@ func _stand_at_trigger(e: LevelData.Ent) -> void:
 
 
 func _can_jump_in_dialog() -> bool:
-	return not dialog_open or active_dialog_id in ["cave_start", "first_cramp", "garden_start"]
+	return not dialog_open or active_dialog_id in ["cave_start", "first_cramp", "garden_start", "meadow_start"]
 
 
 ## Jump impulse with the level-2 power-ups (jump: +15 %, double: second jump +20 %).
@@ -324,8 +395,23 @@ func _jump_force() -> float:
 func _unhandled_input(event: InputEvent) -> void:
 	if not active:
 		return
+	if is_meadow():
+		if event is InputEventMouseMotion:
+			aim = event.position + Vector2(camera_x, camera_y)
+			aim_mode = "mouse"
+		elif event is InputEventJoypadMotion and event.axis in [JOY_AXIS_RIGHT_X, JOY_AXIS_RIGHT_Y]:
+			if event.axis == JOY_AXIS_RIGHT_X: _stick.x = event.axis_value
+			else: _stick.y = event.axis_value
+			if _stick.length() > 0.3:
+				aim_mode = "stick"
+		if event.is_action_pressed("focus") and not event.is_echo():
+			if event is InputEventKey:
+				aim_mode = "keys"
+			begin_focus()
+		elif event.is_action_released("focus"):
+			end_focus()
 	if event.is_action_pressed("jump") and not event.is_echo():
-		if p.is_recharging:
+		if p.is_recharging or river_timer > 0 or meadow_end > 0:
 			return
 		if p.jumps_left > 0 and not boss.lost and not wave.lost and _can_jump_in_dialog():
 			Audio.jump_sound(p.jumps_left == 1)
@@ -333,6 +419,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			p.jumps_left -= 1
 			p.is_grounded = false
 			p.is_sitting = false
+			if focus:
+				# Jumping breaks the focus (the seed escapes, the shadows fade).
+				end_focus()
 	elif event.is_action_pressed("run") and not event.is_echo() and has_upgrade("dash"):
 		# Dash (level 2): a short burst in the facing direction.
 		if p.dash_cooldown <= 0 and p.dash_timer <= 0 and not dialog_open and not p.is_recharging and not p.is_dead and not wave.lost:
@@ -407,6 +496,13 @@ func _update(dt: float) -> void:
 
 	var left := Input.is_action_pressed("move_left")
 	var right := Input.is_action_pressed("move_right")
+	if scripted_walk > 0:
+		scripted_walk -= dt
+		left = false
+		right = true
+	if river_timer > 0 or meadow_end > 0:
+		left = false
+		right = false
 	var up := Input.is_action_pressed("move_up")
 	var down := Input.is_action_pressed("move_down")
 	var breathe := Input.is_action_pressed("breathe")
@@ -420,6 +516,8 @@ func _update(dt: float) -> void:
 	if p.slow_timer > 0:
 		p.slow_timer -= dt
 		max_speed *= 0.45
+	if is_meadow() and water_unlock("run"):
+		max_speed *= 1.25
 	if p.dash_cooldown > 0:
 		p.dash_cooldown -= dt
 	if p.invuln_timer > 0:
@@ -446,7 +544,7 @@ func _update(dt: float) -> void:
 	if p.vx < -max_speed: p.vx = minf(-max_speed, p.vx + ACCEL * d60)
 	if absf(p.vx) < 0.1: p.vx = 0
 	p.x += p.vx * d60
-	p.x = clampf(p.x, 0, W - p.width)
+	p.x = clampf(p.x, 0, level_w - p.width)
 
 	for pl in level.platforms:
 		pl.y = pl.base_y + sin(time_ms / 500.0 + pl.x) * 5
@@ -484,7 +582,7 @@ func _update(dt: float) -> void:
 				Game.iron = n
 				Audio.nut_sound()
 				_spray_nuts(1)
-	elif p.dash_timer > 0:
+	elif p.dash_timer > 0 or river_timer > 0:
 		p.vy = 0
 	else:
 		p.vy = minf(p.vy + GRAVITY * d60, MAX_FALL)
@@ -510,7 +608,7 @@ func _update(dt: float) -> void:
 			p.y = pl.y - p.height
 			p.vy = 0
 			grounded = true
-			p.jumps_left = 2
+			p.jumps_left = _max_jumps()
 			stood_on = pl
 	for pl in level.platforms:
 		if pl.kind != "pop" or pl.regrow > 0:
@@ -532,7 +630,7 @@ func _update(dt: float) -> void:
 				grounded = true
 				p.jumps_left = 2
 	var on_dialog_floor := false
-	if dialog_open or boss.lost:
+	if (dialog_open or boss.lost) and not level.horizontal:
 		var fy := camera_y + H - 150
 		if p.vy >= 0 and prev_bottom <= fy + 20 and p.y + p.height >= fy - 10:
 			p.y = fy - p.height
@@ -550,8 +648,10 @@ func _update(dt: float) -> void:
 		p.step_animation(d60)
 	p.is_sitting = p.is_dead or (p.is_recharging and p.held_by_cramp == -1) or (on_dialog_floor and absf(p.vx) < 0.1 and p.is_grounded)
 
-	# --- camera (the garden is climbed, so keep more of the screen above the player)
-	var target := p.y - (H / 2 if is_garden() else H / 3)
+	if level.horizontal:
+		_update_meadow(dt, d60)
+	# --- camera (the summit is climbed, so keep more of the screen above the player)
+	var target := p.y - (H / 2 if is_summit() else H / 3)
 	if down and p.is_grounded and not p.is_sitting and absf(p.vx) < 0.5 and not p.is_recharging:
 		p.look_down_timer += dt
 	else:
@@ -574,6 +674,10 @@ func _update(dt: float) -> void:
 		Audio.stop_loop("krcloop.wav")
 		_place_at_checkpoint(Game.checkpoint if Game.checkpoint < 5 else 1)
 	camera_y = clampf(camera_y, 0, level_h)
+	if level.horizontal:
+		camera_y = 0
+		var tx := clampf(p.x - W * 0.4, 0, maxf(0, level_w - W))
+		camera_x += (tx - camera_x) * (1.0 - pow(0.88, d60))
 
 	_update_entities(dt, d60)
 	_update_particles(dt, d60)
@@ -671,8 +775,15 @@ func _update_entities(dt: float, d60: float) -> void:
 			"iron":
 				if touching:
 					e.collected = true
-					Audio.play_sfx("nut0%d.wav" % randi_range(1, 3), 0.6)
-					Game.iron += 1
+					if is_meadow():
+						# A water drop: fills the vessel (estrogen).
+						Audio.play_sfx("cink-%02d.wav" % randi_range(1, 11), 0.5)
+						Game.water = mini(100, Game.water + Game.WATER_PER_DROP)
+					else:
+						Audio.play_sfx("nut0%d.wav" % randi_range(1, 3), 0.6)
+						Game.iron += 1
+			"seed":
+				_update_seed(e, dt, d60)
 			"enemy":
 				_update_enemy(e, dt, d60, touching)
 			"spike":
@@ -811,6 +922,18 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 	if e.trigger_type.begins_with("mg"):
 		# A minigame opens: put Kyra on the ground so she isn't frozen mid-jump.
 		_settle_on_ground()
+		end_focus()
+	if e.trigger_type == "gate":
+		if Game.water >= 100 and Game.seeds >= Game.SEEDS_NEEDED:
+			end_focus()
+			_settle_on_ground()
+			meadow_end = 0.01
+			Audio.play_sfx("finished.wav")
+		else:
+			# Locked: say what is missing, let the player try again in a moment.
+			gate_locked_timer = 1.5
+			trigger.emit("gate_locked")
+			return
 	if e.trigger_type == "end":
 		start_boss(Game.iron)
 	elif e.trigger_type == "wave":
@@ -829,7 +952,7 @@ func _update_particles(dt: float, d60: float) -> void:
 		q.x += q.vx * d60
 		q.y += q.vy * d60
 		q.rot += q.rot_speed * d60
-		if q.type == "boss_body_part" or q.type == "dash" or q.type == "pollen":
+		if q.type in ["boss_body_part", "dash", "pollen", "splash", "sparkle"]:
 			q.vx *= pow(0.95, d60)
 			q.vy *= pow(0.95, d60)
 		else:
@@ -1078,8 +1201,11 @@ func _update_wave(dt: float, d60: float) -> void:
 # --- drawing ------------------------------------------------------------------
 
 func _draw_bg() -> void:
-	if is_garden():
+	if is_summit():
 		_draw_garden_bg()
+		return
+	if is_meadow():
+		_draw_meadow_bg()
 		return
 	var ci := _bg
 	ci.draw_rect(Rect2(0, 0, W, H), Color("#1a0505"))
@@ -1108,29 +1234,40 @@ func _draw_world() -> void:
 		ci.draw_rect(Rect2(0, camera_y, W, H), Color(177 / 255.0, 88 / 255.0, 39 / 255.0, (p.hit_timer - 0.8) / 0.2 * 0.5))
 	var top := camera_y - 100
 	var bottom := camera_y + H + 100
+	var left := camera_x - 120
+	var right := camera_x + W + 120
 	if hide_platforms:
 		return
+	if is_meadow():
+		_draw_meadow_back(ci, t, left, right)
 	for pl in level.platforms:
-		if pl.y < top or pl.y > bottom:
+		if pl.y < top or pl.y > bottom or pl.x + pl.w < left or pl.x > right:
 			continue
 		if pl.kind != "rock":
 			_draw_bubble(ci, pl, t)
-		elif is_garden():
+		elif is_summit():
 			_draw_garden_platform(ci, pl, t)
+		elif is_meadow():
+			_draw_meadow_platform(ci, pl, t)
 		else:
 			_draw_platform(ci, pl, t)
 	for e in level.entities:
 		if e.collected or (e.defeated and not e.knocked_back):
 			continue
-		if e.y < top or e.y > bottom:
+		if e.y < top or e.y > bottom or e.x + e.w < left or e.x > right:
 			continue
 		match e.type:
 			"iron":
-				Draw.iron_nut(ci, Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3), e.w / 2, t / 800.0 + e.id)
+				if is_meadow():
+					_draw_drop(ci, e, t)
+				else:
+					Draw.iron_nut(ci, Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3), e.w / 2, t / 800.0 + e.id)
+			"seed":
+				_draw_seed(ci, e, t)
 			"enemy", "spike":
 				if e.behavior == "distract":
 					_draw_distraction(ci, e, t)
-				elif e.type == "spike" and is_garden():
+				elif e.type == "spike" and is_summit():
 					_draw_thorn(ci, e, t)
 				else:
 					_draw_cramp(ci, e, t)
@@ -1139,7 +1276,9 @@ func _draw_world() -> void:
 			"trigger":
 				if e.trigger_type == "teleport":
 					ci.draw_rect(e.rect(), Color(190 / 255.0, 24 / 255.0, 93 / 255.0, 0.1))
-				elif e.trigger_type in ["mg2", "mg3", "mg4", "end", "mg5", "mg6", "mg7", "wave", "summit"]:
+				elif e.trigger_type == "gate":
+					_draw_gate(ci, e, t)
+				elif e.trigger_type in ["mg2", "mg3", "mg4", "end", "mg5", "mg6", "mg7", "wave", "summit", "mg8", "mg9", "mg10"]:
 					_draw_orb(ci, e, t)
 			"text":
 				ci.draw_string(_font, Vector2(e.x, e.y + e.h / 2 + 8), Text.plain(Text.t(e.text)), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1, 1, 1, 0.8))
@@ -1147,6 +1286,8 @@ func _draw_world() -> void:
 		_draw_arena(ci, t, top, bottom)
 	if summit_timer > 0:
 		_draw_summit_egg(ci, t)
+	if is_meadow():
+		_draw_meadow_front(ci, t, left, right)
 	for q in particles:
 		_draw_particle(ci, q)
 	if boss.defeated_timer > 1.5:
@@ -1204,6 +1345,9 @@ func _draw_cramp(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 
 func _draw_orb(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 500.0) * 10)
+	if level.horizontal:
+		# Column triggers: the orb floats above the ground of its column.
+		c.y = (level.water_top if level.water_top > 0 else H) - 200 + sin(t / 500.0) * 10
 	var r := 30 + sin(t / 300.0) * 5
 	var glow := Color(95 / 255.0, 155 / 255.0, 153 / 255.0, 0.6)
 	var core := Color("#c7e1e0")
@@ -1212,7 +1356,7 @@ func _draw_orb(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 		glow = Color(250 / 255.0, 204 / 255.0, 21 / 255.0, 0.55)
 		core = Color("#fef3c7")
 		dots = Color("#fde68a")
-	elif is_garden():
+	elif is_summit():
 		glow = Color(134 / 255.0, 239 / 255.0, 172 / 255.0, 0.55)
 		core = Color("#ecfdf5")
 		dots = Color("#86efac")
@@ -1304,6 +1448,12 @@ func _draw_particle(ci: CanvasItem, q: Dictionary) -> void:
 		"pollen":
 			var a: float = q.life / q.max_life
 			ci.draw_circle(pos, 2 + 2 * a, Color(1, 0.95, 0.75, 0.8 * a))
+		"splash":
+			var a: float = q.life / q.max_life
+			ci.draw_circle(pos, 2 + 3 * a, Color(0.6, 0.85, 1.0, 0.8 * a))
+		"sparkle":
+			var a: float = q.life / q.max_life
+			ci.draw_circle(pos, 1.5 + 3 * a, Color(1, 0.9, 0.5, 0.9 * a))
 
 
 func _draw_egg(ci: CanvasItem, t: float) -> void:
@@ -1324,9 +1474,24 @@ func _draw_player() -> void:
 	PlayerArt.draw(ci, p, time_ms, boss.active, {
 		"crouched": p.held_by_cramp != -1,
 		"pain": p.hit_timer > 0 or p.held_by_cramp != -1,
-		"sitting": p.is_sitting,
-		"airborne": false if p.is_recharging else not p.is_grounded,
+		"sitting": p.is_sitting or meadow_end > 0,
+		"airborne": false if (p.is_recharging or river_timer > 0) else not p.is_grounded,
+		"hanging": river_timer > 0,
 	})
+	if river_timer > 0:
+		# Half under water: the river covers her legs.
+		ci.draw_rect(Rect2(p.x - 30, level.water_top + 14, p.width + 60, 60), Color(0.35, 0.65, 0.9, 0.75))
+	if focus and thread_target != -1:
+		_draw_thread(ci, time_ms)
+	if is_meadow() and not dialog_open and river_timer <= 0 and meadow_end == 0:
+		# The aim: a small ring where the thread would go (brighter while focusing).
+		var ap := _aim_point()
+		var hand := _hand()
+		var dir := ap - hand
+		if dir.length() > 1:
+			ap = hand + dir.normalized() * minf(dir.length(), thread_range())
+		ci.draw_arc(ap, 9, 0, TAU, 24, Color(1, 0.95, 0.6, 0.9 if focus else 0.45), 2.0, true)
+		ci.draw_circle(ap, 2, Color(1, 1, 0.8, 0.9 if focus else 0.5))
 	if not active:
 		return
 	var screen := Rect2(0, camera_y, W, H)
@@ -1515,3 +1680,382 @@ func _draw_summit_egg(ci: CanvasItem, t: float) -> void:
 	for i in 8:
 		var a := t / 600.0 + i * TAU / 8
 		ci.draw_circle(c + Vector2(cos(a), sin(a)) * (r + 24 + sin(t / 300.0 + i) * 6), 3, Color(1, 0.95, 0.7, 0.8 * k))
+
+
+# --- level 2: the meadow (river, vessel, seeds, shadows, gate) --------------------------
+
+func begin_focus() -> void:
+	if not is_meadow() or dialog_open or river_timer > 0 or meadow_end > 0 or p.is_dead:
+		return
+	focus = true
+	thread_target = -1
+
+
+func end_focus() -> void:
+	if thread_target != -1:
+		thread_target = -1
+	focus = false
+	for sh in shadows:
+		sh.fading = true
+
+
+func _seed_by_id(id: int) -> LevelData.Ent:
+	for e in level.entities:
+		if e.id == id:
+			return e
+	return null
+
+
+## The hand the thread comes from.
+func _hand() -> Vector2:
+	return Vector2(p.x + p.width / 2 + (10 if p.facing_right else -10), p.y + 26)
+
+
+func _aim_point() -> Vector2:
+	match aim_mode:
+		"mouse":
+			return aim
+		"stick":
+			return p.center() + _stick.normalized() * 220 if _stick.length() > 0.3 else p.center() + Vector2(220 if p.facing_right else -220, -60)
+		_:
+			return p.center() + Vector2(220 if p.facing_right else -220, -60)
+
+
+## Nearest visible seed inside the thread's range and aiming cone.
+func _acquire_seed() -> int:
+	var hand := _hand()
+	var dir := (_aim_point() - hand)
+	if dir.length() < 1:
+		return -1
+	dir = dir.normalized()
+	var best := -1
+	var best_d := thread_range()
+	for e in level.entities:
+		if e.type != "seed" or e.collected or not e.visible:
+			continue
+		var to := Vector2(e.x + e.w / 2, e.y + e.h / 2) - hand
+		var d := to.length()
+		if d < best_d and absf(dir.angle_to(to)) < THREAD_CONE:
+			best_d = d
+			best = e.id
+	return best
+
+
+func _update_meadow(dt: float, d60: float) -> void:
+	# The river.
+	if level.water_top >= 0:
+		if river_timer > 0:
+			river_timer -= dt
+			p.vx = -4.0
+			p.y = level.water_top + 14 - p.height * 0.5
+			if randf() < 0.3:
+				particles.append({"x": p.x + randf() * p.width, "y": level.water_top + 16, "vx": (randf() - 0.5) * 3, "vy": -randf() * 3,
+					"rot": 0.0, "rot_speed": 0.0, "type": "splash", "life": 0.5, "max_life": 0.5})
+			if river_timer <= 0:
+				# Carried back to the last ground she stood on.
+				p.x = last_ground.x
+				p.y = last_ground.y
+				p.vx = 0
+				p.vy = 0
+				p.invuln_timer = 1.0
+				p.jumps_left = _max_jumps()
+		elif p.y + p.height > level.water_top + 26 and not p.is_dead and meadow_end == 0:
+			river_timer = RIVER_TIME
+			end_focus()
+			Game.water = maxi(0, Game.water - 10)
+			p.vy = 0
+			p.slow_timer = 0
+			Audio.play_sfx("breathoff.wav", 0.6)
+			for i in 16:
+				particles.append({"x": p.x + randf() * p.width, "y": level.water_top + 10, "vx": (randf() - 0.5) * 8, "vy": -randf() * 7 - 2,
+					"rot": 0.0, "rot_speed": 0.0, "type": "splash", "life": 0.7, "max_life": 0.7})
+		elif p.is_grounded and p.y + p.height < level.water_top - 2:
+			last_ground = Vector2(p.x, p.y)
+	# The focus thread.
+	if focus:
+		if dialog_open or p.is_dead:
+			end_focus()
+		elif thread_target == -1:
+			thread_target = _acquire_seed()
+		else:
+			var e := _seed_by_id(thread_target)
+			var hand := _hand()
+			if e == null or e.collected or not e.visible:
+				thread_target = -1
+			else:
+				var c := Vector2(e.x + e.w / 2, e.y + e.h / 2)
+				var to := hand - c
+				if to.length() > thread_range() * 1.4:
+					thread_target = -1
+				elif to.length() < CATCH_DIST:
+					e.collected = true
+					thread_target = -1
+					Game.seeds += 1
+					Audio.play_sfx("finished.wav", 0.6)
+					for i in 14:
+						particles.append({"x": c.x, "y": c.y, "vx": (randf() - 0.5) * 6, "vy": (randf() - 0.5) * 6 - 2,
+							"rot": 0.0, "rot_speed": 0.0, "type": "sparkle", "life": 0.8, "max_life": 0.8})
+				else:
+					var spd := (PULL_SPEED_DODGE if e.tier == 3 else PULL_SPEED) * dt
+					var step := to.normalized() * spd
+					e.x += step.x
+					e.y += step.y
+					if e.tier == 3:
+						e.x += sin(time_ms / 90.0) * 1.2 * d60
+	# The shadows: only while a seed is on the thread; more often further in the level.
+	if focus and thread_target != -1 and not dialog_open:
+		shadow_timer -= dt
+		if shadow_timer <= 0:
+			var from_left := randf() < 0.5
+			var px := p.center().x
+			shadows.append({"x": px - W * 0.55 if from_left else px + W * 0.55, "y": p.y + p.height / 2 - 8,
+				"vx": SHADOW_SPEED if from_left else -SHADOW_SPEED, "alpha": 0.0, "fading": false})
+			shadow_timer = lerpf(4.0, 1.6, clampf(p.x / maxf(1, level_w), 0, 1))
+	else:
+		shadow_timer = maxf(shadow_timer, 1.0)
+	for i in range(shadows.size() - 1, -1, -1):
+		var sh: Dictionary = shadows[i]
+		sh.x += sh.vx * d60
+		if sh.fading:
+			sh.alpha -= dt * 3
+		else:
+			sh.alpha = minf(1, sh.alpha + dt * 3)
+			if not focus or thread_target == -1:
+				sh.fading = true
+			elif absf(sh.x - p.center().x) < 26 and absf(sh.y - p.center().y) < 44:
+				# Stress hits: the focus breaks, water spills, the gate moves away.
+				end_focus()
+				Game.water = maxi(0, Game.water - 15)
+				Game.gate_shift = mini(9, Game.gate_shift + 3)
+				shake_timer = 0.4
+				p.slow_timer = 1.0
+				Audio.play_sfx("au%d.wav" % randi_range(1, 5), 0.7)
+				sh.fading = true
+				trigger.emit("stress_hit")
+		if (sh.alpha <= 0 and sh.fading) or absf(sh.x - p.center().x) > W:
+			shadows.remove_at(i)
+	# The gate: pushed back by stress; locked gates re-arm after a moment.
+	for e in level.entities:
+		if e.trigger_type == "gate":
+			e.x = e.base_x + Game.gate_shift * LevelData.CELL_W
+			if e.collected and meadow_end == 0:
+				# A locked gate re-arms once the player has stepped away for a moment.
+				if gate_locked_timer > 0:
+					gate_locked_timer -= dt
+				elif not p.rect().intersects(e.rect()):
+					e.collected = false
+	if meadow_end > 0:
+		meadow_end += dt
+		p.vx = 0
+		if meadow_end > 0.3 and meadow_end < 2.0 and randf() < 0.5:
+			particles.append({"x": p.x + p.width / 2 + (randf() - 0.5) * 20, "y": p.y + 40, "vx": (randf() - 0.5) * 2, "vy": 2 + randf() * 2,
+				"rot": 0.0, "rot_speed": 0.0, "type": "splash", "life": 0.6, "max_life": 0.6})
+		if meadow_end > 4.0 and not _meadow_done_sent:
+			_meadow_done_sent = true
+			trigger.emit("meadow_done")
+
+
+func _update_seed(e: LevelData.Ent, dt: float, d60: float) -> void:
+	var attached := thread_target == e.id and focus
+	match e.tier:
+		1:
+			e.visible = fmod(time_ms / 1000.0 + e.id * 0.7, 4.0) < 2.5
+		2:
+			if not attached:
+				e.x = e.base_x + sin(time_ms / 1300.0 + e.id) * 70
+				e.y = e.base_y + cos(time_ms / 900.0 + e.id) * 30
+		3:
+			if not attached:
+				var dx := e.x - p.center().x
+				if absf(dx) < 170 and not dialog_open:
+					e.x = clampf(e.x + signf(dx) * 2.2 * d60, e.base_x - 140, e.base_x + 140)
+				else:
+					e.x += (e.base_x - e.x) * 0.03 * d60
+				e.y = e.base_y + sin(time_ms / 500.0 + e.id) * 8
+	if not attached and e.tier <= 1:
+		# Drifts back home after the thread let go.
+		e.x += (e.base_x - e.x) * 0.06 * d60
+		e.y += (e.base_y - e.y) * 0.06 * d60 + sin(time_ms / 400.0 + e.id) * 0.3
+
+
+# --- level 2 drawing -------------------------------------------------------------------
+
+func _draw_meadow_bg() -> void:
+	var ci := _bg
+	var t := time_ms
+	# Sky after rain: pale green-blue to warm gold, soft sun.
+	var bands := 12
+	for b in bands:
+		ci.draw_rect(Rect2(0, H * b / bands, W, H / bands + 1), Color("#bfe3df").lerp(Color("#f1e6b8"), (b + 0.5) / bands))
+	Draw.radial_glow(ci, Vector2(W * 0.78, 90), 170, Color(1, 0.95, 0.7, 0.45), Color(1, 1, 0.92, 0.9))
+	# Distant hills and trees (parallax).
+	for layer in 3:
+		var depth := 0.15 + layer * 0.2
+		var off := camera_x * depth
+		var base_y := 250.0 + layer * 70
+		var col := Color("#8fcfae").lerp(Color("#3f8f5f"), layer / 2.0)
+		var pts := PackedVector2Array()
+		var x := -20.0
+		while x <= W + 20:
+			var wx := x + off
+			pts.append(Vector2(x, base_y + sin(wx * 0.006 + layer) * 40 + sin(wx * 0.017 + layer * 2) * 15))
+			x += 20
+		pts.append(Vector2(W + 20, H))
+		pts.append(Vector2(-20, H))
+		Draw.polygon_safe(ci, pts, col)
+		# Trees along the hill.
+		var tx := -fmod(off, 160.0)
+		while tx < W + 80:
+			var hy := base_y + sin((tx + off) * 0.006 + layer) * 40 + sin((tx + off) * 0.017 + layer * 2) * 15
+			var th := 60 + layer * 20 + fmod(absf(tx + off) * 0.37, 30.0)
+			ci.draw_line(Vector2(tx, hy + 8), Vector2(tx, hy - th * 0.4), col.darkened(0.3), 3 + layer)
+			ci.draw_circle(Vector2(tx, hy - th * 0.55), th * 0.35, col.darkened(0.15))
+			ci.draw_circle(Vector2(tx - th * 0.2, hy - th * 0.35), th * 0.28, col.darkened(0.1))
+			ci.draw_circle(Vector2(tx + th * 0.2, hy - th * 0.38), th * 0.26, col.darkened(0.2))
+			tx += 160
+	# Drizzle sparkle / pollen in the air.
+	for i in 24:
+		var px := fmod(i * 211.0 - camera_x * 0.5 + sin(t / 1200.0 + i) * 20 + 4000 * W, W)
+		var py := fmod(i * 131.0 + t * 0.02 * (1 + i % 3), H)
+		ci.draw_circle(Vector2(px, py), 1.5 + (i % 3) * 0.5, Color(1, 1, 0.85, 0.5))
+
+
+## Behind the platforms: the river.
+func _draw_meadow_back(ci: CanvasItem, t: float, left: float, right: float) -> void:
+	if level.water_top < 0:
+		return
+	var wy := level.water_top + 14
+	var pts := PackedVector2Array()
+	var x := left
+	while x <= right:
+		pts.append(Vector2(x, wy + sin(t / 400.0 - x / 70.0) * 4 + cos(t / 650.0 - x / 40.0) * 2))
+		x += 20
+	pts.append(Vector2(right, level_h + 50))
+	pts.append(Vector2(left, level_h + 50))
+	Draw.polygon_safe(ci, pts, Color("#3f8fd6", 0.85))
+	# The current flows left (against the player): streaks drifting left.
+	for i in 30:
+		var sx := right - fmod(t * 0.09 + i * 173.0, right - left)
+		var sy := wy + 18 + fmod(i * 47.0, level_h - wy - 30)
+		ci.draw_line(Vector2(sx, sy), Vector2(sx + 26, sy), Color(1, 1, 1, 0.22), 2.0)
+	var glow := PackedVector2Array()
+	for i in range(0, pts.size() - 2):
+		glow.append(pts[i])
+	ci.draw_polyline(glow, Color(0.85, 0.95, 1.0, 0.9), 3.0, true)
+
+
+## In front of the platforms: the shadows and the end flower.
+func _draw_meadow_front(ci: CanvasItem, t: float, left: float, right: float) -> void:
+	for sh in shadows:
+		var a: float = clampf(sh.alpha, 0, 1)
+		var c := Vector2(sh.x, sh.y + sin(t / 120.0 + sh.x) * 4)
+		Draw.radial_glow(ci, c, 34, Color(0.1, 0.05, 0.2, 0.5 * a))
+		var pts := PackedVector2Array()
+		for i in 12:
+			var ang := i / 12.0 * TAU
+			var rr := 18 + sin(t / 60.0 + i * 2 + sh.x) * 5
+			pts.append(c + Vector2(cos(ang), sin(ang)) * rr)
+		Draw.polygon_safe(ci, pts, Color(0.12, 0.06, 0.22, 0.85 * a))
+		ci.draw_circle(c + Vector2(-5, -3), 2.5, Color(1, 0.3, 0.3, a))
+		ci.draw_circle(c + Vector2(5, -3), 2.5, Color(1, 0.3, 0.3, a))
+	if meadow_end > 0:
+		# The poured water sinks in and a golden flower grows.
+		var k := clampf((meadow_end - 1.2) / 2.0, 0, 1)
+		var base := Vector2(p.x + p.width / 2 + 40, p.y + p.height)
+		if k > 0:
+			ci.draw_line(base, base + Vector2(0, -120 * k), Color("#3f8f3f"), 5.0)
+			for i in 8:
+				var ang := -PI / 2 + (i - 3.5) * 0.45
+				var tip := base + Vector2(0, -120 * k) + Vector2(cos(ang), sin(ang)) * 34 * k
+				ci.draw_line(base + Vector2(0, -120 * k), tip, Color("#f5c842"), 10.0 * k)
+			ci.draw_circle(base + Vector2(0, -120 * k), 12 * k, Color("#fff1a8"))
+			Draw.radial_glow(ci, base + Vector2(0, -120 * k), 140 * k, Color(1, 0.9, 0.5, 0.5 * k), Color(1, 1, 0.9, 0.9 * k))
+
+
+func _draw_meadow_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
+	# Earth with a grassy top; stones peeking out.
+	var body := Rect2(pl.x, pl.y + 4, pl.w, pl.h + 36)
+	Draw.panel(ci, body, Color("#6b4a2b"), 8)
+	Draw.panel(ci, Rect2(pl.x - 2, pl.y - 2, pl.w + 4, 14), Color("#4fae5a"), 6)
+	var m := 6.0
+	while m < pl.w - 6:
+		var gx := pl.x + m
+		var sway := sin(t / 600.0 + gx * 0.05) * 3
+		ci.draw_line(Vector2(gx, pl.y), Vector2(gx + sway, pl.y - 10 - fmod(gx * 0.7, 6.0)), Color("#7fd68a"), 2.0)
+		m += 11
+	m = 18
+	while m < pl.w - 18:
+		ci.draw_circle(Vector2(pl.x + m, pl.y + 30), 6, Color("#8c7a66"))
+		m += 57
+
+
+func _draw_drop(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3)
+	var pts := PackedVector2Array([c + Vector2(0, -13)])
+	for i in range(1, 12):
+		var ang := -PI / 2 + i / 12.0 * TAU
+		pts.append(c + Vector2(cos(ang) * 9, sin(ang) * 9 + 3))
+	Draw.polygon_safe(ci, pts, Color("#5fb3f0"))
+	ci.draw_circle(c + Vector2(-3, 1), 2.5, Color(1, 1, 1, 0.8))
+
+
+func _draw_seed(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	if not e.visible:
+		return
+	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 350.0 + e.id) * 4)
+	var pulse := 0.5 + 0.5 * sin(t / 220.0 + e.id)
+	var a := 1.0
+	if e.tier == 1:
+		var ph := fmod(t / 1000.0 + e.id * 0.7, 4.0)
+		a = clampf(minf(ph / 0.3, (2.5 - ph) / 0.3), 0, 1)
+	Draw.radial_glow(ci, c, 30 + pulse * 10, Color(1, 0.85, 0.4, 0.45 * a), Color(1, 0.98, 0.8, 0.9 * a))
+	ci.draw_circle(c, 7, Color("#fff4c2", a))
+	ci.draw_circle(c + Vector2(-2, -2), 2.5, Color(1, 1, 1, a))
+	if thread_target == e.id and focus:
+		ci.draw_arc(c, 16 + pulse * 3, 0, TAU, 32, Color(1, 1, 1, 0.8), 2.0, true)
+
+
+func _draw_thread(ci: CanvasItem, t: float) -> void:
+	var e := _seed_by_id(thread_target)
+	if e == null:
+		return
+	var a := _hand()
+	var b := Vector2(e.x + e.w / 2, e.y + e.h / 2)
+	var pts := PackedVector2Array()
+	for i in 17:
+		var k := i / 16.0
+		var pt := a.lerp(b, k)
+		pt.y += sin(k * PI) * 10 * sin(t / 120.0)
+		pts.append(pt)
+	ci.draw_polyline(pts, Color(1, 0.95, 0.6, 0.9), 2.5, true)
+	for i in 5:
+		var k := fmod(t / 600.0 + i / 5.0, 1.0)
+		ci.draw_circle(a.lerp(b, k), 3, Color(1, 1, 0.8, 0.9))
+
+
+func _draw_gate(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var gx := e.x + e.w / 2
+	var gy := (level.water_top if level.water_top > 0 else H) - 60
+	var open := Game.water >= 100 and Game.seeds >= Game.SEEDS_NEEDED
+	var col := Color("#f5c842") if open else Color("#9fb89f")
+	# Two vines arching into a gate.
+	for side in [-1.0, 1.0]:
+		var pts := PackedVector2Array()
+		for i in 13:
+			var k := i / 12.0
+			pts.append(Vector2(gx + side * (58 - 50 * k * k), gy - 190 * k))
+		ci.draw_polyline(pts, Color("#3f8f3f"), 7.0, true)
+		for i in range(2, 12, 3):
+			var k := i / 12.0
+			var lp := Vector2(gx + side * (58 - 50 * k * k), gy - 190 * k)
+			ci.draw_set_transform(lp, side * 0.8 + sin(t / 700.0 + i) * 0.1, Vector2(1, 0.5))
+			ci.draw_circle(Vector2.ZERO, 9, Color("#4fae5a"))
+			ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+	for i in 5:
+		var ang := PI + i / 4.0 * PI
+		var fp := Vector2(gx, gy - 190) + Vector2(cos(ang), sin(ang)) * 30
+		ci.draw_circle(fp, 8 + (sin(t / 300.0 + i) * 2 if open else 0.0), col)
+	Draw.radial_glow(ci, Vector2(gx, gy - 100), 90 if open else 50, Color(col, 0.35 if open else 0.15))
+	if not open:
+		var txt := "%d/100  ·  %d/%d" % [Game.water, Game.seeds, Game.SEEDS_NEEDED]
+		Draw.text_center(ci, _font, Vector2(gx, gy - 215), txt, 14, Color("#2f5d3f", 0.9))

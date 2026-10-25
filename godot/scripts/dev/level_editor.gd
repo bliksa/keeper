@@ -83,13 +83,27 @@ func _autosave_path() -> String:
 	return AUTOSAVE if level_id == 1 else AUTOSAVE_FMT % level_id
 
 
+func horizontal() -> bool:
+	return Game.is_horizontal(level_id)
+
+
+## Columns of the level being edited (horizontal levels are as long as their rows).
+func cols() -> int:
+	return rows[0].length() if horizontal() and rows.size() > 0 else LevelData.COLS
+
+
 func _load_initial() -> void:
 	rows = PackedStringArray()
 	if FileAccess.file_exists(_autosave_path()):
 		var f := FileAccess.open(_autosave_path(), FileAccess.READ)
-		rows = LevelData.parse_text(f.get_as_text())
+		rows = LevelData.parse_text(f.get_as_text(), -1 if horizontal() else LevelData.COLS)
+		# An autosave of the wrong shape (e.g. from before the level changed orientation) is ignored.
+		if horizontal() != (rows.size() <= 16 and rows.size() > 0 and rows[0].length() > LevelData.COLS):
+			rows = PackedStringArray()
 	if rows.is_empty():
 		rows = Game.level_rows(level_id)
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if horizontal() else ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.scroll_horizontal = 0
 	_resize_grid()
 
 
@@ -111,7 +125,10 @@ func select_level(id: int) -> void:
 
 
 func _resize_grid() -> void:
-	_grid.custom_minimum_size = Vector2(LevelData.COLS * CELL_W, rows.size() * CELL_H + END_PAD)
+	if horizontal():
+		_grid.custom_minimum_size = Vector2(cols() * CELL_W + END_PAD, rows.size() * CELL_H)
+	else:
+		_grid.custom_minimum_size = Vector2(LevelData.COLS * CELL_W, rows.size() * CELL_H + END_PAD)
 	_grid.queue_redraw()
 
 
@@ -157,7 +174,15 @@ const GROUPS := [
 		["P", "map-pin", "Spawn point (P)"],
 		["T", "arrow-up-to-line", "Teleport to top (T)"],
 	]},
-	{"id": "garden", "name": "Garden (level 2)", "items": [
+	{"id": "meadow", "name": "Meadow (level 2)", "items": [
+		["#", "droplets", "River (#)"],
+		["Y", "sparkles", "Light seed (Y)"],
+		["K", "brain", "Minigame: memory (K)"],
+		["M", "cloud-lightning", "Minigame: catch (M)"],
+		["Q", "link", "Minigame: pairs (Q)"],
+		["G", "door-open", "Gate / level end (G)"],
+	]},
+	{"id": "garden", "name": "Summit (level 3)", "items": [
 		["@", "circle", "Bubble platform (@)"],
 		["%", "circle-dashed", "Popping bubble (%)"],
 		["~", "wind", "Updraft (~)"],
@@ -286,7 +311,7 @@ func _build_header() -> void:
 		["undo-2", "Back to the bundled level", _use_bundled], null,
 		["folder-open", "Load the game level from the build", _load_game_level],
 		["file-plus", "New empty level", _new_level],
-		["list-plus", "Add 20 rows at the bottom", _add_rows], null,
+		["list-plus", "Add 20 rows (horizontal levels: 20 columns)", _add_rows], null,
 		["import", "Import level text", _open_import],
 		["download", "Export: copy + download the level text", _export], null,
 		["git-commit-horizontal", "Save to repo (commits the level to GitHub)", save_to_repo],
@@ -325,6 +350,12 @@ func _select_tool(t: String) -> void:
 
 func _grid_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
+		if horizontal() and event.pressed and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			# The wheel scrolls along a horizontal level.
+			_scroll.scroll_horizontal += int(CELL_W * 4) * (1 if event.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1)
+			_grid.queue_redraw()
+			get_viewport().set_input_as_handled()
+			return
 		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
 				_painting = 2 if event.button_index == MOUSE_BUTTON_RIGHT else 1
@@ -339,7 +370,7 @@ func _grid_input(event: InputEvent) -> void:
 func _paint_at(pos: Vector2) -> void:
 	var c := int(pos.x / CELL_W)
 	var r := int(pos.y / CELL_H)
-	if r < 0 or r >= rows.size() or c < 0 or c >= LevelData.COLS:
+	if r < 0 or r >= rows.size() or c < 0 or c >= cols():
 		return
 	var ch := " " if _painting == 2 else tool
 	if ch == "P":
@@ -358,14 +389,18 @@ func _draw_grid() -> void:
 	var scroll_top := _scroll.scroll_vertical
 	var first := maxi(0, int(scroll_top / CELL_H) - 1)
 	var last := mini(rows.size(), first + int(600 / CELL_H) + 3)
-	var w := LevelData.COLS * CELL_W
+	var ncols := cols()
+	var w := ncols * CELL_W
 	var level_h := rows.size() * CELL_H
-	ci.draw_rect(Rect2(0, first * CELL_H, w, (last - first) * CELL_H), Color("#111827"))
+	var scroll_left := _scroll.scroll_horizontal
+	var first_c := maxi(0, int(scroll_left / CELL_W) - 1) if horizontal() else 0
+	var last_c := mini(ncols, first_c + int(1066 / CELL_W) + 3) if horizontal() else ncols
+	ci.draw_rect(Rect2(first_c * CELL_W, first * CELL_H, (last_c - first_c) * CELL_W, (last - first) * CELL_H), Color("#111827"))
 	for r in range(first, last):
 		var y := r * CELL_H
-		ci.draw_line(Vector2(0, y), Vector2(w, y), Color(1, 1, 1, 0.12 if r % 4 == 0 else 0.05))
+		ci.draw_line(Vector2(first_c * CELL_W, y), Vector2(last_c * CELL_W, y), Color(1, 1, 1, 0.12 if r % 4 == 0 else 0.05))
 		var row := rows[r]
-		for c in LevelData.COLS:
+		for c in range(first_c, last_c):
 			var ch := row[c]
 			var cell := Rect2(c * CELL_W, y, CELL_W, CELL_H)
 			var mid := cell.get_center()
@@ -384,7 +419,13 @@ func _draw_grid() -> void:
 				"P":
 					ci.draw_circle(mid, 12, Color("#22c55e"))
 					Draw.text_center(ci, font, mid, "P", 12, Color.WHITE)
-				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E":
+				"#":
+					ci.draw_rect(cell, Color("#1d4ed8", 0.7))
+					ci.draw_line(Vector2(cell.position.x + 6, mid.y), Vector2(cell.end.x - 6, mid.y), Color("#93c5fd", 0.8), 2.0)
+				"Y":
+					ci.draw_circle(mid, 11, Color("#fde68a", 0.5))
+					ci.draw_circle(mid, 5, Color("#fff4c2"))
+				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E", "K", "M", "Q", "G":
 					ci.draw_rect(cell.grow(-1), Color("#581c87", 0.8))
 					ci.draw_rect(cell.grow(-1), Color("#c084fc"), false, 1.0)
 					Draw.text_center(ci, font, mid, ch, 12, Color.WHITE)
@@ -409,13 +450,23 @@ func _draw_grid() -> void:
 					ci.draw_rect(cell.grow(-1), Color("#1e3a8a", 0.8))
 					ci.draw_rect(cell.grow(-1), Color("#60a5fa"), false, 1.0)
 					Draw.text_center(ci, font, mid, ch.to_upper(), 12, Color.WHITE)
-	for c in LevelData.COLS + 1:
-		ci.draw_line(Vector2(c * CELL_W, first * CELL_H), Vector2(c * CELL_W, last * CELL_H), Color(1, 1, 1, 0.05))
-	# Level boundary: a bright frame, and a hatched "end of level" band below the last row.
+	for c in range(first_c, last_c + 1):
+		ci.draw_line(Vector2(c * CELL_W, first * CELL_H), Vector2(c * CELL_W, last * CELL_H), Color(1, 1, 1, 0.12 if (horizontal() and c % 10 == 0) else 0.05))
+	# Level boundary: a bright frame, and a hatched "end of level" band after the last row / column.
 	var frame_col := Color("#10b981")
 	ci.draw_line(Vector2(1, 0), Vector2(1, level_h), frame_col, 2.0)
 	ci.draw_line(Vector2(w - 1, 0), Vector2(w - 1, level_h), frame_col, 2.0)
-	ci.draw_line(Vector2(0, 1), Vector2(w, 1), frame_col, 2.0)
+	ci.draw_line(Vector2(first_c * CELL_W, 1), Vector2(last_c * CELL_W, 1), frame_col, 2.0)
+	if horizontal():
+		ci.draw_line(Vector2(first_c * CELL_W, level_h - 1), Vector2(last_c * CELL_W, level_h - 1), frame_col, 2.0)
+		if w + END_PAD >= scroll_left and w <= scroll_left + 1066:
+			ci.draw_rect(Rect2(w, 0, END_PAD, level_h), Color("#020617"))
+			ci.draw_line(Vector2(w, 0), Vector2(w, level_h), frame_col, 3.0)
+			ci.draw_set_transform(Vector2(w + END_PAD / 2, level_h / 2), -PI / 2, Vector2.ONE)
+			Draw.text_center(ci, font, Vector2(0, -6), "END OF LEVEL  ·  %d columns" % ncols, 13, Color(frame_col, 0.9))
+			Draw.text_center(ci, Text.font, Vector2(0, 14), "add more with “Add 20 columns” in the header", 11, Color("#64748b"))
+			ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+		return
 	if level_h + END_PAD >= scroll_top and level_h <= scroll_top + 600:
 		ci.draw_rect(Rect2(0, level_h, w, END_PAD), Color("#020617"))
 		var x := -END_PAD
@@ -449,16 +500,29 @@ func _load_game_level() -> void:
 
 func _new_level() -> void:
 	rows = PackedStringArray()
-	for i in 100:
-		rows.append(" ".repeat(LevelData.COLS))
-	rows[99] = "=".repeat(LevelData.COLS)
+	if horizontal():
+		for i in 10:
+			rows.append(" ".repeat(120))
+		rows[7] = "=".repeat(24) + " ".repeat(96)
+		rows[8] = "#".repeat(120)
+		rows[9] = "#".repeat(120)
+	else:
+		for i in 100:
+			rows.append(" ".repeat(LevelData.COLS))
+		rows[99] = "=".repeat(LevelData.COLS)
 	_resize_grid()
 	_autosave()
 
 
+## Vertical levels grow by rows, horizontal ones by columns.
 func _add_rows() -> void:
-	for i in 20:
-		rows.append(" ".repeat(LevelData.COLS))
+	if horizontal():
+		for i in rows.size():
+			var tail := "#" if rows[i].ends_with("#") else " "
+			rows[i] = rows[i] + tail.repeat(20)
+	else:
+		for i in 20:
+			rows.append(" ".repeat(LevelData.COLS))
 	_resize_grid()
 	_autosave()
 
@@ -551,10 +615,13 @@ func start_test() -> void:
 	_test.hud_layer = 32
 	_test.player_layer = 31
 	Game.level = level_id
-	if level_id == 2:
+	if level_id == 3:
 		Game.upgrades = {"jump": true, "dash": true, "double": true}
 	_test.setup(rows, 0, level_id)
 	_test.active = true
+	# The editor must not swallow the mouse while testing (aiming the thread).
+	for c in [self, _scroll, _grid]:
+		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_test.trigger.connect(_on_test_trigger)
 	_test.boss_defeated.connect(func(): _toast_msg("Boss defeated!"))
 	_test.boss_lost.connect(func(): _toast_msg("Boss lost — Enter to return"))
@@ -590,6 +657,8 @@ func stop_test() -> void:
 	Audio.set_bgm_volume(0.5)
 	get_node("TestLayer").queue_free()
 	_test = null
+	for c in [self, _scroll, _grid]:
+		c.mouse_filter = Control.MOUSE_FILTER_STOP
 	Game.iron = _saved_state.iron
 	Game.has_breathing = _saved_state.breath
 	Game.checkpoint = _saved_state.cp

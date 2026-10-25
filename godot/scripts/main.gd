@@ -3,8 +3,9 @@ extends Node
 ##
 ## boot → title → intro (forest) → mg1 (breathing) → intro → platformer (cave)
 ##   → mg2 chocolate → platformer → mg3 pipes → platformer → mg4 prices
-##   → platformer → boss → level 2 (garden): platformer → mg5 iron plate
-##   → mg6 rhythm → mg7 body signals → LH wave chase → summit → title
+##   → platformer → boss → level 2 (meadow, left → right): mg8 memory → mg9 catch
+##   → mg10 pairs → the gate → level 3 (summit, up): mg5 iron plate → mg6 rhythm
+##   → mg7 body signals → LH wave chase → summit → title
 ## plus the developer menu ("dev").
 
 var state := ""
@@ -85,7 +86,7 @@ func _set_state(s: String) -> void:
 	match s:
 		"intro", "mg1": Audio.play_bgm("forest.mp3", 0.4)
 		"platformer": Audio.play_bgm("chamber.mp3" if Game.level == 1 else "forest.mp3", 0.5)
-		"mg2", "mg3", "mg4", "mg5", "mg6", "mg7": Audio.play_bgm("minihra.mp3", 0.5)
+		"mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10": Audio.play_bgm("minihra.mp3", 0.5)
 		"title": Audio.play_bgm("menu.mp3", 0.5)
 
 
@@ -129,13 +130,13 @@ func _dialog(id: String, then: Callable = Callable()) -> void:
 
 
 func _process(_delta: float) -> void:
-	_pause.allowed = state in ["intro", "mg1", "platformer", "mg2", "mg3", "mg4", "mg5", "mg6", "mg7"]
+	_pause.allowed = state in ["intro", "mg1", "platformer", "mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
 	var any_dialog := _node_box.is_open() or _panel_box.is_open()
 	if platformer:
 		platformer.active = state == "platformer"
 		platformer.dialog_open = any_dialog
 		platformer.active_dialog_id = _node_box.node_id()
-		platformer.hide_platforms = state in ["mg2", "mg3", "mg4", "mg5", "mg6", "mg7"]
+		platformer.hide_platforms = state in ["mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
 		platformer.hud.visible = state == "platformer"
 	if forest:
 		forest.active = state in ["intro", "mg1"]
@@ -198,13 +199,21 @@ func _dev_action(name: String, value: int) -> void:
 		"boss":
 			_skip_to_boss(value)
 		"checkpoint2":
-			# Level 2 checkpoints: 1 start, 2..4 after its minigames, 5 the LH wave.
+			# Meadow checkpoints: 1 start, 2..4 after its minigames, 5 the gate (ready to open).
+			Game.reset_run()
+			Game.has_breathing = true
+			Game.intro_done = true
+			Game.water = [0, 0, 30, 55, 80, 100][value]
+			Game.seeds = [0, 0, 3, 6, 8, Game.SEEDS_NEEDED][value]
+			_start_meadow(value, 10)
+		"checkpoint3":
+			# Summit checkpoints: 1 start, 2..4 after its minigames, 5 the LH wave.
 			Game.reset_run()
 			Game.has_breathing = true
 			Game.intro_done = true
 			for i in mini(value, 4) - 1:
 				Game.upgrades[["jump", "dash", "double"][i]] = true
-			_start_garden(value, 10)
+			_start_summit(value, 10)
 
 
 ## Stop everything that belongs to a run in progress (sounds, dialogs, overlays).
@@ -283,9 +292,14 @@ func _start_cave(checkpoint: int, iron: int, fade := true) -> void:
 	await _start_level(1, checkpoint, iron, fade)
 
 
-## (Re)start the garden (level 2): 1 start, 2–4 after its minigames, 5 the LH wave.
-func _start_garden(checkpoint: int, iron: int, fade := true) -> void:
+## (Re)start the meadow (level 2): 1 start, 2–4 after its minigames, 5 the gate.
+func _start_meadow(checkpoint: int, iron: int, fade := true) -> void:
 	await _start_level(2, checkpoint, iron, fade)
+
+
+## (Re)start the summit (level 3): 1 start, 2–4 after its minigames, 5 the LH wave.
+func _start_summit(checkpoint: int, iron: int, fade := true) -> void:
+	await _start_level(3, checkpoint, iron, fade)
 
 
 func _start_level(lvl: int, checkpoint: int, iron: int, fade := true) -> void:
@@ -372,6 +386,31 @@ func _on_trigger(name: String) -> void:
 			_set_state("mg7")
 			_open_minigame(SignalsGame.new(), _mg7_done)
 			_dialog("mg7_start")
+		"mg8":
+			_set_state("mg8")
+			_open_minigame(MemoryGame.new(), _mg8_done)
+			_dialog("mg8_start")
+		"mg9":
+			_set_state("mg9")
+			_open_minigame(CatchGame.new(), _mg9_done)
+			_dialog("mg9_start")
+		"mg10":
+			_set_state("mg10")
+			_open_minigame(PairsGame.new(), _mg10_done)
+			_dialog("mg10_start")
+		"gate_locked":
+			if _node_box.node_id() != "gate_locked":
+				_dialog("gate_locked")
+		"gate":
+			Game.checkpoint = 5
+		"meadow_done":
+			var run4 := _run_id
+			await _fade_to(1.0, 1.5, Color.WHITE)
+			if run4 != _run_id:
+				return
+			_dialog("meadow_end", func():
+				_start_summit(1, maxi(Game.iron, 8), false)
+				_fade_to(0.0, 1.0, Color.WHITE))
 		"wave":
 			# The chase starts when the dialog closes (a retry skips the dialog).
 			if Game.checkpoint < 5:
@@ -417,8 +456,11 @@ func _on_trigger(name: String) -> void:
 func _restart_cave() -> void:
 	_panel_box.close()
 	_set_dim(false)
+	if Game.level == 3:
+		_start_summit(maxi(1, mini(Game.checkpoint, 4)), 5)
+		return
 	if Game.level == 2:
-		_start_garden(maxi(1, mini(Game.checkpoint, 4)), 5)
+		_start_meadow(maxi(1, mini(Game.checkpoint, 4)), 5)
 		return
 	Game.boss_iron = 0
 	_start_cave(1, 0)
@@ -427,7 +469,7 @@ func _restart_cave() -> void:
 func _retry_wave() -> void:
 	_panel_box.close()
 	_set_dim(false)
-	_start_garden(5, maxi(Game.iron, 5))
+	_start_summit(5, maxi(Game.iron, 5))
 
 
 func _mg2_done() -> void:
@@ -453,7 +495,26 @@ func _back_to_cave() -> void:
 	_set_state("platformer")
 
 
-# Level 2 minigames each unlock a power-up (estrogen rising: more energy).
+# Level 2 (meadow) minigames.
+func _mg8_done() -> void:
+	Game.checkpoint = 2
+	_panel_box.close()
+	_dialog("mg8_after", _back_to_cave)
+
+
+func _mg9_done() -> void:
+	Game.checkpoint = 3
+	_panel_box.close()
+	_dialog("mg9_after", _back_to_cave)
+
+
+func _mg10_done() -> void:
+	Game.checkpoint = 4
+	_panel_box.close()
+	_dialog("mg10_after", _back_to_cave)
+
+
+# Level 3 minigames each unlock a power-up (estrogen rising: more energy).
 func _mg5_done() -> void:
 	Game.checkpoint = 2
 	Game.upgrades["jump"] = true
@@ -476,10 +537,29 @@ func _mg7_done() -> void:
 
 
 func _on_boss_defeated() -> void:
-	# The cycle goes on: the garden (follicular phase) with the iron that is left.
-	_dialog("boss_win", func():
-		Game.upgrades = {}
-		_start_garden(1, maxi(Game.iron, 8)))
+	# The cycle goes on: Kyra gets up and walks off to the meadow (follicular phase).
+	_dialog("boss_win", _walk_to_meadow)
+
+
+func _walk_to_meadow() -> void:
+	var run := _run_id
+	if platformer:
+		platformer.scripted_walk = 2.2
+	await get_tree().create_timer(1.6).timeout
+	if run != _run_id:
+		return
+	await _fade_to(1.0, 1.0, Color.WHITE)
+	if run != _run_id:
+		return
+	Game.upgrades = {}
+	Game.water = 0
+	Game.seeds = 0
+	Game.gate_shift = 0
+	await _start_level(2, 1, Game.iron, false)
+	if run != _run_id:
+		return
+	await get_tree().create_timer(0.4).timeout
+	_fade_to(0.0, 1.0, Color.WHITE)
 
 
 func _on_boss_lost() -> void:
@@ -502,14 +582,23 @@ func _unhandled_input(event: InputEvent) -> void:
 		KEY_1, KEY_2, KEY_3, KEY_4:
 			_start_level(Game.level, event.physical_keycode - KEY_0, Game.iron)
 		KEY_5:
-			if Game.level == 2:
-				_start_garden(5, maxi(Game.iron, 5))
+			if Game.level == 3:
+				_start_summit(5, maxi(Game.iron, 5))
+			elif Game.level == 2:
+				Game.water = 100
+				Game.seeds = Game.SEEDS_NEEDED
+				_start_meadow(5, Game.iron)
 			else:
 				_skip_to_boss(maxi(Game.iron, 20))
 		KEY_G:
-			# G: jump to the garden (level 2) with the power-ups.
+			# G: jump to the summit (level 3) with the power-ups.
 			Game.upgrades = {"jump": true, "dash": true, "double": true}
-			_start_garden(1, maxi(Game.iron, 10))
+			_start_summit(1, maxi(Game.iron, 10))
+		KEY_H:
+			# H: the meadow (level 2) with a full vessel.
+			Game.water = 100
+			Game.seeds = Game.SEEDS_NEEDED
+			_start_meadow(1, maxi(Game.iron, 10))
 		KEY_C:
 			Game.has_breathing = true
 			Game.iron = 20

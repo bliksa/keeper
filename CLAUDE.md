@@ -129,7 +129,26 @@ Commits land on the repo's default branch and trigger the deploy. **Run `git pul
 before editing**, because the branch may contain commits made from the browser.
 For a local mock API, set `GitHubSave.api_base`, or use `?gh_api=` on the web.
 
-## Level 2: the garden (follicular phase)
+## Level 2: the meadow (follicular phase, horizontal)
+
+Same `Platformer` with `level_id = 2` (`is_meadow()`, `level.horizontal`): the
+camera follows `camera_x`, `level_w` is the row length × `CELL_W`. Mechanics in
+`_update_meadow`: the river (`level.water_top`; falling in = `river_timer`, then
+back to `last_ground`, −10 water), the vessel (`Game.water`, `water_unlock(name)`:
+run 25 / double 50 / thread 75, `_max_jumps()`), light seeds (entity `seed`, `tier`
+0–3 by x order; the focus thread: `begin_focus` / `end_focus`, `aim` + `aim_mode`
+mouse / keys / stick, `_acquire_seed`, `thread_target`, `CATCH_DIST`), shadows
+(`shadows`, spawn while a seed is on the thread, a hit = −15 water and
+`Game.gate_shift` += 3 cells, trigger `stress_hit`), the gate (`gate`, locked =
+`gate_locked_timer` then re-armed when the player steps away; open = `meadow_end`
+sequence → trigger `meadow_done`). HUD: `_draw_meadow` (seeds + vessel). Flow in
+`main.gd`: `boss_win` → `_walk_to_meadow` (scripted walk, white fade) →
+`_start_meadow`; `_mg8_done`…`_mg10_done`; `meadow_done` → `meadow_end` dialog →
+`_start_summit`. Dialog letters b/c/d/e/f → `meadow_*` nodes; speaker `Iskra`
+gets a code-drawn portrait (`DialogBox._portrait`). Strings `DIA_M*`,
+`MG8_*`–`MG10_*`, `ROOM_*`, `BAG_*`, `MARKET_*`, `SIG_*` / `EXP_*` / `HINT_*`.
+
+## Level 3: the summit (ovulation)
 
 Same `Platformer` with `level_id = 2` (`is_garden()`): climbed upwards, procedural
 dusk→morning background (`_draw_garden_bg`, by `_climb()`), bubble platforms
@@ -137,15 +156,18 @@ dusk→morning background (`_draw_garden_bg`, by `_climb()`), bubble platforms
 (enemy behaviour `distract`: slow, no iron loss), power-ups in `Game.upgrades`
 (`jump`, `dash` on the `run` action = Shift, `double`; see `_jump_force`), and the
 LH wave chase (`start_wave`, `_update_wave`, trigger `wave_lost`; `summit` ends the
-level). Checkpoints 1–5 use `LevelData.PROGRESS[2]`; `_stand_at_trigger` puts the
-player on the trigger row's platform. Flow in `main.gd`: `boss_win` →
-`_start_garden(1, iron)`; `_mg5_done`…`_mg7_done`; `garden_end` → title.
+level). Checkpoints 1–5 use `LevelData.PROGRESS[3]`; `_stand_at_trigger` puts the
+player on the trigger row's platform (or column, in the meadow). Flow in
+`main.gd`: `_start_summit(1, iron)` after the meadow; `_mg5_done`…`_mg7_done`;
+`garden_end` → title.
 Dialog letters g/h/k/m/n → `garden_*` nodes; strings `DIA_G*`, `MG5_*`–`MG7_*`.
 
 ## Backup of the game before level 2
 
 Branch `backup/v1-jaskyna` (commit pinned as `V1_SHA` in `.github/workflows/web.yml`)
-is built into the site at `/v1/`. Tags cannot be pushed from sessions (403).
+is built into the site at `/v1/`. Branch `backup/v2-zahrada-hore` holds the first
+level-2 draft (the upward garden, now level 3). Tags cannot be pushed from
+sessions (403).
 
 ## Pause menu
 
@@ -157,8 +179,8 @@ started before a restart can't act on the new run.
 
 ## Debug shortcuts (in the cave)
 
-`1–4` restart at checkpoint · `Shift+2…5` jump to minigame / boss (garden: LH wave)
-trigger · `5` boss (garden: wave) · `G` garden with all power-ups · `C` breathing +
-20 iron · `X` skip a minigame. Developer mode (DEV on the boot screen) has checkpoints
+`1–4` restart at checkpoint · `Shift+2…5` jump to minigame / boss / gate / LH wave
+trigger · `5` boss (meadow: gate, summit: wave) · `H` meadow with a full vessel ·
+`G` summit with all power-ups · `C` breathing + 20 iron · `X` skip a minigame. Developer mode (DEV on the boot screen) has checkpoints
 for both levels, skip-to-boss and the level editor (level picker in the header, paint,
 test with Enter, export/import, save to repo).

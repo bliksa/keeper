@@ -9,9 +9,11 @@ const VIEW_H := 600.0
 
 const LEVEL_PATH := "res://data/levels/cave.txt"
 const CUSTOM_LEVEL_PATH := "user://custom_level.txt"
-## Level id -> level text. 1 = the cave (menstruation), 2 = the garden (follicular phase).
-const LEVELS := {1: "res://data/levels/cave.txt", 2: "res://data/levels/garden.txt"}
-const LEVEL_NAMES := {1: "Cave", 2: "Garden"}
+## Levels: 1 the cave (menstruation, down), 2 the meadow (follicular phase, left → right,
+## horizontal), 3 the summit (ovulation, up). dir: "down" | "right" | "up" | "left".
+const LEVELS := {1: "res://data/levels/cave.txt", 2: "res://data/levels/meadow.txt", 3: "res://data/levels/garden.txt"}
+const LEVEL_NAMES := {1: "Cave", 2: "Meadow", 3: "Summit"}
+const LEVEL_DIRS := {1: "down", 2: "right", 3: "up"}
 
 ## "keyboard" or "gamepad" — decides which <KB>/<GP> hint text is shown.
 var control_mode := "keyboard":
@@ -30,10 +32,17 @@ var intro_done := false
 ## Checkpoint index: 0 = level start (first run), 1 = cave start,
 ## 2..4 = after minigame N, 5 = boss (level 2: the LH wave).
 var checkpoint := 0
-## Current level: 1 cave, 2 garden.
+## Current level: 1 cave, 2 meadow, 3 summit.
 var level := 1
-## Level 2 power-ups earned in the minigames: "jump", "dash", "double".
+## Level 3 power-ups earned in the minigames: "jump", "dash", "double".
 var upgrades := {}
+## Level 2: the water vessel (0..100, estrogen), caught light seeds, and how far
+## stress has pushed the gate (cells).
+var water := 0
+var seeds := 0
+var gate_shift := 0
+const SEEDS_NEEDED := 10
+const WATER_PER_DROP := 4
 
 
 func _ready() -> void:
@@ -50,6 +59,9 @@ func reset_run() -> void:
 	checkpoint = 0
 	level = 1
 	upgrades = {}
+	water = 0
+	seeds = 0
+	gate_shift = 0
 
 
 ## Level rows used by the game. A level edited in the dev menu can replace the
@@ -59,16 +71,20 @@ var custom_level_id := 0
 
 
 ## Level rows. Empty cells may be written as ' ' or '.' in the file.
-func load_level_rows(path: String = LEVEL_PATH) -> PackedStringArray:
+func load_level_rows(path: String = LEVEL_PATH, cols := LevelData.COLS) -> PackedStringArray:
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		push_error("Cannot open level " + path)
 		return PackedStringArray()
-	return LevelData.parse_text(f.get_as_text())
+	return LevelData.parse_text(f.get_as_text(), cols)
 
 
 func level_rows(id: int) -> PackedStringArray:
-	return load_level_rows(LEVELS.get(id, LEVEL_PATH))
+	return load_level_rows(LEVELS.get(id, LEVEL_PATH), -1 if is_horizontal(id) else LevelData.COLS)
+
+
+static func is_horizontal(id: int) -> bool:
+	return LEVEL_DIRS.get(id, "down") in ["right", "left"]
 
 
 func current_level_rows(id: int = level) -> PackedStringArray:
@@ -89,7 +105,7 @@ func _setup_input() -> void:
 	_action("jump", [KEY_UP, KEY_W, KEY_SPACE], [JOY_BUTTON_X], [])
 	# Shift on the keyboard: run (level 1) / dash (level 2, after the rhythm minigame).
 	_action("run", [KEY_SHIFT], [JOY_BUTTON_Y], [])
-	_action("breathe", [KEY_CTRL], [JOY_BUTTON_B, JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER],
+	_action("breathe", [KEY_CTRL], [JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER],
 		[[JOY_AXIS_TRIGGER_LEFT, 1.0], [JOY_AXIS_TRIGGER_RIGHT, 1.0]])
 	_action("confirm", [KEY_ENTER, KEY_KP_ENTER], [JOY_BUTTON_A], [])
 	# Dialog choice buttons map to the four face buttons (blue, red, yellow, green).
@@ -101,6 +117,11 @@ func _setup_input() -> void:
 	_action("rotate_right", [KEY_E], [JOY_BUTTON_A, JOY_BUTTON_X, JOY_BUTTON_Y], [])
 	_action("skip_minigame", [KEY_X], [], [])
 	_action("pause", [KEY_ESCAPE], [JOY_BUTTON_START], [])
+	# Level 2: hold to focus the light thread on a seed (also the left mouse button).
+	_action("focus", [KEY_E], [JOY_BUTTON_LEFT_SHOULDER], [])
+	var mb := InputEventMouseButton.new()
+	mb.button_index = MOUSE_BUTTON_LEFT
+	InputMap.action_add_event("focus", mb)
 
 
 func _action(action: StringName, keys: Array, buttons: Array, axes: Array) -> void:

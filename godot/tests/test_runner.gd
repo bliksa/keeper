@@ -83,9 +83,26 @@ func _run() -> void:
 		check(types.has(t), "level has trigger " + t)
 	check(L.platforms.size() > 50, "level has %d platforms" % L.platforms.size())
 	check(LevelData.parse_text(LevelData.to_text(rows)) == rows, "level text round-trips")
-	var rows2: PackedStringArray = Game.level_rows(2)
+	var rowsm: PackedStringArray = Game.level_rows(2)
+	var LM := LevelData.build(rowsm, LevelData.ROW_H, true)
+	check(LM.horizontal and rowsm.size() == 10 and LM.width() > 5000 and LM.has_spawn(), "meadow is horizontal: %d columns, a spawn" % LM.cols)
+	check(LM.water_top > 0, "meadow has a river")
+	var tiers := {}
+	var nseeds := 0
+	var mtypes := {}
+	for e in LM.entities:
+		if e.type == "seed":
+			nseeds += 1
+			tiers[e.tier] = true
+		if e.type == "trigger":
+			mtypes[e.trigger_type] = true
+	check(nseeds >= Game.SEEDS_NEEDED + 2 and tiers.size() == 4, "meadow has %d seeds in 4 tiers" % nseeds)
+	for t in ["mg8", "mg9", "mg10", "gate"]:
+		check(mtypes.has(t), "meadow has " + t)
+	check(LevelData.parse_text(LevelData.to_text(rowsm), -1) == rowsm, "meadow text round-trips")
+	var rows2: PackedStringArray = Game.level_rows(3)
 	var L2 := LevelData.build(rows2)
-	check(rows2.size() > 80 and L2.has_spawn(), "garden level has %d rows and a spawn" % rows2.size())
+	check(rows2.size() > 80 and L2.has_spawn(), "summit level has %d rows and a spawn" % rows2.size())
 	var types2 := {}
 	var kinds := {}
 	for e in L2.entities:
@@ -226,13 +243,168 @@ func _run() -> void:
 	var won := await until(func(): return node_box().node_id() == "boss_win", 5)
 	check(won, "boss defeated")
 	await finish_dialog("boss_win")
-	var garden := await until(func(): return main.state == "platformer" and Game.level == 2 and main.platformer != null, 5)
-	check(garden, "the garden (level 2) starts after the boss")
+	var meadow := await until(func(): return main.state == "platformer" and Game.level == 2 and main.platformer != null, 8)
+	check(meadow, "the meadow (level 2) starts after the boss")
 
-	step("level 2 – the garden")
+	step("level 2 – the meadow")
+	await finish_dialog("meadow_start")
+	pf = main.platformer
+	check(pf.is_meadow() and pf.level.horizontal and pf.level_w > 5000, "a horizontal level with the camera following")
+	await seconds(0.5)
+	check(pf.p.is_grounded, "stands on the meadow ground")
+	_teleport_to_entity(pf, "iron")
+	await frames(3)
+	check(Game.water == Game.WATER_PER_DROP, "a water drop fills the vessel")
+	Game.water = 20
+	# The river carries her back to the last ground she stood on.
+	await seconds(0.6)
+	var home: Vector2 = pf.last_ground
+	check(pf.p.is_grounded and home.y > 0, "the last ground is remembered")
+	pf.p.x = home.x + 1200
+	pf.p.y = pf.level.water_top
+	pf.p.vy = 0
+	await seconds(0.3)
+	check(pf.river_timer > 0 and Game.water == 10, "falling in the river spills water")
+	await seconds(1.3)
+	check(pf.river_timer <= 0 and absf(pf.p.x - home.x) < 40 and pf.p.y < pf.level.water_top - 50, "the current carries her back to the last ground")
+	check(pf._max_jumps() == 1 and not pf.water_unlock("run"), "no double jump and no fast run with an empty vessel")
+	Game.water = 50
+	check(pf._max_jumps() == 2 and pf.water_unlock("run") and not pf.water_unlock("thread"), "50 % water: fast run and double jump unlock")
+	# The focus thread pulls a seed in.
+	var seeds: Array = pf.level.entities.filter(func(e): return e.type == "seed")
+	seeds.sort_custom(func(a, b): return a.base_x < b.base_x)
+	var seed0: LevelData.Ent = seeds[0]
+	var seed1: LevelData.Ent = seeds[3]
+	check(seed0.tier == 0 and seed1.tier == 1 and seeds[11].tier == 3, "seeds get harder from left to right")
+	pf.p.x = seed0.base_x - 90
+	pf.p.y = 7 * LevelData.ROW_H_H - pf.p.height
+	pf.p.vy = 0
+	pf.aim_mode = "mouse"
+	pf.aim = Vector2(seed0.x + 14, seed0.y + 14)
+	pf.begin_focus()
+	await frames(3)
+	check(pf.focus and pf.thread_target == seed0.id, "the thread attaches to the aimed seed")
+	var seed_caught := await until(func(): return Game.seeds == 1, 5)
+	check(seed_caught and seed0.collected, "holding the focus pulls the seed in")
+	pf.end_focus()
+	# Letting go early: the seed drifts back.
+	var seed2: LevelData.Ent = seeds[1]
+	pf.p.x = seed2.base_x - 90
+	pf.aim = Vector2(seed2.x + 14, seed2.y + 14)
+	pf.begin_focus()
+	await seconds(0.4)
+	var pulled: float = seed2.x
+	pf.end_focus()
+	await seconds(1.0)
+	check(not seed2.collected and absf(seed2.x - seed2.base_x) < absf(pulled - seed2.base_x), "letting go early loses the seed, it drifts home")
+	# A blinking seed can't be caught while dark.
+	pf.p.x = seed1.base_x - 90
+	pf.time_ms = (3.0 - seed1.id * 0.7) * 1000.0
+	await frames(2)
+	check(not seed1.visible, "a blinking seed goes dark")
+	pf.aim = Vector2(seed1.x + 14, seed1.y + 14)
+	pf.begin_focus()
+	await frames(3)
+	check(pf.thread_target == -1, "the thread finds nothing while the seed is dark")
+	pf.end_focus()
+	# A shadow hits while focusing: water spills, the gate moves.
+	pf.p.x = seed2.base_x - 120
+	pf.aim = Vector2(seed2.x + 14, seed2.y + 14)
+	pf.begin_focus()
+	pf.shadow_timer = 0
+	await frames(3)
+	check(pf.thread_target == seed2.id and pf.shadows.size() == 1, "a shadow appears while the thread is held")
+	pf.shadows[0].x = pf.p.center().x
+	pf.shadows[0].y = pf.p.center().y
+	var w_before := Game.water
+	await frames(3)
+	check(not pf.focus and Game.water == w_before - 15 and Game.gate_shift == 3, "the shadow breaks the focus, spills water and pushes the gate")
+	var gate: LevelData.Ent = null
+	for e in pf.level.entities:
+		if e.trigger_type == "gate":
+			gate = e
+	await frames(2)
+	check(absf(gate.x - (gate.base_x + 3 * LevelData.CELL_W)) < 1, "the gate stands 3 cells further")
+	await _go_trigger(pf, "gate")
+	await finish_dialog("gate_locked")
+	check(Game.checkpoint < 5 and pf.meadow_end == 0, "the gate stays shut without a full vessel and ten seeds")
+
+	step("minigame 8 – memory")
+	await _go_trigger(pf, "mg8")
+	check(main.state == "mg8", "state mg8")
+	await finish_dialog("mg8_start")
+	var mg: MemoryGame = main.minigame
+	for rnd in 3:
+		check(mg.phase == "show" and mg.round_i == rnd and mg.shown.size() == MemoryGame.ROUNDS[rnd], "round %d shows %d things" % [rnd + 1, MemoryGame.ROUNDS[rnd]])
+		mg.skip_show()
+		await frames(2)
+		for k in mg.shown:
+			mg.mark(k)
+		mg.done_round()
+		check(mg.found == mg.shown.size(), "all remembered things count")
+		if rnd < 2:
+			var nxt := await until(func(): return mg.round_i == rnd + 1, 5)
+			check(nxt, "next round starts")
+	await finish_dialog("mg8_after")
+	await frames(3)
+	check(main.state == "platformer" and Game.checkpoint == 2, "back in the meadow, checkpoint 2")
+
+	step("minigame 9 – catch")
+	await _go_trigger(pf, "mg9")
+	await finish_dialog("mg9_start")
+	var cg: CatchGame = main.minigame
+	cg.items.clear()
+	cg.drop("food", cg.cushion_x)
+	cg.items[0].y = CatchGame.CUSHION_Y - 10
+	await frames(2)
+	check(cg.caught == 1, "food on the cushion counts")
+	for i in 3:
+		cg.drop("bolt", cg.cushion_x)
+		cg.items[cg.items.size() - 1].y = CatchGame.CUSHION_Y - 10
+		await frames(2)
+	check(cg.caught == 0 and cg.resets == 1, "three lightning strikes restart the round")
+	for i in CatchGame.GOAL:
+		cg.items.clear()
+		cg.drop("food", cg.cushion_x)
+		cg.items[0].y = CatchGame.CUSHION_Y - 10
+		await frames(2)
+	check(cg.caught >= CatchGame.GOAL, "twenty nutrients caught")
+	await finish_dialog("mg9_after")
+	await frames(3)
+	check(Game.checkpoint == 3, "checkpoint 3")
+
+	step("minigame 10 – pairs")
+	await _go_trigger(pf, "mg10")
+	await finish_dialog("mg10_start")
+	var pg: PairsGame = main.minigame
+	pg.pick(0, 0)
+	pg.pick(1, (pg.right_order.find(0) + 1) % PairsGame.PAIRS.size())
+	check(pg.wrong == 1 and pg.hint_text != "" and pg.matched.is_empty(), "a wrong pair turns back with a hint")
+	for i in PairsGame.PAIRS.size():
+		pg.pick(0, i)
+		pg.pick(1, pg.right_order.find(i))
+	check(pg.all_matched(), "all signals paired with their meaning")
+	await finish_dialog("mg10_after")
+	await frames(3)
+	check(Game.checkpoint == 4, "checkpoint 4")
+
+	step("the gate")
+	Game.water = 100
+	Game.seeds = Game.SEEDS_NEEDED
+	pf.gate_locked_timer = 0
+	await frames(3)
+	check(not gate.collected, "a locked gate re-arms once she steps away")
+	await _go_trigger(pf, "gate")
+	await frames(3)
+	check(pf.meadow_end > 0 and Game.checkpoint == 5, "the gate opens with a full vessel and ten seeds")
+	await finish_dialog("meadow_end")
+	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
+	check(summit, "the summit (level 3) starts after the meadow")
+
+	step("level 3 – the summit")
 	await finish_dialog("garden_start")
 	pf = main.platformer
-	check(pf.is_garden() and pf.p.y > pf.level_h - 500, "starts at the bottom of the garden")
+	check(pf.is_summit() and pf.p.y > pf.level_h - 500, "starts at the bottom of the summit")
 	await seconds(1.0)
 	check(pf.p.is_grounded, "stands on the garden floor")
 	# A popping bubble bursts after standing on it and regrows later.
@@ -351,7 +523,7 @@ func _run() -> void:
 	check(pf.wave.won and pf.summit_timer > 0, "reaching the summit stops the wave")
 	await finish_dialog("garden_end")
 	await frames(5)
-	check(main.state == "title" and Game.level == 1, "back to the title after the garden")
+	check(main.state == "title" and Game.level == 1, "back to the title after the summit")
 
 	step("game over")
 	main._dev_action("checkpoint", 1)
@@ -414,7 +586,10 @@ func _run() -> void:
 	check(ed != null and ed.rows.size() > 100, "editor loaded the level")
 	ed.select_level(2)
 	await frames(2)
-	check(ed.rows.size() == Game.level_rows(2).size() and ed._tool_info.has("@") and ed._tool_info.has("E"), "editor switches to the garden and has its tools")
+	check(ed.horizontal() and ed.cols() > 100 and ed.rows.size() == 10 and ed._tool_info.has("Y") and ed._tool_info.has("G"), "editor switches to the horizontal meadow and has its tools")
+	ed.select_level(3)
+	await frames(2)
+	check(not ed.horizontal() and ed.rows.size() == Game.level_rows(3).size() and ed._tool_info.has("@") and ed._tool_info.has("E"), "editor switches to the summit and has its tools")
 	ed.select_level(1)
 	await frames(2)
 	check(ed.rows.size() == Game.level_rows(1).size(), "editor switches back to the cave")
@@ -569,10 +744,16 @@ func _teleport_to_entity(pf: Platformer, type: String) -> LevelData.Ent:
 func _go_trigger(pf: Platformer, kind: String) -> void:
 	for e in pf.level.entities:
 		if e.type == "trigger" and e.trigger_type == kind:
-			pf.p.x = 500
-			pf.p.y = e.y + 60
+			if pf.level.horizontal:
+				# Column triggers: drop into the column from above the ground.
+				pf.p.x = e.x + e.w / 2 - pf.p.width / 2
+				pf.p.y = 240
+				pf.camera_x = clampf(pf.p.x - 400, 0, pf.level_w - 1066)
+			else:
+				pf.p.x = 500
+				pf.p.y = e.y + 60
+				pf.camera_y = e.y - 200
 			pf.p.vy = 0
-			pf.camera_y = e.y - 200
 			break
 	await frames(4)
 

@@ -21,41 +21,58 @@ Godot editor na to netreba. Všetko je v čitateľných súboroch:
 
 | Čo chceš meniť | Kde |
 |---|---|
-| Level jaskyne (1) a záhrady (2) | `godot/data/levels/cave.txt`, `garden.txt` (legenda v `godot/scripts/level_data.gd`) |
+| Levely: jaskyňa (1), lúka (2), vrchol (3) | `godot/data/levels/cave.txt`, `meadow.txt`, `garden.txt` (legenda v `godot/scripts/level_data.gd`) |
 | Texty a preklady (SK/EN/PT) | `godot/data/i18n/*.json` |
 | Dialógy (poradie, kto hovorí, tlačidlá) | `godot/data/dialogs.json` |
 | Fyzika, správanie kŕčov, boss | `godot/scripts/screens/platformer.gd` |
 | Minihry | `godot/scripts/minigames/` |
 | Tok hry (čo nasleduje po čom) | `godot/scripts/main.gd` |
 
-## Level 2: Záhrada (folikulárna fáza)
+## Levely a smery
 
-Po porazení Veľkého kŕču hra pokračuje do **záhrady**. Menštruácia skončila,
-estrogén stúpa a Kyra tentoraz **šplhá hore** z tmavej modro-ružovej jaskyne
-cez úsvit do jarného rána. Návrh je v `docs/gdd_levely_fazy_cyklu.md`.
+Hra obieha cyklus ako kruh: level 1 ide **dole**, level 2 **doprava**, level 3
+**hore** (a plánovaný level 4 **doľava**).
 
-- **Bubliny** (folikuly): ružové ťa udržia, žlté o chvíľu prasknú a dorastú.
-- **Vzdušné prúdy** ťa vynesú vyššie než skok.
-- **Rozptýlenia** (notifikácie) nebolia, len spomalia; dych ich odfúkne,
-  šprint cez ne prejde.
-- **Minihry** dávajú silu (stúpajúci estrogén):
-  1. **Tanier so železom:** vyber 4 jedlá, ktoré pomôžu vstrebať železo
-     (vitamín C áno, čaj, káva, kola nie) → vyšší skok;
-  2. **Chyť rytmus:** stláčaj na úder (pohyb vo folikulárnej fáze) → šprint
-     na Shift;
-  3. **Signály tela:** roztrieď príznaky do fáz cyklu → vyšší dvojskok.
-- **Vlna LH:** namiesto bossa. Zospodu stúpa zlatá vlna a treba vyšplhať na
-  vrchol skôr, než ťa dobehne. Hore sa uvoľní vajíčko (ovulácia) a Estra
-  vysvetlí plodné dni.
+### Level 2: Lúka (folikulárna fáza, zľava doprava)
 
-Texty sú v troch jazykoch (`DIA_G01`–`DIA_G27`, `MG5_*`, `MG6_*`, `MG7_*`).
+Po porazení Veľkého kŕču Kyra vstane, odíde doprava a ocitne sa na lúke po
+daždi (Kráľovstvo Rastov podľa poznámok v game design dokumente). Sprevádza ju
+**Iskra (FSH)**, malá bytosť z iskier.
+
+- **Rieka** pod plošinami tečie proti smeru hry. Keď do nej Kyra spadne, prúd ju
+  odnesie späť na posledný kameň, kde stála, a vyleje trochu vody z nádoby.
+- **Kvapky vody (estrogén)** plnia nádobu dole na obrazovke. Pri 25 % beží
+  rýchlejšie, pri 50 % sa odomkne dvojskok, pri 75 % niť dosiahne ďalej.
+- **Svetelné semienka (folikuly)** sa nechytajú dotykom. Zamieriš myšou
+  (na gamepade pravou páčkou), podržíš ľavé tlačidlo / `E` / `LB` a niť
+  sústredenia semienko priťahuje. Keď pustíš priskoro, unikne. Semienka sú
+  stále ťažšie: stoja, blikajú, plávajú, uhýbajú.
+- **Tieňoví enemáci (stres)** prichádzajú, kým držíš niť. Zásah preruší
+  sústredenie, vyleje vodu a **posunie bránu levelu ďalej** (stres oddiali
+  ovuláciu). Pustiť niť alebo vyskočiť = tiene prejdú.
+- **Notifikácie** spomalia, **tŕne** zrania (strata železa ako v jaskyni).
+- **Minihry:** Pamätaj si čo najviac (3 kolá, rozpoznávanie predmetov),
+  Chyť, čo potrebuješ (živiny na podušku, vyhýbaj sa bleskom), Priraď
+  symptóm (dvojice jav a vysvetlenie s nápovedou pri chybe).
+- **Brána** sa otvorí s plnou nádobou a 10 semienkami. Kyra vyleje vodu,
+  vyrastie zlatý kvet, obraz sa rozžiari dobiela a nasleduje level 3.
+
+### Level 3: Vrchol (ovulácia, hore)
+
+Pôvodný návrh záhrady (dnes `garden.txt`): šplhanie hore, bubliny, vzdušné
+prúdy, rozptýlenia, minihry Tanier so železom, Chyť rytmus a Signály tela
+s power-upmi, a vlna LH namiesto bossa. Plán: zrýchliť v štýle Icy Tower /
+TowerFall a pridať skok od steny a kombá.
+
+Texty sú v troch jazykoch (`DIA_M*` lúka, `DIA_G*` vrchol, `MG5_*`–`MG10_*`).
 Fakty treba dať skontrolovať odborníčke.
 
 ## Záloha
 
 Hra pred levelom 2 je vo vetve `backup/v1-jaskyna` a hrateľná na
 https://bliksa.github.io/keeper/v1/ (buildí sa z commitu `V1_SHA` v
-`.github/workflows/web.yml`).
+`.github/workflows/web.yml`). Prvá verzia levelu 2 (záhrada hore) je vo vetve
+`backup/v2-zahrada-hore`.
 
 ## Pauza
 
@@ -67,12 +84,14 @@ celú obrazovku** alebo **Hlavné menu**.
 
 Na úplne prvej obrazovke klikni na **DEV** (vedľa **Spustiť hru**) → **Level editor**:
 
-- v hlavičke vyberieš, ktorý level upravuješ: **Cave** (jaskyňa) alebo
-  **Garden** (záhrada); každý má vlastné automatické uloženie,
+- v hlavičke vyberieš, ktorý level upravuješ: **Cave** (jaskyňa), **Meadow**
+  (lúka, vodorovný level, koliesko scrolluje do strany) alebo **Summit**
+  (vrchol); každý má vlastné automatické uloženie,
 - vľavo sú skupiny nástrojov: **plošiny** (plošina, bodák), **nepriatelia**
   (4 druhy kŕčov), **zberateľné** (železo), **eventy** (minihry, boss, nápoveda,
-  dialógy), **spawn a teleporty** a **záhrada** (bubliny, prúd, rozptýlenie,
-  minihry 6–8, vlna LH, vrchol), pod nimi guma. Klik na skupinu vyberie jej
+  dialógy), **spawn a teleporty**, **lúka** (rieka, semienko, minihry K/M/Q,
+  brána) a **vrchol** (bubliny, prúd, rozptýlenie, minihry 6–8, vlna LH,
+  vrchol), pod nimi guma. Klik na skupinu vyberie jej
   posledný nástroj a hneď otvorí menu s ostatnými. Názvy ukáže tooltip.
 - mriežka vypĺňa celú plochu vpravo, koniec levelu je zvýraznený zelenou
   čiarou a pásom „END OF LEVEL“,
@@ -89,8 +108,9 @@ Na úplne prvej obrazovke klikni na **DEV** (vedľa **Spustiť hru**) → **Leve
   uloží sa ten level, ktorý je vybraný v hlavičke.
 
 V developer menu sú aj skratky: preskočiť intro, checkpointy jaskyne aj
-záhrady, skok na bossa s ľubovoľným počtom železa. V hre: `1–4` checkpoint,
-`Shift+2–5` skok na minihru / bossa / vlnu, `G` záhrada s power-upmi.
+lúky aj vrcholu, skok na bossa s ľubovoľným počtom železa. V hre: `1–4`
+checkpoint, `Shift+2–5` skok na minihru / bossa / bránu / vlnu, `H` lúka s plnou
+nádobou, `G` vrchol s power-upmi.
 
 ## Testovanie animácií
 

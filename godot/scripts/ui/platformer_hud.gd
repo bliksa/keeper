@@ -33,6 +33,11 @@ func _draw() -> void:
 	if platformer == null:
 		return
 	var font: Font = Text.font_bold
+	if platformer.is_meadow():
+		_draw_meadow(font)
+		if Game.has_breathing:
+			_draw_breath(font)
+		return
 	# Iron counter.
 	var label := str(Game.iron)
 	var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
@@ -54,7 +59,7 @@ func _draw() -> void:
 
 	if Game.has_breathing:
 		_draw_breath(font)
-	if platformer.is_garden():
+	if platformer.is_summit():
 		_draw_upgrades(font, r.end.y + 8)
 
 
@@ -197,3 +202,35 @@ func _rounded_path(r: Rect2, rad: float) -> PackedVector2Array:
 			pts.append(c[0] + Vector2(cos(a), sin(a)) * rad)
 	pts.append(Vector2(r.position.x + rad, r.position.y))
 	return pts
+
+
+## Level 2: caught seeds (top left) and the water vessel (bottom centre).
+func _draw_meadow(font: Font) -> void:
+	var label := "%d / %d" % [Game.seeds, Game.SEEDS_NEEDED]
+	var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
+	var r := Rect2(16, 16, tw + 20 + 24 + 30, 48)
+	Draw.panel(self, r, BG, 16, Color(TEAL, 0.2), 2)
+	draw_string(font, Vector2(r.position.x + 20, r.position.y + 31), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, INK)
+	var ic := Vector2(r.end.x - 26, r.position.y + 24)
+	Draw.radial_glow(self, ic, 16 + sin(_spin * 2) * 2, Color(1, 0.85, 0.4, 0.5), Color(1, 0.98, 0.8, 0.95))
+	draw_circle(ic, 6, Color("#fff4c2"))
+	# The vessel.
+	var v := Rect2(1066 / 2 - 170, 600 - 44, 340, 28)
+	Draw.panel(self, v, BG, 14, Color(TEAL, 0.2), 2)
+	var inner := Rect2(v.position.x + 6, v.position.y + 6, v.size.x - 12, v.size.y - 12)
+	Draw.panel(self, inner, Color("#dbeafe"), 8)
+	var fill := inner
+	fill.size.x = inner.size.x * Game.water / 100.0
+	if fill.size.x > 2:
+		Draw.panel(self, fill, Color("#5fb3f0"), 8)
+	for k: int in [25, 50, 75]:
+		var x := inner.position.x + inner.size.x * k / 100.0
+		var on := Game.water >= k
+		draw_line(Vector2(x, inner.position.y), Vector2(x, inner.end.y), Color(INK, 0.35), 2.0)
+		var tag: String = {25: "UPGRADE_RUN", 50: "UPGRADE_DOUBLE_JUMP", 75: "UPGRADE_THREAD"}[k]
+		var txt := Text.plain(Text.t(tag))
+		Draw.text_center(self, Text.font, Vector2(x, v.position.y - 8), txt, 10, Color(INK if on else Color(INK, 0.45)))
+	draw_string(font, Vector2(v.position.x + 12, v.position.y + 20), "%d %%" % Game.water, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, INK)
+	var wl := Text.plain(Text.t("HUD_WATER"))
+	var ww := Text.font.get_string_size(wl, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	draw_string(Text.font, Vector2(v.end.x - ww - 12, v.position.y + 19), wl, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, INK)
