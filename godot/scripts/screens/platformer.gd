@@ -274,6 +274,23 @@ func teleport_to_trigger(kind: String) -> void:
 			return
 
 
+## Lands the player on the nearest platform below their feet (same column).
+func _settle_on_ground() -> void:
+	var best: LevelData.Plat = null
+	for pl in level.platforms:
+		if not pl.solid() or pl.x > p.x + p.width or pl.x + pl.w < p.x:
+			continue
+		if pl.base_y >= p.y + p.height - 30 and (best == null or pl.base_y < best.base_y):
+			best = pl
+	if best:
+		p.y = best.base_y - p.height
+	p.vy = 0
+	p.is_grounded = true
+	p.was_grounded = true
+	p.jumps_left = 2
+	p.is_sitting = false
+
+
 ## Puts the player in a trigger's row: in the garden on the nearest platform at
 ## or below it near the middle (the row's own platform), in the cave just inside it.
 func _stand_at_trigger(e: LevelData.Ent) -> void:
@@ -791,6 +808,9 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 		return
 	p.vx = 0
 	p.vy = 0
+	if e.trigger_type.begins_with("mg"):
+		# A minigame opens: put Kyra on the ground so she isn't frozen mid-jump.
+		_settle_on_ground()
 	if e.trigger_type == "end":
 		start_boss(Game.iron)
 	elif e.trigger_type == "wave":
@@ -1298,6 +1318,9 @@ func _draw_egg(ci: CanvasItem, t: float) -> void:
 
 func _draw_player() -> void:
 	var ci := _player_layer
+	if hide_platforms:
+		# A minigame covers the screen; Kyra waits out of sight.
+		return
 	PlayerArt.draw(ci, p, time_ms, boss.active, {
 		"crouched": p.held_by_cramp != -1,
 		"pain": p.hit_timer > 0 or p.held_by_cramp != -1,

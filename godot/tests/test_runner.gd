@@ -269,6 +269,7 @@ func _run() -> void:
 	step("minigame 5 – iron plate")
 	await _go_trigger(pf, "mg5")
 	check(main.state == "mg5", "state mg5")
+	check(pf.p.is_grounded and pf.p.vy == 0, "Kyra lands on the ground when a minigame opens")
 	await finish_dialog("mg5_start")
 	var ip: IronPlateGame = main.minigame
 	var bad_i := -1
