@@ -40,8 +40,13 @@ var _test: Platformer
 var _test_info: Label
 var _import: Control
 var _saved_state := {}
-## Edited backgrounds: "level id" -> config (only levels touched in the editor).
+## Edited backgrounds: "level id" -> config (only levels actually changed).
 var bg_edit := {}
+## Backgrounds committed from this browser: "level id" -> {"local": json of the
+## edited config, "committed": json of what was committed (res:// paths)}.
+var bg_saved := {}
+## Untouched copies being looked at (not persisted until changed).
+var _bg_view := {}
 var bg_panel: BackgroundPanel
 
 
@@ -130,6 +135,8 @@ func select_level(id: int) -> void:
 	_load_initial()
 	_scroll.scroll_vertical = 0
 	if bg_panel:
+		# A browser opened for the previous level must not add to this one.
+		bg_panel.close_browser()
 		bg_panel.refresh()
 	_toast_msg("Editing %s (%s)" % [Game.LEVEL_NAMES[id], _level_file()])
 
@@ -508,39 +515,87 @@ func _use_bundled() -> void:
 
 func _load_bg_edits() -> void:
 	bg_edit = {}
-	if FileAccess.file_exists(BG_AUTOSAVE):
-		var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(BG_AUTOSAVE))
-		if d is Dictionary:
-			for k in d:
-				if d[k] is Dictionary:
-					bg_edit[str(k)] = BackgroundData.normalize(d[k])
+	bg_saved = {}
+	_bg_view = {}
+	if not FileAccess.file_exists(BG_AUTOSAVE):
+		return
+	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(BG_AUTOSAVE))
+	if not d is Dictionary:
+		return
+	# Older autosaves held only the edits; newer ones {"edit": …, "saved": …}.
+	var edits: Variant = d.get("edit", d) if d.has("edit") else d
+	if d.get("saved") is Dictionary:
+		bg_saved = d.saved
+	if edits is Dictionary:
+		for k in edits:
+			if edits[k] is Dictionary:
+				bg_edit[str(k)] = BackgroundData.normalize(edits[k])
+	# Once the build ships what was committed from here, the local edit is done.
+	for k in bg_saved.keys():
+		if JSON.stringify(BackgroundData.of_bundled(int(k))) == str(bg_saved[k].get("committed", "")):
+			bg_edit.erase(k)
+			bg_saved.erase(k)
 
 
-## The background of the level being edited (a copy of the game's until changed).
-func current_bg() -> Dictionary:
-	var k := str(level_id)
-	if not bg_edit.has(k):
-		bg_edit[k] = BackgroundData.normalize(BackgroundData.for_level(level_id).duplicate(true))
-	return bg_edit[k]
-
-
-## True when the edited background differs from the bundled one.
-func bg_dirty() -> bool:
-	return bg_edit.has(str(level_id)) and JSON.stringify(current_bg()) != JSON.stringify(BackgroundData.of_bundled(level_id))
-
-
-func bg_changed() -> void:
+func _store_bg_edits() -> void:
 	var f := FileAccess.open(BG_AUTOSAVE, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify(bg_edit, " "))
+		f.store_string(JSON.stringify({"edit": bg_edit, "saved": bg_saved}, " "))
+
+
+## The background of the level being edited: the edit if there is one, else a
+## copy of the game's (kept only in memory until something changes).
+func current_bg() -> Dictionary:
+	var k := str(level_id)
+	if bg_edit.has(k):
+		return bg_edit[k]
+	if not _bg_view.has(k):
+		_bg_view[k] = BackgroundData.normalize(BackgroundData.for_level(level_id).duplicate(true))
+	return _bg_view[k]
+
+
+## True when the edited background differs from the bundled one and hasn't been
+## committed from here already.
+func bg_dirty() -> bool:
+	var k := str(level_id)
+	if not bg_edit.has(k):
+		return false
+	var cur := JSON.stringify(bg_edit[k])
+	if bg_saved.has(k) and str(bg_saved[k].get("local", "")) == cur:
+		return false
+	return cur != JSON.stringify(BackgroundData.of_bundled(level_id))
+
+
+## Called by the panel after any change to current_bg().
+func bg_changed() -> void:
+	var k := str(level_id)
+	if _bg_view.has(k):
+		bg_edit[k] = _bg_view[k]
+		_bg_view.erase(k)
+	_store_bg_edits()
 	if _test:
 		_test.background = current_bg()
 
 
 func reset_bg() -> void:
-	bg_edit.erase(str(level_id))
-	bg_changed()
+	var k := str(level_id)
+	bg_edit.erase(k)
+	bg_saved.erase(k)
+	_bg_view.erase(k)
+	_store_bg_edits()
+	if _test:
+		_test.background = current_bg()
 	_toast_msg("Background reset to the game's.")
+
+
+## Uploads used by any edited background or by "Use in game" can't be deleted.
+func bg_in_use(path: String) -> bool:
+	for cfgs in [bg_edit.values(), _bg_view.values(), Game.custom_backgrounds.values()]:
+		for c in cfgs:
+			for l in c.get("layers", []):
+				if l.image == path:
+					return true
+	return false
 
 
 func toggle_bg_panel() -> void:
@@ -571,18 +626,26 @@ func build_bg_commit(remote: String) -> Dictionary:
 	var manifest: Dictionary = d if d is Dictionary else BackgroundData.bundled().duplicate(true)
 	var cfg := current_bg().duplicate(true)
 	var files := {}
+	var named := {}
 	for l in cfg.layers:
 		if not AssetBrowser.is_local(l.image):
 			continue
-		var img := AssetBrowser.decode(AssetBrowser.bytes_of(l.image))
-		if img == null:
+		if named.has(l.image):
+			l.image = named[l.image]
 			continue
-		if img.get_width() > BG_MAX_PX or img.get_height() > BG_MAX_PX:
-			var k := float(BG_MAX_PX) / maxi(img.get_width(), img.get_height())
-			img.resize(maxi(1, int(img.get_width() * k)), maxi(1, int(img.get_height() * k)), Image.INTERPOLATE_LANCZOS)
-		var name := "%s-%s.png" % [Game.LEVEL_NAMES[level_id].to_lower(), AssetBrowser.label(l.image).get_basename().to_lower().validate_filename().replace(" ", "-")]
-		files["godot/assets/backgrounds/" + name] = img.save_png_to_buffer()
-		l.image = "res://assets/backgrounds/" + name
+		var bytes := AssetBrowser.bytes_of(l.image)
+		var img := AssetBrowser.decode(bytes)
+		if img == null:
+			# Never commit a path that only exists in this browser.
+			return {"_error": "%s can't be read in this browser any more" % AssetBrowser.label(l.image)}
+		AssetBrowser.fit(img, BG_MAX_PX)
+		var png := img.save_png_to_buffer()
+		# A short hash of the content keeps different images with the same name apart.
+		var stem := AssetBrowser.label(l.image).get_basename().to_lower().validate_filename().replace(" ", "-")
+		var name := "%s-%s-%s.png" % [Game.LEVEL_NAMES[level_id].to_lower(), stem, png.hex_encode().md5_text().substr(0, 8)]
+		files["godot/assets/backgrounds/" + name] = png
+		named[l.image] = "res://assets/backgrounds/" + name
+		l.image = named[l.image]
 	manifest[str(level_id)] = cfg
 	files["godot/data/backgrounds.json"] = (JSON.stringify(manifest, " ") + "\n").to_utf8_buffer()
 	return files
@@ -642,13 +705,21 @@ func save_to_repo() -> void:
 	gh.progress.connect(_toast_msg)
 	var files := {"godot/data/levels/" + _level_file(): LevelData.to_text(rows).to_utf8_buffer()}
 	var what := "level"
+	var bg_files := {}
 	if bg_dirty():
 		var remote := await gh.read_text("godot/data/backgrounds.json")
 		if not remote.ok:
 			gh.queue_free()
 			_toast_msg("Save failed: " + remote.error)
+			if "token" in remote.error:
+				GitHubSave.forget_token()
 			return
-		files.merge(build_bg_commit(remote.text))
+		bg_files = build_bg_commit(remote.text)
+		if bg_files.has("_error"):
+			gh.queue_free()
+			_toast_msg("Save failed: " + str(bg_files["_error"]))
+			return
+		files.merge(bg_files)
 		what = "level and background"
 	var res := await gh.commit(files,
 		"Level editor: update the %s %s\n\nSaved from Developer mode > Level editor in the browser." % [Game.LEVEL_NAMES[level_id].to_lower(), what])
@@ -658,6 +729,14 @@ func save_to_repo() -> void:
 		if "token" in res.error:
 			GitHubSave.forget_token()
 		return
+	if not bg_files.is_empty():
+		# Remember what was committed, so it isn't committed again (and the edit
+		# is dropped once the new build ships it).
+		var m: Variant = JSON.parse_string(bg_files["godot/data/backgrounds.json"].get_string_from_utf8())
+		if m is Dictionary:
+			bg_saved[str(level_id)] = {"local": JSON.stringify(current_bg()),
+				"committed": JSON.stringify(BackgroundData.normalize(m[str(level_id)]))}
+			_store_bg_edits()
 	_toast_msg("Saved to the repo — the game updates after the next build (~2 min).")
 
 
@@ -727,6 +806,10 @@ func start_test() -> void:
 	_test.setup(rows, 0, level_id)
 	_test.background = current_bg()
 	_test.active = true
+	if bg_panel:
+		# Hidden under the test, it would still take the mouse (and its buttons).
+		bg_panel.close_browser()
+		bg_panel.visible = false
 	# The editor must not swallow the mouse while testing (aiming the thread).
 	for c in [self, _scroll, _grid]:
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -767,6 +850,8 @@ func stop_test() -> void:
 	_test = null
 	for c in [self, _scroll, _grid]:
 		c.mouse_filter = Control.MOUSE_FILTER_STOP
+	if bg_panel:
+		bg_panel.visible = true
 	Game.iron = _saved_state.iron
 	Game.has_breathing = _saved_state.breath
 	Game.checkpoint = _saved_state.cp

@@ -66,8 +66,10 @@ static func for_level(id: int) -> Dictionary:
 
 ## Draws the image layers into a rect of `view` size with the camera at `cam`
 ## (world pixels). Horizontal levels scroll the layers sideways, vertical ones
-## up and down.
-static func draw_layers(ci: CanvasItem, cfg: Dictionary, cam: Vector2, view: Vector2, horizontal: bool) -> void:
+## up and down. `origin` is the camera where the level starts (the summit starts
+## at the bottom), so a layer with no shift sits on screen at the start.
+static func draw_layers(ci: CanvasItem, cfg: Dictionary, cam: Vector2, view: Vector2, horizontal: bool, origin := Vector2.ZERO) -> void:
+	cam -= origin
 	for l in cfg.get("layers", []):
 		var t := AssetBrowser.tex(l.image)
 		if t == null or t.get_width() == 0 or t.get_height() == 0:

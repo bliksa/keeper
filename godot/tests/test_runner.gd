@@ -692,6 +692,10 @@ func _run() -> void:
 	big.fill(Color(0.2, 0.6, 0.3))
 	var up: Array = AssetBrowser.store([["hills.png", big.save_png_to_buffer()], ["junk.txt", "nope".to_utf8_buffer()]])
 	check(up.size() == 1 and AssetBrowser.label(up[0]) == "hills.png", "uploads keep their name; non-images are refused")
+	var jfif: Array = AssetBrowser.store([["photo.jfif", big.save_jpg_to_buffer()]])
+	check(jfif.size() == 1 and jfif[0].ends_with("-photo.jpg") and AssetBrowser.list(AssetBrowser.UPLOAD_DIR).has(jfif[0]), "a .jfif upload is stored as .jpg and listed")
+	var tx := AssetBrowser.tex(up[0])
+	check(tx != null and tx.get_width() == AssetBrowser.MAX_PX, "wide uploads are scaled to %d px when loaded" % AssetBrowser.MAX_PX)
 	check(AssetBrowser.folders().any(func(f): return f[1] == AssetBrowser.UPLOAD_DIR) and AssetBrowser.list(AssetBrowser.UPLOAD_DIR).has(up[0]), "uploads show up as a folder")
 	check(AssetBrowser.bytes_of(up[0]).size() > 0 and AssetBrowser.file_name(up[0]) == "hills.png", "an upload downloads as its original file")
 	var repo_png := AssetBrowser.bytes_of("res://assets/images/back2.png")
@@ -703,6 +707,8 @@ func _run() -> void:
 	await frames(3)
 	var bp: BackgroundPanel = ed.bg_panel
 	check(bp != null and bp.layers().size() == 5 and not ed.bg_dirty(), "the background panel shows the cave's 5 layers")
+	check(ed.bg_edit.is_empty() and not FileAccess.file_exists(LevelEditor.BG_AUTOSAVE), "just looking at a background stores nothing")
+	check(Platformer.bg_origin_for(3, 28200) == Vector2(0, 27600) and Platformer.bg_origin_for(1, 28200) == Vector2.ZERO, "summit layers are anchored to its start at the bottom")
 	bp.open_browser(-1)
 	await frames(30)
 	var br: AssetBrowser = bp.browser
@@ -731,20 +737,38 @@ func _run() -> void:
 	ed._load_bg_edits()
 	check(ed.current_bg().layers.size() == 5 and ed.current_bg().layers[3].image == up[0], "background edits survive a reload")
 	bp = ed.bg_panel
-	# Test play draws the edited background.
+	# Test play draws the edited background; the panel steps aside meanwhile.
 	ed.start_test()
 	await frames(5)
 	check(ed._test != null and ed._test.background.layers.size() == 5 and ed._test.background.layers[3].image == up[0], "test play uses the edited background")
+	check(not bp.visible, "the background panel is hidden during test play")
 	ed.stop_test()
 	await frames(2)
+	check(bp.visible, "and comes back after it")
+	# Uploads in use can't be deleted; the lab's frame files never can.
+	var br3 := AssetBrowser.new()
+	br3.in_use = ed.bg_in_use
+	ed.add_child(br3)
+	await frames(2)
+	check(not br3.delete_asset(up[0]) and FileAccess.file_exists(up[0]), "an upload used by a layer can't be deleted")
+	check(not br3.can_delete(AssetBrowser.ANIM_UPLOAD_DIR + "run/1-a.png") and not br3.can_delete("res://assets/images/1.png"), "frame files and repo art have no delete")
+	br3.close_browser()
 	# Save to repo: uploaded images are committed (scaled down) and the manifest points at them.
 	var bfiles: Dictionary = ed.build_bg_commit("")
 	var mf: Dictionary = JSON.parse_string(bfiles["godot/data/backgrounds.json"].get_string_from_utf8())
-	var bkeys: Array = bfiles.keys().filter(func(k): return k.begins_with("godot/assets/backgrounds/"))
+	var bkeys: Array = bfiles.keys().filter(func(k): return k.begins_with("godot/assets/backgrounds/cave-hills-"))
 	var bimg := Image.new()
-	bimg.load_png_from_buffer(bfiles["godot/assets/backgrounds/cave-hills.png"])
-	check(bkeys.size() == 1 and bimg.get_width() == LevelEditor.BG_MAX_PX, "uploads are committed, wide ones scaled to %d px" % LevelEditor.BG_MAX_PX)
-	check(mf["1"].layers[3].image == "res://assets/backgrounds/cave-hills.png" and mf["2"].procedural, "the committed manifest points at the new images and keeps the other levels")
+	if bkeys.size() == 1:
+		bimg.load_png_from_buffer(bfiles[bkeys[0]])
+	check(bkeys.size() == 1 and bimg.get_width() == LevelEditor.BG_MAX_PX, "uploads are committed (name + content hash), wide ones scaled to %d px" % LevelEditor.BG_MAX_PX)
+	check(bkeys.size() == 1 and mf["1"].layers[3].image == "res://" + bkeys[0].trim_prefix("godot/") and mf["2"].procedural, "the committed manifest points at the new images and keeps the other levels")
+	# After a save it isn't committed again, and a missing image stops the save.
+	ed.bg_saved["1"] = {"local": JSON.stringify(ed.current_bg()), "committed": JSON.stringify(BackgroundData.normalize(mf["1"]))}
+	check(not ed.bg_dirty(), "a background committed from here isn't committed again")
+	ed.bg_saved.erase("1")
+	bp.add_layer(AssetBrowser.UPLOAD_DIR + "123-gone.png")
+	check(ed.build_bg_commit("").has("_error"), "a layer whose upload is gone stops the save")
+	bp.remove_layer(bp.layers().size() - 1)
 	# Use in game, then back to the bundled one.
 	ed._use_in_game()
 	check(BackgroundData.for_level(1).layers[3].image == up[0], "Use in game applies the background")
@@ -757,7 +781,7 @@ func _run() -> void:
 	ed.add_child(br2)
 	await frames(2)
 	br2.delete_asset(up[0])
-	check(not FileAccess.file_exists(up[0]), "an upload can be deleted")
+	check(not FileAccess.file_exists(up[0]), "an unused upload can be deleted")
 	br2.close_browser()
 	ed.toggle_bg_panel()
 	await frames(2)
@@ -818,6 +842,14 @@ func _run() -> void:
 	lab.open_assets("replace")
 	await frames(3)
 	check(lab._assets.current_dir() == AssetBrowser.ANIM_UPLOAD_DIR, "the browser opens on the current frame's folder")
+	var drop_path := "user://drop_test.png"
+	var dfa := FileAccess.open(drop_path, FileAccess.WRITE)
+	dfa.store_buffer(png)
+	dfa.close()
+	var nframes := lab.current_paths().size()
+	lab._on_files_dropped(PackedStringArray([ProjectSettings.globalize_path(drop_path)]))
+	check(lab.current_paths().size() == nframes, "a drop on the open browser doesn't add frames")
+	DirAccess.remove_absolute(drop_path)
 	lab._assets.refresh_folders("res://assets/images/")
 	await frames(30)
 	check(lab._assets.grid.get_child_count() > 20, "asset browser lists the repo images")

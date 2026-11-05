@@ -592,6 +592,9 @@ func _on_paths(paths: PackedStringArray) -> void:
 
 
 func _on_files_dropped(paths: PackedStringArray) -> void:
+	# While the asset browser is open, the drop is an upload into it.
+	if _assets and is_instance_valid(_assets):
+		return
 	if is_visible_in_tree():
 		_pick_purpose = "add"
 		_on_paths(paths)
@@ -686,8 +689,14 @@ func save_to_repo() -> void:
 	var remote := await _gh.read_text("godot/data/anim_variants.json")
 	if not remote.ok:
 		_say("Save failed: " + remote.error)
+		if "token" in remote.error:
+			GitHubSave.forget_token()
 		return
 	var files := build_commit(remote.text)
+	for k in files:
+		if (files[k] as PackedByteArray).is_empty():
+			_say("Save failed: %s can't be read in this browser any more." % String(k).get_file())
+			return
 	var res := await _gh.commit(files, "Animation lab: update character animations\n\nSaved from Developer mode > Animations in the browser.")
 	if not res.ok:
 		_say("Save failed: " + res.error)
@@ -1039,9 +1048,21 @@ func open_assets(purpose: String) -> void:
 	else:
 		var cur := current_paths()
 		_assets.start_path = cur[selected] if selected >= 0 and selected < cur.size() else (cur[0] if not cur.is_empty() else "")
+	_assets.in_use = _in_use
 	_assets.picked.connect(assign_asset)
 	_assets.closed.connect(func(): _assets = null)
 	add_child(_assets)
+
+
+## Uploads still used by a frame or the preview background can't be deleted.
+func _in_use(path: String) -> bool:
+	if path == stage_bg:
+		return true
+	for a in local.anims:
+		for n in local.anims[a]:
+			if (local.anims[a][n] as Array).has(path):
+				return true
+	return false
 
 
 func close_assets() -> void:

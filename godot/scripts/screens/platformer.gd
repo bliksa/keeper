@@ -171,6 +171,16 @@ func is_meadow() -> bool:
 	return level_id == 2
 
 
+## Camera where the level starts (background layers are anchored to it).
+func bg_origin() -> Vector2:
+	return bg_origin_for(level_id, level_h)
+
+
+static func bg_origin_for(id: int, lh: float) -> Vector2:
+	# The summit is climbed from the bottom.
+	return Vector2(0, maxf(0, lh - H)) if id == 3 else Vector2.ZERO
+
+
 ## Snappier controls, coyote time, jump buffer and squash (levels 2 and 3).
 func feel() -> bool:
 	return level_id >= 2
@@ -1356,7 +1366,7 @@ func _draw_bg() -> void:
 			_draw_garden_bg()
 		elif is_meadow():
 			_draw_meadow_bg()
-	BackgroundData.draw_layers(ci, cfg, Vector2(camera_x, camera_y), Vector2(W, H), level.horizontal)
+	BackgroundData.draw_layers(ci, cfg, Vector2(camera_x, camera_y), Vector2(W, H), level.horizontal, bg_origin())
 	if cfg.get("tint", false) and not boss.active:
 		var pulse := sin(time_ms / 4000.0) * 0.5 + 0.5
 		Draw.h_gradient(ci, Rect2(0, 0, W * 0.8, H), Color(80 / 255.0, 5 / 255.0, 23 / 255.0, 0.15 + pulse * 0.05), Color(0, 0, 0, 0))

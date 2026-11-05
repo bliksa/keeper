@@ -129,6 +129,30 @@ Commits land on the repo's default branch and trigger the deploy. **Run `git pul
 before editing**, because the branch may contain commits made from the browser.
 For a local mock API, set `GitHubSave.api_base`, or use `?gh_api=` on the web.
 
+## Backgrounds and the asset browser
+
+`data/backgrounds.json` + `scripts/background_data.gd` (`BackgroundData`): per level
+`base` colour, `procedural` (the meadow / summit code-drawn sky), `tint` (cave red
+tint + vignette) and parallax `layers` (`image`, `speed`, `scale`, `offset` [x, y],
+`opacity`, `repeat`), drawn by `BackgroundData.draw_layers` in `Platformer._draw_bg`
+(anchored to `Platformer.bg_origin_for`, the summit starts at the bottom).
+`Game.custom_backgrounds` holds "Use in game" overrides; `Platformer.background`
+the editor's test-play config.
+
+Level editor > layers icon opens `scripts/dev/background_panel.gd`
+(`BackgroundPanel`): preview, layer list and sliders. The editor keeps edits in
+`bg_edit` (only changed levels; `_bg_view` = untouched copies), persisted with
+`bg_saved` in `user://backgrounds_edit.json`; `build_bg_commit` commits uploaded
+images to `assets/backgrounds/<level>-<name>-<hash>.png` (≤ 4096 px) with a
+merged `data/backgrounds.json`, and refuses to commit an unreadable image.
+
+`scripts/dev/asset_browser.gd` (`AssetBrowser`) is the shared browser (lab and
+editor): `folders()` / `list()` (repo images, `assets/backgrounds`, `anim_test/**`,
+uploads in `user://uploads/` and `user://anim_uploads/`), `tex()` (uploads decoded
+by signature and scaled to 4096 px), `thumb()`, `bytes_of()` / `file_name()` for
+downloads, `store()`; Upload (JS file input / FileDialog / drop), per-tile
+download, delete only for `user://uploads/` and not while `in_use` says so.
+
 ## Level 2: the meadow (follicular phase, horizontal)
 
 Same `Platformer` with `level_id = 2` (`is_meadow()`, `level.horizontal`): the

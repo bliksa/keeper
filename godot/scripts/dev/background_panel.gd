@@ -215,7 +215,8 @@ func _layer_row(i: int, l: Dictionary) -> Control:
 	g.add_child(_slider(i, "speed", "Parallax", 0.0, 2.0, 0.05, "%.2f"))
 	g.add_child(_slider(i, "opacity", "Opacity", 0.0, 1.0, 0.05, "%.2f"))
 	g.add_child(_slider(i, "scale", "Size", 0.2, 3.0, 0.05, "%.2f"))
-	g.add_child(_slider(i, "offset_y" if horiz else "offset_x", "Shift ↕" if horiz else "Shift ↔", -600.0, 600.0, 5.0, "%d"))
+	g.add_child(_slider(i, "offset_x", "Shift ↔", -1200.0 if horiz else -600.0, 1200.0 if horiz else 600.0, 5.0, "%d"))
+	g.add_child(_slider(i, "offset_y", "Shift ↕", -600.0 if horiz else -1200.0, 600.0 if horiz else 1200.0, 5.0, "%d"))
 	var rep := CheckBox.new()
 	rep.text = "Repeat"
 	rep.focus_mode = Control.FOCUS_NONE
@@ -323,9 +324,20 @@ func open_browser(target: int) -> void:
 	browser.start_path = "res://assets/backgrounds/" if target < 0 else layers()[target].image
 	if target < 0 and ResourceLoader.list_directory("res://assets/backgrounds/").is_empty():
 		browser.start_path = "res://assets/images/back.png"
+	browser.in_use = editor.bg_in_use
 	browser.picked.connect(_on_picked)
 	# Over the whole editor, not just the panel.
 	editor.add_child(browser)
+
+
+func close_browser() -> void:
+	if browser and is_instance_valid(browser):
+		browser.close_browser()
+	browser = null
+
+
+func _exit_tree() -> void:
+	close_browser()
 
 
 func _on_picked(path: String) -> void:
@@ -369,7 +381,8 @@ func _draw_preview() -> void:
 		for b in 10:
 			ci.draw_rect(Rect2(0, PREVIEW.y * b / 10.0, PREVIEW.x, PREVIEW.y / 10.0 + 1), top_c.lerp(bot_c, (b + 0.5) / 10.0))
 	ci.draw_set_transform(Vector2.ZERO, 0, PREVIEW / Vector2(1066, 600))
-	BackgroundData.draw_layers(ci, c, preview_cam(), Vector2(1066, 600), Game.is_horizontal(editor.level_id))
+	var origin := Platformer.bg_origin_for(editor.level_id, editor.rows.size() * LevelData.ROW_H)
+	BackgroundData.draw_layers(ci, c, preview_cam(), Vector2(1066, 600), Game.is_horizontal(editor.level_id), origin)
 	ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	if c.tint:
 		Draw.vignette(ci, Rect2(Vector2.ZERO, PREVIEW), Color(0, 0, 0, 0.35), 0.4)

@@ -128,6 +128,31 @@ Na úplne prvej obrazovke klikni na **DEV** (vedľa **Spustiť hru**) → **Leve
 - **Save to repo** (posledná ikona) level rovno commitne do repa (pozri nižšie);
   uloží sa ten level, ktorý je vybraný v hlavičke.
 
+### Pozadie (paralaxové vrstvy)
+
+Ikona vrstiev v hlavičke editora otvorí panel **Background** pre vybraný level:
+
+- živý náhľad, v ktorom kamera prechádza levelom (posuvníkom ho vieš zastaviť
+  na ľubovoľnom mieste),
+- základná farba, pri lúke a vrchole zapnutie kódom kreslenej oblohy, pri
+  jaskyni červený nádych,
+- zoznam vrstiev (predná hore): obrázok, **paralaxa** (0 = stojí, 1 = ide so
+  svetom, viac = popredie), priehľadnosť, veľkosť, posun do strán a hore/dole,
+  opakovanie; vrstvu vieš nahradiť, posunúť dopredu/dozadu a zmazať,
+- **Add layer…** vyberie obrázok z prehliadača assetov,
+- **Test level**, **Use in game** aj **Save to repo** v hlavičke použijú
+  upravené pozadie; uložené obrázky z prehliadača idú do
+  `godot/assets/backgrounds/` (zmenšené na max. 4096 px) a nastavenia do
+  `godot/data/backgrounds.json`. **Reset** vráti pozadie z hry.
+
+### Prehliadač assetov
+
+Spoločný pre editor aj animácie: obrázky z repa (postavy, pozadia, uložené
+varianty) aj obrázky nahraté v tomto prehliadači. **Upload…** (alebo pretiahnutie
+súborov do okna) ich uloží do prehliadača, ikonou v rohu každý obrázok
+**stiahneš**, nahraté obrázky vieš aj zmazať (nie, kým ich používa vrstva alebo
+snímka).
+
 V developer menu sú aj skratky: preskočiť intro, checkpointy jaskyne aj
 lúky aj vrcholu, skok na bossa s ľubovoľným počtom železa. V hre: `1–4`
 checkpoint, `Shift+2–5` skok na minihru / bossa / bránu / vlnu, `H` lúka s plnou

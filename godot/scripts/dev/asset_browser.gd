@@ -18,6 +18,9 @@ const UPLOAD_DIR := "user://uploads/"
 const ANIM_UPLOAD_DIR := "user://anim_uploads/"
 const ICONS := "res://assets/ui/icons/%s.svg"
 const IMAGE_EXT := ["png", "webp", "jpg", "jpeg"]
+## Uploads bigger than this are scaled down when loaded (big textures don't load
+## in some browsers; the committed copies are scaled the same way).
+const MAX_PX := 4096
 
 ## Heading of the overlay.
 var title := "Assets"
@@ -25,6 +28,8 @@ var title := "Assets"
 var none_label := ""
 ## A path whose folder opens first (e.g. the current frame or layer).
 var start_path := ""
+## Optional check from the caller: paths still in use can't be deleted.
+var in_use: Callable = Callable()
 ## Space reserved at the top (the developer menu's tab bar).
 var top := 0.0
 
@@ -111,9 +116,9 @@ static func tex(path: String) -> Texture2D:
 	var t: Texture2D = null
 	if is_local(path):
 		if FileAccess.file_exists(path):
-			var img := Image.load_from_file(path)
+			var img := decode(FileAccess.get_file_as_bytes(path))
 			if img:
-				t = ImageTexture.create_from_image(img)
+				t = ImageTexture.create_from_image(fit(img))
 	elif ResourceLoader.exists(path):
 		t = load(path)
 	_tex_cache[path] = t
@@ -145,20 +150,37 @@ static func thumb(t: Texture2D, w := 84.0, h := 100.0) -> Texture2D:
 	return out
 
 
+## "png", "jpg" or "webp" from the file's signature, "" for anything else.
+static func format_of(bytes: PackedByteArray) -> String:
+	if bytes.size() < 12:
+		return ""
+	if bytes[0] == 0x89 and bytes[1] == 0x50 and bytes[2] == 0x4E and bytes[3] == 0x47:
+		return "png"
+	if bytes[0] == 0xFF and bytes[1] == 0xD8:
+		return "jpg"
+	if bytes.slice(0, 4).get_string_from_ascii() == "RIFF" and bytes.slice(8, 12).get_string_from_ascii() == "WEBP":
+		return "webp"
+	return ""
+
+
 ## Decodes PNG / WebP / JPEG bytes (chosen by their signature, so other files
 ## don't spam decoder errors); null when it isn't one of those.
 static func decode(bytes: PackedByteArray) -> Image:
-	if bytes.size() < 12:
-		return null
 	var img := Image.new()
 	var err := ERR_FILE_UNRECOGNIZED
-	if bytes[0] == 0x89 and bytes[1] == 0x50 and bytes[2] == 0x4E and bytes[3] == 0x47:
-		err = img.load_png_from_buffer(bytes)
-	elif bytes[0] == 0xFF and bytes[1] == 0xD8:
-		err = img.load_jpg_from_buffer(bytes)
-	elif bytes.slice(0, 4).get_string_from_ascii() == "RIFF" and bytes.slice(8, 12).get_string_from_ascii() == "WEBP":
-		err = img.load_webp_from_buffer(bytes)
+	match format_of(bytes):
+		"png": err = img.load_png_from_buffer(bytes)
+		"jpg": err = img.load_jpg_from_buffer(bytes)
+		"webp": err = img.load_webp_from_buffer(bytes)
 	return img if err == OK else null
+
+
+## Scales an image down so neither side exceeds max_px (in place; returns it).
+static func fit(img: Image, max_px := MAX_PX) -> Image:
+	if img.get_width() > max_px or img.get_height() > max_px:
+		var k := float(max_px) / maxi(img.get_width(), img.get_height())
+		img.resize(maxi(1, int(img.get_width() * k)), maxi(1, int(img.get_height() * k)), Image.INTERPOLATE_LANCZOS)
+	return img
 
 
 static func image_ok(bytes: PackedByteArray) -> bool:
@@ -188,13 +210,18 @@ static func file_name(path: String) -> String:
 
 
 ## Stores uploaded files ([[name, bytes], …]) in dir; returns the new paths.
+## The extension follows the file's real format (".jfif" → ".jpg", none → ".png").
 static func store(files: Array, dir := UPLOAD_DIR) -> Array:
 	DirAccess.make_dir_recursive_absolute(dir)
 	var out := []
 	for f in files:
-		if not image_ok(f[1]):
+		var fmt := format_of(f[1])
+		if fmt == "" or decode(f[1]) == null:
 			continue
-		var path: String = dir + "%d-%s" % [Time.get_ticks_usec(), String(f[0]).get_file()]
+		var base := String(f[0]).get_file().get_basename()
+		if base == "":
+			base = "image"
+		var path: String = dir + "%d-%s.%s" % [Time.get_ticks_usec(), base, fmt]
 		var fa := FileAccess.open(path, FileAccess.WRITE)
 		if fa:
 			fa.store_buffer(f[1])
@@ -278,6 +305,10 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if get_window().files_dropped.is_connected(_on_files_dropped):
 		get_window().files_dropped.disconnect(_on_files_dropped)
+	if _js_cb != null and OS.has_feature("web"):
+		# An upload still being read must not call into this freed browser.
+		JavaScriptBridge.eval("window.godotAssetFile = null;")
+		_js_cb = null
 
 
 ## Rebuilds the folder list; selects `select_dir`, or the folder of start_path.
@@ -360,7 +391,7 @@ func _tile(path: String, name: String) -> Control:
 		dl.position = Vector2(86, 4)
 		dl.pressed.connect(download.bind(path))
 		b.add_child(dl)
-		if is_local(path):
+		if can_delete(path):
 			var del := UiKit.icon_button(ICONS % "trash-2", "Delete this upload", 22)
 			del.position = Vector2(86, 30)
 			del.pressed.connect(delete_asset.bind(path))
@@ -416,15 +447,25 @@ func _save_to(path: String) -> void:
 		_say("Saved %s." % path.get_file())
 
 
-## Deletes an uploaded file (repo assets can't be deleted from here).
-func delete_asset(path: String) -> void:
-	if not is_local(path) or not FileAccess.file_exists(path):
-		return
+## Only plain uploads can be deleted (not repo art, not the lab's frame files),
+## and not while something still uses them.
+func can_delete(path: String) -> bool:
+	return path.begins_with(UPLOAD_DIR)
+
+
+## Deletes an uploaded file. Returns false when it isn't allowed.
+func delete_asset(path: String) -> bool:
+	if not can_delete(path) or not FileAccess.file_exists(path):
+		return false
+	if in_use.is_valid() and in_use.call(path):
+		_say("%s is still used (a layer or a frame); remove it there first." % label(path))
+		return false
 	DirAccess.remove_absolute(path)
 	forget(path)
 	_say("Deleted %s." % label(path))
 	var keep := current_dir()
 	refresh_folders(keep if DirAccess.dir_exists_absolute(keep) or not is_local(keep) else "")
+	return true
 
 
 # --- uploads ------------------------------------------------------------------------------
@@ -443,9 +484,10 @@ func open_upload() -> void:
 				const fs = [...i.files].sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
 				for (const f of fs) {
 					const d = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result.split(',')[1]); rd.readAsDataURL(f); });
+					if (typeof window.godotAssetFile !== 'function') return;
 					window.godotAssetFile(f.name, d);
 				}
-				window.godotAssetFile('', '');
+				if (typeof window.godotAssetFile === 'function') window.godotAssetFile('', '');
 			};
 			i.click();
 		})();""")
@@ -510,6 +552,6 @@ func _process(_delta: float) -> void:
 		if not is_instance_valid(img):
 			continue
 		var t := tex(it[1])
-		if t and t.get_width() <= 4200:
+		if t:
 			img.texture = thumb(t)
 		n -= 1
