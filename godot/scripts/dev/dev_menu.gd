@@ -99,7 +99,8 @@ func _show(tab: String) -> void:
 		_editor = LevelEditor.new()
 		_editor.top = BAR_H
 		_editor.header = header_tools
-		_help.text = "Left paint · right erase\nWheel scroll · Enter test"
+		# The level editor's header is full; its tips are in the tooltips.
+		_help.text = ""
 		add_child(_editor)
 		move_child(_editor, 1)
 	else:

@@ -19,6 +19,10 @@ const ICON := 36.0
 const AUTOSAVE := "user://custom_level.txt"
 ## Autosave of the level being edited, per level id (1 cave, 2 garden).
 const AUTOSAVE_FMT := "user://custom_level_%d.txt"
+## Backgrounds being edited (level id -> BackgroundData config), kept in this browser.
+const BG_AUTOSAVE := "user://backgrounds_edit.json"
+## Background images bigger than this are scaled down when committed.
+const BG_MAX_PX := 4096
 
 var rows: PackedStringArray = []
 ## Which game level is being edited (Game.LEVELS).
@@ -36,6 +40,9 @@ var _test: Platformer
 var _test_info: Label
 var _import: Control
 var _saved_state := {}
+## Edited backgrounds: "level id" -> config (only levels touched in the editor).
+var bg_edit := {}
+var bg_panel: BackgroundPanel
 
 
 func _ready() -> void:
@@ -75,6 +82,7 @@ func _ready() -> void:
 	toast_layer.layer = 34
 	add_child(toast_layer)
 	toast_layer.add_child(_toast)
+	_load_bg_edits()
 	_load_initial()
 
 
@@ -121,6 +129,8 @@ func select_level(id: int) -> void:
 		_level_pick.select(Game.LEVELS.keys().find(id))
 	_load_initial()
 	_scroll.scroll_vertical = 0
+	if bg_panel:
+		bg_panel.refresh()
 	_toast_msg("Editing %s (%s)" % [Game.LEVEL_NAMES[id], _level_file()])
 
 
@@ -311,7 +321,8 @@ func _build_header() -> void:
 		["undo-2", "Back to the bundled level", _use_bundled], null,
 		["folder-open", "Load the game level from the build", _load_game_level],
 		["file-plus", "New empty level", _new_level],
-		["list-plus", "Add 20 rows (horizontal levels: 20 columns)", _add_rows], null,
+		["list-plus", "Add 20 rows (horizontal levels: 20 columns)", _add_rows],
+		["layers", "Background: parallax layers", toggle_bg_panel], null,
 		["import", "Import level text", _open_import],
 		["download", "Export: copy + download the level text", _export], null,
 		["git-commit-horizontal", "Save to repo (commits the level to GitHub)", save_to_repo],
@@ -483,12 +494,98 @@ func _draw_grid() -> void:
 func _use_in_game() -> void:
 	Game.custom_level_rows = rows.duplicate()
 	Game.custom_level_id = level_id
-	_toast_msg("The game now uses this %s level (until reload)." % Game.LEVEL_NAMES[level_id].to_lower())
+	Game.custom_backgrounds[level_id] = current_bg().duplicate(true)
+	_toast_msg("The game now uses this %s level and background (until reload)." % Game.LEVEL_NAMES[level_id].to_lower())
 
 
 func _use_bundled() -> void:
 	Game.custom_level_rows = PackedStringArray()
-	_toast_msg("Game uses the bundled levels again.")
+	Game.custom_backgrounds = {}
+	_toast_msg("Game uses the bundled levels and backgrounds again.")
+
+
+# --- background (parallax layers) -------------------------------------------------------
+
+func _load_bg_edits() -> void:
+	bg_edit = {}
+	if FileAccess.file_exists(BG_AUTOSAVE):
+		var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(BG_AUTOSAVE))
+		if d is Dictionary:
+			for k in d:
+				if d[k] is Dictionary:
+					bg_edit[str(k)] = BackgroundData.normalize(d[k])
+
+
+## The background of the level being edited (a copy of the game's until changed).
+func current_bg() -> Dictionary:
+	var k := str(level_id)
+	if not bg_edit.has(k):
+		bg_edit[k] = BackgroundData.normalize(BackgroundData.for_level(level_id).duplicate(true))
+	return bg_edit[k]
+
+
+## True when the edited background differs from the bundled one.
+func bg_dirty() -> bool:
+	return bg_edit.has(str(level_id)) and JSON.stringify(current_bg()) != JSON.stringify(BackgroundData.of_bundled(level_id))
+
+
+func bg_changed() -> void:
+	var f := FileAccess.open(BG_AUTOSAVE, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(bg_edit, " "))
+	if _test:
+		_test.background = current_bg()
+
+
+func reset_bg() -> void:
+	bg_edit.erase(str(level_id))
+	bg_changed()
+	_toast_msg("Background reset to the game's.")
+
+
+func toggle_bg_panel() -> void:
+	if bg_panel:
+		bg_panel.queue_free()
+		bg_panel = null
+		return
+	bg_panel = BackgroundPanel.new()
+	bg_panel.editor = self
+	bg_panel.top = top
+	add_child(bg_panel)
+
+
+## Downloads the edited background as JSON (to paste into data/backgrounds.json).
+func export_bg() -> void:
+	var txt := JSON.stringify({str(level_id): current_bg()}, " ")
+	DisplayServer.clipboard_set(txt)
+	if OS.has_feature("web"):
+		JavaScriptBridge.download_buffer(txt.to_utf8_buffer(), "background-%s.json" % Game.LEVEL_NAMES[level_id].to_lower(), "application/json")
+	_toast_msg("Background JSON copied%s." % (" and downloaded" if OS.has_feature("web") else ""))
+
+
+## Files to commit for the edited background: images uploaded in this browser
+## (scaled to ≤ BG_MAX_PX) and data/backgrounds.json with this level replaced.
+## remote = the current backgrounds.json text on GitHub ("" = use the bundled one).
+func build_bg_commit(remote: String) -> Dictionary:
+	var d: Variant = JSON.parse_string(remote) if remote != "" else null
+	var manifest: Dictionary = d if d is Dictionary else BackgroundData.bundled().duplicate(true)
+	var cfg := current_bg().duplicate(true)
+	var files := {}
+	for l in cfg.layers:
+		if not AssetBrowser.is_local(l.image):
+			continue
+		var img := AssetBrowser.decode(AssetBrowser.bytes_of(l.image))
+		if img == null:
+			continue
+		if img.get_width() > BG_MAX_PX or img.get_height() > BG_MAX_PX:
+			var k := float(BG_MAX_PX) / maxi(img.get_width(), img.get_height())
+			img.resize(maxi(1, int(img.get_width() * k)), maxi(1, int(img.get_height() * k)), Image.INTERPOLATE_LANCZOS)
+		var name := "%s-%s.png" % [Game.LEVEL_NAMES[level_id].to_lower(), AssetBrowser.label(l.image).get_basename().to_lower().validate_filename().replace(" ", "-")]
+		files["godot/assets/backgrounds/" + name] = img.save_png_to_buffer()
+		l.image = "res://assets/backgrounds/" + name
+	manifest[str(level_id)] = cfg
+	files["godot/data/backgrounds.json"] = (JSON.stringify(manifest, " ") + "\n").to_utf8_buffer()
+	return files
 
 
 func _load_game_level() -> void:
@@ -543,8 +640,18 @@ func save_to_repo() -> void:
 	var gh := GitHubSave.new()
 	add_child(gh)
 	gh.progress.connect(_toast_msg)
-	var res := await gh.commit({"godot/data/levels/" + _level_file(): LevelData.to_text(rows).to_utf8_buffer()},
-		"Level editor: update the %s level\n\nSaved from Developer mode > Level editor in the browser." % Game.LEVEL_NAMES[level_id].to_lower())
+	var files := {"godot/data/levels/" + _level_file(): LevelData.to_text(rows).to_utf8_buffer()}
+	var what := "level"
+	if bg_dirty():
+		var remote := await gh.read_text("godot/data/backgrounds.json")
+		if not remote.ok:
+			gh.queue_free()
+			_toast_msg("Save failed: " + remote.error)
+			return
+		files.merge(build_bg_commit(remote.text))
+		what = "level and background"
+	var res := await gh.commit(files,
+		"Level editor: update the %s %s\n\nSaved from Developer mode > Level editor in the browser." % [Game.LEVEL_NAMES[level_id].to_lower(), what])
 	gh.queue_free()
 	if not res.ok:
 		_toast_msg("Save failed: " + res.error)
@@ -618,6 +725,7 @@ func start_test() -> void:
 	if level_id == 3:
 		Game.upgrades = {"jump": true, "dash": true, "double": true}
 	_test.setup(rows, 0, level_id)
+	_test.background = current_bg()
 	_test.active = true
 	# The editor must not swallow the mouse while testing (aiming the thread).
 	for c in [self, _scroll, _grid]:
@@ -681,7 +789,7 @@ func _on_test_trigger(name: String) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _import:
+	if _import or (bg_panel and is_instance_valid(bg_panel.browser)):
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_ENTER, KEY_KP_ENTER]:
 		get_viewport().set_input_as_handled()

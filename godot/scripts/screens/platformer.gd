@@ -67,13 +67,6 @@ const WALL_BOUNCE := 0.85
 const WAVE_START_SPEED := 0.55
 const WAVE_SPRINT := 1.2
 
-const PARALLAX := [
-	["res://assets/images/1.png", 0.1],
-	["res://assets/images/2.png", 0.3],
-	["res://assets/images/3.png", 0.6],
-	["res://assets/images/4.png", 0.8],
-	["res://assets/images/5.png", 1.2],
-]
 
 ## Updated by Main.
 var active := false
@@ -132,7 +125,9 @@ var _first_enemy_seen := false
 var _initial_dialog_sent := false
 var _start_checkpoint := 0
 var _prev_breathe := false
-var _layers: Array = []
+## Background (BackgroundData config). Empty = the level's own (bundled or "Use
+## in game"); the level editor's test play sets the one being edited.
+var background := {}
 var _font: Font
 var _shake := Vector2.ZERO
 
@@ -212,8 +207,6 @@ func has_upgrade(name: String) -> bool:
 
 func _ready() -> void:
 	_font = Text.font_bold
-	for l in PARALLAX:
-		_layers.append([load(l[0]), l[1]])
 	_bg = Node2D.new()
 	_world = Node2D.new()
 	_player_layer = Node2D.new()
@@ -1355,25 +1348,16 @@ func _update_wave(dt: float, d60: float) -> void:
 # --- drawing ------------------------------------------------------------------
 
 func _draw_bg() -> void:
-	if is_summit():
-		_draw_garden_bg()
-		return
-	if is_meadow():
-		_draw_meadow_bg()
-		return
 	var ci := _bg
-	ci.draw_rect(Rect2(0, 0, W, H), Color("#1a0505"))
-	for l in _layers:
-		var tex: Texture2D = l[0]
-		var speed: float = l[1]
-		var off := camera_y * speed
-		var th := tex.get_height() / float(tex.get_width()) * W
-		var start := floorf(off / th) * th
-		var yy := start
-		while yy < off + H:
-			ci.draw_texture_rect(tex, Rect2(0, yy - off, W, th), false)
-			yy += th
-	if not boss.active:
+	var cfg := background if not background.is_empty() else BackgroundData.for_level(level_id)
+	ci.draw_rect(Rect2(0, 0, W, H), Color.from_string(cfg.get("base", "#101018"), Color("#101018")))
+	if cfg.get("procedural", false):
+		if is_summit():
+			_draw_garden_bg()
+		elif is_meadow():
+			_draw_meadow_bg()
+	BackgroundData.draw_layers(ci, cfg, Vector2(camera_x, camera_y), Vector2(W, H), level.horizontal)
+	if cfg.get("tint", false) and not boss.active:
 		var pulse := sin(time_ms / 4000.0) * 0.5 + 0.5
 		Draw.h_gradient(ci, Rect2(0, 0, W * 0.8, H), Color(80 / 255.0, 5 / 255.0, 23 / 255.0, 0.15 + pulse * 0.05), Color(0, 0, 0, 0))
 		Draw.vignette(ci, Rect2(0, 0, W, H), Color(0, 0, 0, 0.3 + pulse * 0.1), 0.4)

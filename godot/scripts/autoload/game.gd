@@ -68,6 +68,9 @@ func reset_run() -> void:
 ## bundled one of `custom_level_id` for this session ("Use in game" in the editor).
 var custom_level_rows := PackedStringArray()
 var custom_level_id := 0
+## Backgrounds set with "Use in game" in the level editor: level id -> config
+## (see BackgroundData). Empty = the bundled data/backgrounds.json.
+var custom_backgrounds := {}
 
 
 ## Level rows. Empty cells may be written as ' ' or '.' in the file.

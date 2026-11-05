@@ -59,19 +59,14 @@ var _play_btn: Button
 var _frame_lbl: Label
 var _mode_btns := {}
 var _stage: Control
-var _tex_cache := {}
-var _thumbs := {}
 var _js_cb: JavaScriptObject
 var _pending: Array = []
 var _pick_purpose := ""
 var _dialog: FileDialog
 var _gh: GitHubSave
-var _assets: Control
-var _asset_grid: GridContainer
-var _asset_folder: OptionButton
-var _asset_search: LineEdit
+## The open asset browser (shared AssetBrowser), and what its pick is for.
+var _assets: AssetBrowser
 var _asset_purpose := ""
-var _thumb_queue: Array = []
 
 
 func _ready() -> void:
@@ -207,17 +202,7 @@ func has_unsaved() -> bool:
 
 
 func _tex(path: String) -> Texture2D:
-	if _tex_cache.has(path):
-		return _tex_cache[path]
-	var t: Texture2D = null
-	if path.begins_with("user://"):
-		var img := Image.load_from_file(path)
-		if img:
-			t = ImageTexture.create_from_image(img)
-	elif ResourceLoader.exists(path):
-		t = load(path)
-	_tex_cache[path] = t
-	return t
+	return AssetBrowser.tex(path)
 
 
 func _textures(paths: Array) -> Array:
@@ -406,21 +391,8 @@ func select_frame(i: int) -> void:
 	_refresh_frames()
 
 
-## Small pre-scaled copy for the list (1190 px sprites drawn at 50 px can show
-## up blank in some browsers, and look aliased).
 func _thumb(t: Texture2D) -> Texture2D:
-	if _thumbs.has(t):
-		return _thumbs[t]
-	var img := t.get_image()
-	var out: Texture2D = t
-	if img:
-		if img.is_compressed():
-			img.decompress()
-		var k := minf(84.0 / img.get_width(), 100.0 / img.get_height())
-		img.resize(maxi(1, int(img.get_width() * k)), maxi(1, int(img.get_height() * k)), Image.INTERPOLATE_LANCZOS)
-		out = ImageTexture.create_from_image(img)
-	_thumbs[t] = out
-	return out
+	return AssetBrowser.thumb(t)
 
 
 # --- editing -------------------------------------------------------------------------
@@ -627,7 +599,7 @@ func _on_files_dropped(paths: PackedStringArray) -> void:
 
 ## files: [[file_name, PackedByteArray], …]
 func receive_files(files: Array, purpose: String) -> void:
-	files = files.filter(func(f): return _image_ok(f[1]))
+	files = files.filter(func(f): return AssetBrowser.image_ok(f[1]))
 	if files.is_empty():
 		_say("No readable PNG/WebP/JPG files.")
 		return
@@ -651,11 +623,6 @@ func receive_files(files: Array, purpose: String) -> void:
 			for k in paths.size():
 				list.insert(at + k, paths[k])
 			_after_edit("%d frame(s) added." % paths.size())
-
-
-func _image_ok(bytes: PackedByteArray) -> bool:
-	var img := Image.new()
-	return img.load_png_from_buffer(bytes) == OK or img.load_webp_from_buffer(bytes) == OK or img.load_jpg_from_buffer(bytes) == OK
 
 
 ## Writes uploaded files to user://anim_uploads/<anim>/ and returns their paths.
@@ -920,7 +887,6 @@ func _jump() -> void:
 
 func _process(delta: float) -> void:
 	_stage.queue_redraw()
-	_build_thumbs(3)
 	if paused:
 		return
 	var dt := minf(delta, 0.1)
@@ -1042,43 +1008,15 @@ func _on_token(ok: bool) -> void:
 		save_to_repo()
 
 
-# --- asset browser -------------------------------------------------------------------
+# --- asset browser (shared AssetBrowser) ----------------------------------------------
 
-## Folders with images: character art, saved variants (anim_test/…), uploads in this browser.
+## Folders with images (see AssetBrowser.folders).
 func asset_folders() -> Array:
-	var out := [["Character art  ·  assets/images", "res://assets/images/"]]
-	var stack := ["res://assets/anim_test/"]
-	while not stack.is_empty():
-		var d: String = stack.pop_front()
-		var has_img := false
-		for f in ResourceLoader.list_directory(d):
-			if f.ends_with("/"):
-				stack.append(d + f)
-			elif _is_image(f):
-				has_img = true
-		if has_img:
-			out.append(["Saved  ·  " + d.trim_prefix("res://assets/anim_test/").trim_suffix("/"), d])
-	if DirAccess.dir_exists_absolute(LOCAL_DIR):
-		out.append(["Uploaded in this browser", LOCAL_DIR])
-	return out
-
-
-func _is_image(f: String) -> bool:
-	return f.get_extension().to_lower() in ["png", "webp", "jpg", "jpeg"]
+	return AssetBrowser.folders()
 
 
 func list_assets(dir: String) -> Array:
-	var out := []
-	if dir.begins_with("user://"):
-		for sub in DirAccess.get_directories_at(dir):
-			for f in DirAccess.get_files_at(dir + sub):
-				if _is_image(f):
-					out.append(dir + sub + "/" + f)
-	else:
-		for f in ResourceLoader.list_directory(dir):
-			if _is_image(f):
-				out.append(dir + f)
-	return out
+	return AssetBrowser.list(dir)
 
 
 func _assets_for(i: int) -> void:
@@ -1087,157 +1025,29 @@ func _assets_for(i: int) -> void:
 	open_assets("replace")
 
 
-## purpose: "replace" (the selected frame) or "add" (after the selected frame).
+## purpose: "replace" (the selected frame), "add" (after the selected frame) or
+## "background" (the preview background).
 func open_assets(purpose: String) -> void:
-	if _assets:
-		_assets.queue_free()
+	close_assets()
 	_asset_purpose = purpose
-	_assets = Control.new()
-	_assets.position = Vector2(0, top)
-	_assets.size = Vector2(1066, 600 - top)
-	_assets.mouse_filter = Control.MOUSE_FILTER_STOP
+	_assets = AssetBrowser.new()
+	_assets.top = top
+	_assets.title = {"replace": "Replace frame %d with…" % (selected + 1), "add": "Add frames", "background": "Preview background"}[purpose]
+	if purpose == "background":
+		_assets.none_label = "No background"
+		_assets.start_path = stage_bg
+	else:
+		var cur := current_paths()
+		_assets.start_path = cur[selected] if selected >= 0 and selected < cur.size() else (cur[0] if not cur.is_empty() else "")
+	_assets.picked.connect(assign_asset)
+	_assets.closed.connect(func(): _assets = null)
 	add_child(_assets)
-	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.7)
-	dim.size = _assets.size
-	_assets.add_child(dim)
-	var card := Panel.new()
-	card.position = Vector2(40, 14)
-	card.size = Vector2(986, _assets.size.y - 28)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color("#0f172a")
-	sb.border_color = Color("#334155")
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(12)
-	card.add_theme_stylebox_override("panel", sb)
-	_assets.add_child(card)
-	var head := HBoxContainer.new()
-	head.position = Vector2(16, 12)
-	head.size = Vector2(954, 34)
-	head.add_theme_constant_override("separation", 10)
-	card.add_child(head)
-	var heading := {"replace": "Replace frame %d with…" % (selected + 1), "add": "Add frames", "background": "Preview background"}
-	var title := UiKit.label(heading[purpose], 16, Color.WHITE, true)
-	title.custom_minimum_size = Vector2(0, 34)
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	head.add_child(title)
-	_asset_folder = OptionButton.new()
-	_asset_folder.focus_mode = Control.FOCUS_NONE
-	_asset_folder.add_theme_font_size_override("font_size", 12)
-	_asset_folder.custom_minimum_size = Vector2(300, 34)
-	for f in asset_folders():
-		_asset_folder.add_item(f[0])
-		_asset_folder.set_item_metadata(_asset_folder.item_count - 1, f[1])
-	# Open the folder of the current frame when there is one.
-	var cur := current_paths()
-	if purpose == "background" and stage_bg != "":
-		cur = [stage_bg]
-	elif purpose == "background":
-		cur = []
-	if purpose == "background" and cur.size() > 0:
-		_asset_folder.select(_folder_of(cur[0]))
-	elif purpose != "background" and selected >= 0 and selected < cur.size():
-		_asset_folder.select(_folder_of(cur[selected]))
-	_asset_folder.item_selected.connect(func(_i): _fill_assets())
-	head.add_child(_asset_folder)
-	_asset_search = LineEdit.new()
-	_asset_search.placeholder_text = "Filter by name (e.g. run, jump)"
-	_asset_search.custom_minimum_size = Vector2(240, 34)
-	_asset_search.add_theme_font_size_override("font_size", 12)
-	_asset_search.text_changed.connect(func(_t): _fill_assets())
-	head.add_child(_asset_search)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(spacer)
-	var close := UiKit.icon_button(ICONS % "x", "Close (Esc)", 34)
-	close.pressed.connect(close_assets)
-	head.add_child(close)
-	var sc := ScrollContainer.new()
-	sc.position = Vector2(16, 58)
-	sc.size = Vector2(954, card.size.y - 70)
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	card.add_child(sc)
-	_asset_grid = GridContainer.new()
-	_asset_grid.columns = 8
-	_asset_grid.add_theme_constant_override("h_separation", 8)
-	_asset_grid.add_theme_constant_override("v_separation", 8)
-	sc.add_child(_asset_grid)
-	_fill_assets()
 
 
 func close_assets() -> void:
-	if _assets:
-		_assets.queue_free()
-		_assets = null
-		_thumb_queue.clear()
-
-
-func _fill_assets() -> void:
-	for c in _asset_grid.get_children():
-		c.queue_free()
-	_thumb_queue.clear()
-	var dir: String = _asset_folder.get_item_metadata(_asset_folder.selected)
-	var q := _asset_search.text.strip_edges().to_lower()
-	var paths := list_assets(dir)
-	if _asset_purpose == "background":
-		paths.push_front("")
-	for path in paths:
-		var name := _asset_label(path) if path != "" else "No background"
-		if q != "" and not name.to_lower().contains(q):
-			continue
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(112, 132)
-		b.focus_mode = Control.FOCUS_NONE
-		b.tooltip_text = path
-		var st := StyleBoxFlat.new()
-		st.bg_color = Color("#1e293b")
-		st.set_corner_radius_all(8)
-		b.add_theme_stylebox_override("normal", st)
-		var hv := st.duplicate()
-		hv.bg_color = Color("#334155")
-		hv.border_color = Color("#34d399")
-		hv.set_border_width_all(2)
-		b.add_theme_stylebox_override("hover", hv)
-		b.add_theme_stylebox_override("pressed", hv)
-		var img := TextureRect.new()
-		img.position = Vector2(6, 6)
-		img.size = Vector2(100, 100)
-		img.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		img.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		b.add_child(img)
-		var l := UiKit.label(name, 10, Color("#cbd5e1"))
-		l.position = Vector2(4, 108)
-		l.size = Vector2(104, 20)
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.clip_text = true
-		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		b.add_child(l)
-		b.pressed.connect(assign_asset.bind(path))
-		_asset_grid.add_child(b)
-		if path != "":
-			_thumb_queue.append([img, path])
-
-
-func _asset_label(path: String) -> String:
-	var f := path.get_file()
-	# Uploaded files are stored as <ticks>-<original name>.
-	if path.begins_with("user://") and f.find("-") > 0 and f.get_slice("-", 0).is_valid_int():
-		f = f.substr(f.find("-") + 1)
-	return f
-
-
-## A few thumbnails per frame so the browser opens instantly.
-func _build_thumbs(n: int) -> void:
-	while n > 0 and not _thumb_queue.is_empty():
-		var it: Array = _thumb_queue.pop_front()
-		var img: TextureRect = it[0]
-		if not is_instance_valid(img):
-			continue
-		var t := _tex(it[1])
-		if t and t.get_width() <= 4200:
-			img.texture = _thumb(t)
-		n -= 1
+	if _assets and is_instance_valid(_assets):
+		_assets.close_browser()
+	_assets = null
 
 
 ## Puts an image from the browser into the frame list (repo files are referenced,
@@ -1248,25 +1058,18 @@ func assign_asset(path: String) -> void:
 	if purpose == "background":
 		stage_bg = path
 		_save_local()
-		_say("Background: " + (_asset_label(path) if path != "" else "none"))
+		_say("Background: " + (AssetBrowser.label(path) if path != "" else "none"))
+		return
+	if path == "":
 		return
 	var list: Array = local.anims[anim][_editable()]
 	if purpose == "replace" and list.size() > 0:
 		var i := clampi(selected, 0, list.size() - 1)
 		list[i] = path
 		selected = i
-		_after_edit("Frame %d → %s" % [i + 1, _asset_label(path)])
+		_after_edit("Frame %d → %s" % [i + 1, AssetBrowser.label(path)])
 	else:
 		var at := list.size() if selected < 0 else selected + 1
 		list.insert(at, path)
 		selected = at
-		_after_edit("Added %s as frame %d." % [_asset_label(path), at + 1])
-
-
-func _folder_of(path: String) -> int:
-	var best := 0
-	for k in _asset_folder.item_count:
-		var d: String = _asset_folder.get_item_metadata(k)
-		if path.begins_with(d) and d.length() > String(_asset_folder.get_item_metadata(best)).length():
-			best = k
-	return best
+		_after_edit("Added %s as frame %d." % [AssetBrowser.label(path), at + 1])

@@ -1,0 +1,17 @@
+{
+ "_comment": "Background of each level (id = Game.LEVELS). base: colour behind everything; procedural: draw the level's code-drawn sky (meadow, summit); tint: the cave's pulsing red tint + vignette; layers: parallax images back to front (image, speed, scale, offset [x, y], opacity, repeat). Edited in Developer mode > Level editor > Background.",
+ "1": {
+  "base": "#1a0505",
+  "procedural": false,
+  "tint": true,
+  "layers": [
+   {"image": "res://assets/images/1.png", "speed": 0.1, "scale": 1.0, "offset": [0, 0], "opacity": 1.0, "repeat": true},
+   {"image": "res://assets/images/2.png", "speed": 0.3, "scale": 1.0, "offset": [0, 0], "opacity": 1.0, "repeat": true},
+   {"image": "res://assets/images/3.png", "speed": 0.6, "scale": 1.0, "offset": [0, 0], "opacity": 1.0, "repeat": true},
+   {"image": "res://assets/images/4.png", "speed": 0.8, "scale": 1.0, "offset": [0, 0], "opacity": 1.0, "repeat": true},
+   {"image": "res://assets/images/5.png", "speed": 1.2, "scale": 1.0, "offset": [0, 0], "opacity": 1.0, "repeat": true}
+  ]
+ },
+ "2": {"base": "#bfe3df", "procedural": true, "tint": false, "layers": []},
+ "3": {"base": "#1c1533", "procedural": true, "tint": false, "layers": []}
+}
