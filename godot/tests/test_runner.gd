@@ -275,19 +275,14 @@ func _run() -> void:
 	Input.action_release("breathe")
 	var won := await until(func(): return node_box().node_id() == "1D", 5)
 	check(won, "boss defeated")
-	# Click through 1D; on its last line Kyra drops away behind the box.
-	var nb1 := node_box()
-	var guard1 := 0
-	while nb1.node_id() == "1D" and not nb1._is_last() and guard1 < 20:
-		nb1._press(0)
-		await frames(2)
-		guard1 += 1
 	await frames(2)
-	check(main.platformer.exit_fall and main.platformer._player_canvas.layer < 8, "with the 1D box Kyra jumps down behind it")
+	check(main.platformer.exit_fall and main.platformer._player_canvas.layer < 8 and main.platformer.boss.defeated_timer < 1.5, "with the 1D box Kyra jumps down behind it, before the nuts move")
 	var bt0: float = main.platformer.boss.defeated_timer
 	await frames(10)
 	var pf_mid: float = main.platformer.camera_x + Platformer.W / 2 - main.platformer.p.width / 2
 	check(main.platformer.boss.defeated_timer > bt0 and absf(main.platformer.p.x - pf_mid) < 120, "the nuts keep forming their ring; she heads for the middle")
+	var under := await until(func(): return main.runner != null and node_box().node_id() == "1D", 8)
+	check(under and main.runner._over_cave and main.runner.modulate.a < 1.0, "the forest loads under the 1D box, fading in over the arena")
 	await finish_dialog("1D")
 	await frames(5)
 	var run_ok := await until(func(): return main.state == "runner" and main.runner != null, 8)
@@ -295,11 +290,11 @@ func _run() -> void:
 
 	step("level 2 – the forest run")
 	var rn0: ForestRunner = main.runner
-	check(rn0.intro > 0 and rn0.py < -3 and node_box().node_id() != "2A" and rn0._intro_k(rn0.dist + 20) < 1.0, "level start: the trees appear from the middle, Kyra not there yet, no dialog")
-	check(rn0.intro_elapsed() < ForestRunner.INTRO_FADE + 0.5, "the arena crossfades straight into the forest (no corridor, no dark)")
 	var rn_landed := await until(func(): return rn0._landed, 6)
-	check(rn_landed and rn0.py == 0 and rn0.land_t > 0, "Kyra jumps up from below and lands (back to us)")
-	await finish_dialog("2A")
+	check(rn_landed and rn0.py == 0, "Kyra jumps up from below and lands (back to us)")
+	var played := await until(func(): return rn0.intro <= 0, 4)
+	await frames(3)
+	check(played and node_box().node_id() == "" and rn0.loop_note > 0, "then the run starts right away (no further dialog), the controls shown briefly")
 	var rn: ForestRunner = main.runner
 	await frames(3)
 	check(rn.active and not rn.dialog_open, "the run is active")
@@ -439,15 +434,9 @@ func _run() -> void:
 	check(rn.sun == 0 and rn.stage == 0, "the sun starts empty")
 	rn.jump_to(rn.stages[0].end - 0.2)
 	await frames(3)
-	check(rn.loops == 1 and rn.stage == 0 and rn.dist < rn.stages[0].start + 2, "the stage repeats from its start while its sun pieces are missing")
-	var looped := await until(func(): return node_box().node_id() == "2D", 3)
-	check(looped, "Iskra says the path goes round again")
-	check(Text.dialogs["2D"].parts.size() == 2 and Text.t("2D2").length() > 20, "… and Estra says stress and strain can lengthen this phase")
-	await finish_dialog("2D")
-	rn.jump_to(rn.stages[0].end - 0.2)
-	await frames(3)
-	check(rn.loops == 2 and rn.loop_note > 0 and node_box().node_id() != "2D", "a later repeat shows a short note instead of the dialog")
-	rn.loop_note = 0
+	var first_piece: Array = rn.objects.filter(func(o): return o.kind == "sun" and o.stage == 0)
+	check(rn.loops == 1 and rn.stage == 0 and absf(rn.dist - rn.stages[0].start) < 2 and first_piece[0].z > rn.dist and node_box().node_id() == "", "the stage repeats seamlessly ahead of her while its pieces are missing (no message)")
+	check(rn.trees.any(func(t): return t.z > rn.stages[0].end), "the forest grows on with it")
 	for n in ForestRunner.SUN_TOTAL:
 		var pieces: Array = rn.objects.filter(func(o): return o.kind == "sun" and not o.taken)
 		var pc: Dictionary = pieces[0]
@@ -1308,7 +1297,7 @@ func _run() -> void:
 	await frames(3)
 	var de: DialogEditor = dev._dialogs
 	check(dev.actions.get_child_count() == 4 and (dev.actions.get_child(3) as Button).icon.resource_path.ends_with("save.svg"), "test / use in game / save (floppy) on the right of the bar")
-	check(de != null and de.ids_in("2") == ["2A", "2B", "2C", "2D", "2E"] and de.ids_in("0").size() == 4, "the Dialogs tab lists each level's dialogs (2A–2E, 0A–0D)")
+	check(de != null and de.ids_in("2") == ["2A", "2B", "2C", "2E"] and de.ids_in("0").size() == 4, "the Dialogs tab lists each level's dialogs (2A–2E, 0A–0D)")
 	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", 3) == "3B" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
 	check(de.ids_in("mg").has("mg8_start") and not DialogEditor.is_story("mg8_start"), "minigame talk is listed apart, under its own names")
 	# Saving the files as they are changes nothing (same format as in the repo).
@@ -1343,14 +1332,14 @@ func _run() -> void:
 	de.move_line(1, -1)
 	check(de.key_of("2C", 0) == "2C1" and de.nodes["2C"].lines[0].text.en == "Second line." and de.is_changed("2C") and FileAccess.file_exists(DialogEditor.EDIT_PATH), "lines are named 2C1, 2C2 in their order; edits are kept locally")
 	de.new_dialog()
-	check(de.current == "2F" and de.nodes.has("2F") and de.ids_in("2").back() == "2F", "a new dialog gets the next free letter (2F)")
+	check(de.current == "2D" and de.nodes.has("2D") and de.ids_in("2") == ["2A", "2B", "2C", "2D", "2E"], "a new dialog gets the next free letter (2D)")
 	de.set_text(0, "en", "Brand new.")
 	var dfiles := de.build_commit(bundled)
 	var dj: Dictionary = JSON.parse_string(dfiles["godot/data/dialogs.json"])
 	var den: Dictionary = JSON.parse_string(dfiles["godot/data/i18n/en.json"])
 	var nk: Array = dj.nodes.keys()
-	check(dj.nodes["2C"].parts.size() == 2 and dj.nodes["2C"].parts[1].text == "2C2" and den["2C1"] == "Second line." and den["2C2"] == "Edited line one." and den["2F1"] == "Brand new.", "save writes the dialogs and their lines in every language")
-	check(nk.find("2F") == nk.find("2E") + 1 and nk.find("3A") == nk.find("2F") + 1 and dj.nodes.has("mg8_start"), "saved dialogs stay in level order")
+	check(dj.nodes["2C"].parts.size() == 2 and dj.nodes["2C"].parts[1].text == "2C2" and den["2C1"] == "Second line." and den["2C2"] == "Edited line one." and den["2D1"] == "Brand new.", "save writes the dialogs and their lines in every language")
+	check(nk.find("2D") == nk.find("2C") + 1 and nk.find("2E") == nk.find("2D") + 1 and nk.find("3A") == nk.find("2E") + 1 and dj.nodes.has("mg8_start"), "saved dialogs stay in level order")
 	# Characters: who speaks, with an avatar sprite each.
 	de.select("2C")
 	await frames(2)
@@ -1366,9 +1355,9 @@ func _run() -> void:
 	var cj: Dictionary = JSON.parse_string(cfiles.get("godot/data/characters.json", "{}"))
 	var cd: Dictionary = JSON.parse_string(cfiles["godot/data/dialogs.json"])
 	check(cj.get("characters", {}).has("Luna") and cj.characters.has("Kyra") and cd.nodes["2C"].parts[0].speaker == "Luna", "save commits the new character and who speaks")
-	de.select("2F")
+	de.select("2D")
 	de.delete_dialog()
-	check(not de.nodes.has("2F") and not de.deleted.has("2F"), "a new dialog can be deleted again")
+	check(not de.nodes.has("2D") and not de.deleted.has("2D"), "a new dialog can be deleted again")
 	de.select("2C")
 	de.use_in_game()
 	check(Text.t("2C2") == "Edited line one." and Text.dialogs["2C"].parts.size() == 2, "Use in game: the game says the edited dialog")
@@ -1392,7 +1381,7 @@ func _run() -> void:
 	de.select("1C")
 	de.delete_dialog()
 	check(de.nodes.has("1C") and de.where_of("1C").begins_with("Started by the game"), "a dialog the game starts (1C, the boss) can't be deleted")
-	check(de.next_id("2") == "2F" and de.next_id("1") == "1F", "new dialogs never take a letter the game uses")
+	check(de.next_id("2") == "2D" and de.next_id("1") == "1F", "new dialogs never take a letter the game uses")
 	var cf := FileAccess.open(DialogEditor.EDIT_PATH, FileAccess.WRITE)
 	cf.store_string(JSON.stringify({"saved_characters": {"Luna": {"name": {"sk": "Luna", "en": "Luna", "pt": "Luna"}, "portrait": "portrait_luna"}}}))
 	cf.close()

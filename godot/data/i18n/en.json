@@ -341,9 +341,7 @@
  "2E1": "The sun is whole! It's getting light: ovulation is near.",
  "2E2": "Up you go, to the summit. The light is with you.",
  "RUNNER_SLOW_HINT": "<KB>Hold Shift</KB><GP>Hold B</GP>: focus",
- "2D1": "A sun piece got away. The forest path goes round again: look for the golden slice.",
- "2D2": "Stress and strain can make this phase of the cycle longer: the body waits until it feels safe to go on.",
  "2B1": "Notifications! Envelopes with wings fly at you and grab you in the air. Stay low or switch paths.",
  "2C1": "Faster now! Thorny vines lash in from the sides. Watch the edges of the path.",
- "RUNNER_LOOP_NOTE": "Stress and strain can lengthen this phase"
+ "RUNNER_CONTROLS": "<KB>Left / Right: paths · Up / Space: jump · Shift: focus</KB><GP>D-pad: paths · X: jump · B: focus</GP>"
 }

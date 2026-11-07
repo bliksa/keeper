@@ -153,6 +153,8 @@ var _jumped := false
 var _told := false
 ## The last frame of the cave (crossfaded away), or null.
 var _from_cave: Texture2D
+## Drawn over the arena (Main fades this screen in): the grain starts where it is there.
+var _over_cave := false
 ## A minigame (n) or the end waiting for the flying piece to land.
 var _pending_game := 0
 var _pending_end := false
@@ -162,10 +164,13 @@ var waiting := false
 var loops := 0
 ## Seconds left of standing / speeding up again after a hit (see RECOVER_*).
 var recover_t := 0.0
-## Seconds left of the "stress can lengthen this phase" note.
+## Seconds left of the controls line (show_controls).
 var loop_note := 0.0
-var _loop_told := false
+## How long the controls line shows at the start (s); set by show_controls().
+const CONTROLS_TIME := 6.0
 var trees: Array = []
+var _tree_rng := RandomNumberGenerator.new()
+var _tree_z := 0.0
 var _font: Font
 var _prev_slow := false
 ## The slow-time hint (under the water pill) shows until it was used once.
@@ -184,13 +189,17 @@ func _ready() -> void:
 	_font = Text.font_bold
 	water = Game.water if Game.water > 0 else 30.0
 	build_course()
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 7
-	var z := 0.0
-	while z < length + VIEW:
+	_tree_rng.seed = 7
+	_extend_trees()
+
+
+## Trees along both sides of the path up to the end of the course (grows when a
+## stage repeats further on).
+func _extend_trees() -> void:
+	while _tree_z < length + VIEW:
 		for side: float in [-1.0, 1.0]:
-			trees.append({"x": side * rng.randf_range(4.2, 9.0), "z": z + rng.randf_range(0, 3), "h": rng.randf_range(4.5, 8.0), "r": rng.randf_range(1.2, 2.2), "tone": rng.randf()})
-		z += rng.randf_range(2.5, 4.0)
+			trees.append({"x": side * _tree_rng.randf_range(4.2, 9.0), "z": _tree_z + _tree_rng.randf_range(0, 3), "h": _tree_rng.randf_range(4.5, 8.0), "r": _tree_rng.randf_range(1.2, 2.2), "tone": _tree_rng.randf()})
+		_tree_z += _tree_rng.randf_range(2.5, 4.0)
 
 
 ## The course from the top-down map. Per cell:
@@ -340,7 +349,7 @@ func _process(delta: float) -> void:
 	sun_flash = maxf(0, sun_flash - dt)
 	sun_pulse = maxf(0, sun_pulse - dt)
 	water_flash = maxf(0, water_flash - dt)
-	if not dialog_open:
+	if not dialog_open and intro <= 0:
 		loop_note = maxf(0, loop_note - dt)
 	_update_flyers(dt)
 	land_t = maxf(0, land_t - dt)
@@ -421,9 +430,15 @@ func _stage_end() -> void:
 ## Back to the start of the stage: the forest goes round again. Obstacles and
 ## water come back; found sun pieces stay found.
 func _loop_stage() -> void:
+	# Seamless: she runs on and the same stage lies ahead again. Its obstacles,
+	# drops and missing pieces (and everything after it) move one stage length
+	# forward; the forest grows with it. No message.
 	loops += 1
-	dist = stages[stage].start
+	var s: Dictionary = stages[stage]
+	var span: float = s.end - s.start
 	for o in objects:
+		if o.z >= s.start:
+			o.z += span
 		if o.stage != stage:
 			continue
 		if o.kind in ["root", "branch", "bird", "vine"]:
@@ -431,15 +446,14 @@ func _loop_stage() -> void:
 			o.dz = 0.0
 		elif o.kind == "drop":
 			o.taken = false
+	for k in range(stage + 1, stages.size()):
+		stages[k].start += span
+		stages[k].end += span
+	s.start += span
+	s.end += span
+	length += span
+	_extend_trees()
 	_random_traps(stage)
-	flash = 0.0
-	sun_flash = 0.0
-	if not _loop_told:
-		_loop_told = true
-		show_dialog.emit("2D")
-	else:
-		# Later repeats: a short reminder instead of the dialog.
-		loop_note = 3.5
 
 
 ## After the minigame: on with the next stage (from its start).
@@ -531,9 +545,14 @@ func _sun_piece() -> void:
 		_land_pending()
 
 
+func show_controls() -> void:
+	loop_note = CONTROLS_TIME
+
+
 ## Starts the level-start sequence (see INTRO_TIME).
-func start_intro(from_cave: Texture2D = null) -> void:
+func start_intro(from_cave: Texture2D = null, over_cave := false) -> void:
 	_from_cave = from_cave
+	_over_cave = over_cave
 	intro = INTRO_TIME
 	py = INTRO_FROM_Y
 	vy = 0.0
@@ -1028,7 +1047,7 @@ func _draw_grain() -> void:
 		return
 	var k := clampf((e - t0) / (t1 - t0), 0, 1)
 	k = k * k * (3 - 2 * k)
-	var from := GRAIN_FROM if _from_cave else Vector2(W / 2, H / 2)
+	var from := GRAIN_FROM if (_from_cave or _over_cave) else Vector2(W / 2, H / 2)
 	var mid := (from + SUN_HUD) / 2 + Vector2(40, -60)
 	var p := from.lerp(mid, k).lerp(mid.lerp(SUN_HUD, k), k)
 	var r := lerpf(GRAIN_R, 14.0, k)
@@ -1052,11 +1071,12 @@ func _draw_intro_hud() -> void:
 		draw_water_pill(self, WATER_HUD, water, false, time, SLOW_MIN)
 
 
+## The controls, for a few seconds at the start (when Iskra's dialog is skipped).
 func _draw_loop_note() -> void:
 	if loop_note <= 0:
 		return
-	var a := clampf(minf(loop_note, 3.5 - loop_note) / 0.4, 0, 1)
-	var txt := Text.plain(Text.t("RUNNER_LOOP_NOTE"))
+	var a := clampf(minf(loop_note, CONTROLS_TIME - loop_note) / 0.4, 0, 1)
+	var txt := Text.plain(Text.t("RUNNER_CONTROLS"))
 	var tw := Text.font_bold.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
 	var r := Rect2(W / 2 - tw / 2 - 18, 24, tw + 36, 36)
 	Draw.panel(self, r, Color(0.94, 0.93, 0.91, 0.92 * a), 18, Color(0.37, 0.61, 0.6, 0.3 * a), 2)

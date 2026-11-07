@@ -341,9 +341,7 @@
  "2E1": "Slnko je celé! Svetlo pribúda: ovulácia je blízko.",
  "2E2": "Tak hor sa na vrchol. Svetlo ide s tebou.",
  "RUNNER_SLOW_HINT": "<KB>Podrž Shift</KB><GP>Podrž B</GP>: sústredenie",
- "2D1": "Kúsok slnka ti ušiel. Lesná cestička ide dookola: hľadaj zlatý dielik.",
- "2D2": "Stres a námaha môžu túto fázu cyklu predĺžiť: telo počká, kým sa cíti bezpečne.",
  "2B1": "Notifikácie! Obálky s krídlami letia priamo na teba a vo vzduchu ťa chytia. Drž sa pri zemi alebo zmeň cestičku.",
  "2C1": "Teraz rýchlejšie! Z bokov šľahajú tŕnisté úponky. Sleduj okraje cestičky.",
- "RUNNER_LOOP_NOTE": "Stres a námaha môžu túto fázu predĺžiť"
+ "RUNNER_CONTROLS": "<KB>Vľavo / vpravo: cestičky · hore / medzerník: skok · Shift: sústredenie</KB><GP>D-pad: cestičky · X: skok · B: sústredenie</GP>"
 }

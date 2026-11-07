@@ -220,15 +220,15 @@ from its start); the 12th piece → `finished` → `runner_end` → `_start_summ
 flying notifications, fastest + random side traps): speed `STAGE_SPEED[stage]` + `STAGE_RAMP` within the
 stage; from `RANDOM_TRAPS_FROM` random side traps (`_random_traps`, new on every
 repeat). Reaching a stage's end with its pieces still missing repeats it
-(`_loop_stage`: obstacles + drops re-armed, found pieces / seeds stay; dialog
-`runner_loop` once). Three lanes (`lane`, `px`), jump / double jump (`jump()`), hits:
+(`_loop_stage`: seamless, no message: this stage's objects and everything after
+move one stage length ahead, obstacles + drops re-armed, found pieces stay). Three lanes (`lane`, `px`), jump / double jump (`jump()`), hits:
 `bump()` (roll back `BUMP_BACK`, not before the stage start), a flying notification in the air =
 `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass again,
 except within `GRACE`. Slow time: action `slow_time` (Shift / E / LB / Y) while
 `water` lasts. `jump_to(z)` moves her (and the stage) for tests / the dev menu
 ("Forest run", "Stage 2", "Stage 3"). Level editor: tool group "Forest run",
 `_draw_runner_row/_cell`, test play `_start_runner_test` (minigames skipped).
-Level start (`start_intro(from_cave)`; from the boss `main._into_corridor` passes a snapshot of the arena with the grain hidden, `Platformer.hide_egg`): the arena crossfades into the forest (`INTRO_FADE`), the grain the nuts formed flies to the top-left and opens into the sun (`_draw_grain`, `_draw_intro_hud`), the trees appear from the screen centre (`_intro_k`, `INTRO_TREES`), Kyra drops in (`INTRO_FALL_AT`, `land_t`) and stands, then `intro_done` → dialog 2A. Dialogs 2A (start), 2B (notifications, letter b), 2C (side traps, letter c), 2D (stage repeat), 2E (end). No seeds in the run.
+Level start (from the boss: `main._on_boss_defeated` opens 1D at once and `_into_forest` runs under it: Kyra jumps into the middle behind the box (`Platformer.start_exit_fall`), the nuts' ring closes, then `_start_runner(..., over_cave = true)` fades the run in over the arena (`start_intro(null, true)`, `Platformer.hide_egg`); after the intro the controls show (`show_controls`) instead of 2A): the arena crossfades into the forest (`INTRO_FADE`), the grain the nuts formed flies to the top-left and opens into the sun (`_draw_grain`, `_draw_intro_hud`), the trees appear from the screen centre (`_intro_k`, `INTRO_TREES`), Kyra drops in (`INTRO_FALL_AT`, `land_t`) and stands, then `intro_done` → dialog 2A. Dialogs 2A (start from the dev menu), 2B (notifications, letter b), 2C (side traps, letter c), 2E (end). No seeds in the run.
 
 ## Old level 2: the meadow (follicular phase, horizontal; dev menu only)
 

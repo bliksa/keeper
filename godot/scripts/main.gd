@@ -599,51 +599,49 @@ func _mg7_done() -> void:
 
 
 func _on_boss_defeated() -> void:
-	# The cycle goes on: a corridor opens in the middle of the arena and Kyra
-	# runs into the forest (follicular phase).
-	_dialog("1D", _into_corridor)
+	# The 1D box comes at once. Behind it Kyra jumps down into the middle, the
+	# nuts form their ring into the grain, and the forest run loads under the
+	# box; when the dialog ends, the run starts (no further dialog).
+	_dialog("1D")
+	_into_forest()
 
 
-func _into_corridor() -> void:
+func _into_forest() -> void:
 	var run := _run_id
-	# The last frame of the arena (without the grain, which flies on in the
-	# forest run's intro) crossfades into the forest.
-	var shot: Texture2D = null
-	if platformer:
-		platformer.start_exit_fall()
-		# Kyra out of sight and the nuts' ring closed into the grain (max ~5 s).
-		for i in 300:
-			if platformer.exit_fall_done() and platformer.boss.defeated_timer > 4.6:
-				break
-			await get_tree().process_frame
-		if run != _run_id:
-			return
-	if platformer and DisplayServer.get_name() != "headless":
-		platformer.hide_egg = true
-		await get_tree().process_frame
-		await get_tree().process_frame
-		if run != _run_id:
-			return
-		var img := get_viewport().get_texture().get_image()
-		if img and not img.is_empty():
-			shot = ImageTexture.create_from_image(img)
-	await _start_runner(false, 0, shot)
-	if run != _run_id:
+	if platformer == null:
 		return
+	platformer.start_exit_fall()
+	# Kyra out of sight and the nuts' ring closed into the grain (max ~6 s).
+	for i in 360:
+		if run != _run_id or platformer == null:
+			return
+		if platformer.exit_fall_done() and platformer.boss.defeated_timer > 4.6:
+			break
+		await get_tree().process_frame
+	platformer.hide_egg = true
+	platformer.hud.visible = false
+	_start_runner(false, 0, null, true)
 
 
 ## Level 2 (demo): the forest run, seen from behind.
 ## Level 2: the forest run. stage > 0 (developer menu): from that stage, with
 ## the sun pieces of the stages before it found.
-func _start_runner(fade := true, stage := 0, from_cave: Texture2D = null) -> void:
+## over_cave: from the boss arena, which stays underneath while the forest
+## fades in over it (and the 1D dialog stays open).
+func _start_runner(fade := true, stage := 0, from_cave: Texture2D = null, over_cave := false) -> void:
 	var run := _run_id
 	if fade:
 		await _fade_to(1.0)
 		if run != _run_id:
 			return
 	_clear_menu()
-	_clear_world()
-	_node_box.close()
+	var old_world: Node = null
+	if over_cave:
+		old_world = platformer
+		platformer = null
+	else:
+		_clear_world()
+		_node_box.close()
 	_set_dim(false)
 	Game.level = 2
 	Game.water = 0
@@ -664,8 +662,18 @@ func _start_runner(fade := true, stage := 0, from_cave: Texture2D = null) -> voi
 	_set_state("runner")
 	if fade:
 		_fade_to(0.0)
-	if stage == 0:
-		# The level start: the forest appears, Kyra drops in, then Iskra talks.
+	if over_cave:
+		# The forest fades in over the arena, which then goes.
+		runner.start_intro(null, true)
+		runner.modulate.a = 0.0
+		var tw := create_tween()
+		tw.tween_property(runner, "modulate:a", 1.0, ForestRunner.INTRO_FADE)
+		tw.finished.connect(func():
+			if is_instance_valid(old_world):
+				old_world.queue_free())
+		runner.intro_done.connect(runner.show_controls)
+	elif stage == 0:
+		# The level start: the forest appears, Kyra jumps in, then Iskra talks.
 		runner.start_intro(from_cave)
 		runner.intro_done.connect(func(): _dialog("2A"))
 	else:

@@ -29,7 +29,7 @@ const BY_GAME := {
 	"0A": "the forest intro (start)", "0B": "the forest intro (Estra appears)", "0C": "the forest intro (before breathing)",
 	"0D": "the end of the breathing minigame", "1A": "the start of the cave", "1B": "the first cramp (X in the cave)",
 	"1C": "the boss fight (start)", "1D": "the boss defeated (then the corridor)", "1E": "the boss lost",
-	"2A": "the start of the forest run", "2D": "a stage repeating (sun pieces missing)", "2E": "the full sun (end of level 2)",
+	"2A": "the start of the forest run", "2E": "the full sun (end of level 2)",
 	"3A": "the start of the summit", "3F": "the LH wave", "3G": "the summit (end)",
 	"MA": "the start of the old meadow", "MF": "the locked gate", "MG": "the open gate (end)",
 }
