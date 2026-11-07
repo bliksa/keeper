@@ -59,7 +59,11 @@ tools/                     setup_godot.sh, test.sh, export_web.sh
 - **Physics / feel**: constants at the top of `scripts/screens/platformer.gd`
   (gravity, jump, speed). Values match the web build, scaled per frame by `dt60`.
 - **Flow** (what happens after a trigger/minigame): `scripts/main.gd`.
-- **Input**: actions are created in code in `scripts/autoload/game.gd`.
+- **Input**: actions are created in code in `scripts/autoload/game.gd`. One scheme in every
+  level: move ← → (A/D) / D-pad, jump + double jump ↑ / Space / W / 🟡 (X), and the level's
+  ability on Shift / 🔴 (B, RB): breathe (cave), focus (`slow_time`, forest run), breathe and,
+  once earned, dash (`run`, summit). Kyra always runs (no walk / run key). Texts say
+  <KB>Shift</KB><GP>🔴</GP> and <KB>UP / Space</KB><GP>🟡</GP>.
 
 ## Conventions
 

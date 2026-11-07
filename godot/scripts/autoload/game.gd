@@ -131,8 +131,10 @@ func _setup_input() -> void:
 	_action("move_down", [KEY_DOWN, KEY_S], [JOY_BUTTON_DPAD_DOWN], [[JOY_AXIS_LEFT_Y, 1.0]])
 	_action("jump", [KEY_UP, KEY_W, KEY_SPACE], [JOY_BUTTON_X], [])
 	# Shift on the keyboard: run (level 1) / dash (level 2, after the rhythm minigame).
-	_action("run", [KEY_SHIFT], [JOY_BUTTON_Y], [])
-	_action("breathe", [KEY_CTRL], [JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER],
+	# One key for the level's ability (Shift / B): breathe in the cave, focus in
+	# the forest run, breathe and later dash on the summit.
+	_action("run", [KEY_SHIFT], [JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER], [])
+	_action("breathe", [KEY_SHIFT], [JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER],
 		[[JOY_AXIS_TRIGGER_LEFT, 1.0], [JOY_AXIS_TRIGGER_RIGHT, 1.0]])
 	_action("confirm", [KEY_ENTER, KEY_KP_ENTER], [JOY_BUTTON_A], [])
 	# Dialog choice buttons map to the four face buttons (blue, red, yellow, green).
@@ -145,7 +147,7 @@ func _setup_input() -> void:
 	_action("skip_minigame", [KEY_X], [], [])
 	_action("pause", [KEY_ESCAPE], [JOY_BUTTON_START], [])
 	# Level 2 (forest run): hold to slow time while the water lasts.
-	_action("slow_time", [KEY_SHIFT, KEY_E], [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_Y], [])
+	_action("slow_time", [KEY_SHIFT], [JOY_BUTTON_B, JOY_BUTTON_RIGHT_SHOULDER], [])
 	# Level 2 (old meadow): hold to focus the light thread on a seed (also the left mouse button).
 	_action("focus", [KEY_E], [JOY_BUTTON_LEFT_SHOULDER], [])
 	var mb := InputEventMouseButton.new()

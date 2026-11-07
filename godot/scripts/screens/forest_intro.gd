@@ -85,7 +85,7 @@ func _update(dt: float) -> void:
 		right = Input.is_action_pressed("move_right")
 		jump = Input.is_action_pressed("jump")
 		# Keyboard always runs; gamepad runs while holding Y (web behaviour).
-		run = Game.control_mode == "keyboard" or Input.is_action_pressed("run")
+		run = true
 	if not _monologue_sent and not has_breathing:
 		_monologue_sent = true
 		p.is_crouched = true

@@ -131,7 +131,7 @@ func _draw_breath(font: Font) -> void:
 				else:
 					draw_texture_rect(load("res://assets/ui/pad_red.png"), Rect2(x - 10, c.y - 10, 20, 20), false)
 		else:
-			_key_hint(font, c, "CTRL" if keyboard else "PUSH", keyboard)
+			_key_hint(font, c, "SHIFT" if keyboard else "PUSH", keyboard)
 	elif p.is_recharging and p.breathing_cooldown <= 0:
 		var k := minf(1.0, p.breath_timer / 12.0)
 		_progress_outline(rect, k, RUST if breath_error else TEAL)
@@ -145,9 +145,9 @@ func _draw_breath(font: Font) -> void:
 			_shape(syms[i], Vector2(c.x + (i - 1) * 34, c.y), col)
 	else:
 		if p.breath_charges > 0:
-			_key_hint(font, c, "CTRL" if keyboard else "PUSH", keyboard)
+			_key_hint(font, c, "SHIFT" if keyboard else "PUSH", keyboard)
 		else:
-			var s := "CTRL" if keyboard else "RELOAD"
+			var s := "SHIFT" if keyboard else "RELOAD"
 			Draw.text_center(self, font, c + Vector2(-12 if keyboard else -14, 0), s, 18, INK)
 			if keyboard:
 				_reload_icon(c + Vector2(30, 0))

@@ -521,7 +521,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			p.slow_timer = 0
 			Audio.play_sfx("breathoff.wav", 0.4)
 	elif event.is_action_pressed("breathe") and not event.is_echo():
-		if dialog_open:
+		if dialog_open or (is_summit() and has_upgrade("dash")):
 			return
 		# Toggle the recharge sequence when out of breath charges.
 		if p.breath_charges == 0 and Game.has_breathing and p.breathing_cooldown <= 0:
@@ -620,14 +620,14 @@ func _update(dt: float) -> void:
 		right = false
 	var up := Input.is_action_pressed("move_up")
 	var down := Input.is_action_pressed("move_down")
-	var breathe := Input.is_action_pressed("breathe")
+	# Shift is the level's one ability: on the summit, once the dash is earned,
+	# it dashes instead of breathing.
+	var breathe := Input.is_action_pressed("breathe") and not (is_summit() and has_upgrade("dash"))
 	var breathe_pressed := breathe and not _prev_breathe
 	_prev_breathe = breathe
 
 	# --- horizontal movement
 	var max_speed := MAX_SPEED
-	if Game.control_mode == "gamepad" and not Input.is_action_pressed("run"):
-		max_speed = MAX_SPEED * 0.5
 	if p.slow_timer > 0:
 		p.slow_timer -= dt
 		max_speed *= 0.45
