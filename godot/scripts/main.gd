@@ -69,6 +69,18 @@ func _ready() -> void:
 		var q: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('mg') || ''")
 		if q is String and q != "":
 			open_minigame_for_dev.call_deferred(q)
+		# ?boss=win: the arena with the Big Cramp just beaten (the transition to level 2).
+		var bq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('boss') || ''")
+		if bq is String and bq == "win":
+			_dev_boss_win.call_deferred()
+
+
+func _dev_boss_win() -> void:
+	_clear_menu()
+	await _skip_to_boss(20)
+	await get_tree().create_timer(1.0).timeout
+	if platformer:
+		platformer.dev_defeat_boss()
 
 
 ## Opens a minigame on its own (developer shortcut ?mg=, tests).
@@ -167,9 +179,6 @@ func _process(_delta: float) -> void:
 		platformer.active = state == "platformer"
 		platformer.dialog_open = any_dialog
 		platformer.active_dialog_id = _node_box.node_id()
-		# The boss is beaten: as soon as the 1D box appears, Kyra drops behind it.
-		if _node_box.node_id() == "1D" and not platformer.exit_fall:
-			platformer.start_exit_fall()
 		platformer.hide_platforms = state in ["mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
 		platformer.hud.visible = state == "platformer"
 	if forest:
@@ -601,25 +610,30 @@ func _mg7_done() -> void:
 
 
 func _on_boss_defeated() -> void:
-	# The 1D box comes at once. Behind it Kyra jumps down into the middle, the
-	# nuts form their ring into the grain, and the forest run loads under the
-	# box; when the dialog ends, the run starts (no further dialog).
-	_dialog("1D")
-	_into_forest()
+	# The boss's dialogs play out in the arena (the nuts form their ring into
+	# the grain meanwhile); then the floor is gone, Kyra falls, and she lands in
+	# the forest run (see _into_forest).
+	_dialog("1D", _into_forest)
 
 
 func _into_forest() -> void:
 	var run := _run_id
 	if platformer == null:
 		return
-	platformer.start_exit_fall()
-	# Kyra out of sight and the nuts' ring closed into the grain (max ~6 s).
+	# The nuts' ring closed into the grain (max ~6 s): the arena has no floor.
 	for i in 360:
 		if run != _run_id or platformer == null:
 			return
-		if platformer.exit_fall_done() and platformer.boss.defeated_timer > 4.6:
+		if platformer.boss.defeated_timer > 4.6:
 			break
 		await get_tree().process_frame
+	# Kyra falls; the camera goes down with her a moment, then the forest fades
+	# in below and she drops into it from above.
+	platformer.start_exit_fall()
+	for i in 40:
+		await get_tree().process_frame
+		if run != _run_id or platformer == null:
+			return
 	platformer.hide_egg = true
 	platformer.hud.visible = false
 	_start_runner(false, 0, null, true)

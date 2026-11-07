@@ -343,14 +343,11 @@ func _process(delta: float) -> void:
 	var dt := minf(delta, 0.1)
 	time_ms += dt * 1000.0
 	if exit_fall:
-		# A jump down into the middle (where the forest run starts), behind the box.
+		# Falling out of the arena; the camera goes down with her.
 		var f60 := dt * 60.0
 		p.vy = minf(p.vy + 0.55 * f60, 18.0)
 		p.y += p.vy * f60
-		var tx := camera_x + W / 2 - p.width / 2
-		p.x = move_toward(p.x, tx, 7.0 * f60)
-		if absf(tx - p.x) > 1:
-			p.facing_right = tx > p.x
+		camera_y = lerpf(camera_y, p.y - H * 0.4, 1.0 - pow(0.85, f60))
 	if active:
 		_update(dt)
 		if active and not _initial_dialog_sent and _start_checkpoint <= 1:
@@ -586,17 +583,22 @@ func _hurt(from_x: float) -> void:
 	_spray_nuts(lost)
 
 
-## Kyra hops and drops out of the bottom of the screen (level 1 is over).
+## Developer shortcut: the Big Cramp is beaten at once.
+func dev_defeat_boss() -> void:
+	if boss.active and boss.defeated_timer == 0:
+		boss.hp = 0
+		boss.defeated_timer = 0.01
+
+
+## Kyra drops out of the bottom of the screen (level 1 is over).
 func start_exit_fall() -> void:
 	if exit_fall:
 		return
 	exit_fall = true
 	p.held_by_cramp = -1
 	p.is_recharging = false
-	# Behind the dialog box (its layer is 8), not in front of it.
-	if _player_canvas:
-		_player_canvas.layer = 4
-	p.vy = -7.0
+	# The nuts are gone from under her: she just drops.
+	p.vy = 0.0
 	p.vx = 0
 	p.is_grounded = false
 

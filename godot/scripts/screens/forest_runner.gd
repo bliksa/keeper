@@ -31,18 +31,18 @@ signal sun_game(n: int)
 ## The level-start sequence is over (Main then shows dialog 2A).
 signal intro_done
 
-## Coming from the cave: the arena (a snapshot) crossfades into the forest, the
-## grain the nuts formed flies to the top-left and becomes the sun (the progress
-## meter), the trees appear from the middle, then Kyra jumps up from below (she
-## dropped out of the arena) and stands with her back to us.
-const INTRO_TIME := 3.7
+## Coming from the cave: Kyra fell out of the arena (its floor became the grain);
+## the forest fades in over it, she drops in from above onto the path and stands
+## with her back to us, the grain flies to the top-left and becomes the sun (the
+## progress meter), and the trees appear from the middle around her.
+const INTRO_TIME := 3.0
 const INTRO_FADE := 1.0
 const INTRO_GRAIN := [0.35, 1.55]
 const INTRO_TREES := 1.0
-const INTRO_FALL_AT := 2.35
-## She starts this far below the path and jumps up with this speed.
-const INTRO_FROM_Y := -3.5
-const INTRO_JUMP_V := 14.0
+## She keeps falling from the cave: in from above, onto the path.
+const INTRO_FALL_AT := 0.45
+const INTRO_FROM_Y := 10.0
+const INTRO_FALL_V := -4.0
 ## Where the grain is in the arena (Platformer._draw_egg) and its size there.
 const GRAIN_FROM := Vector2(533, 250)
 const GRAIN_R := 45.0
@@ -586,16 +586,10 @@ func intro_elapsed() -> float:
 
 func _update_intro(dt: float) -> void:
 	intro = maxf(0, intro - dt)
-	# Iskra's box (2A) comes first; Kyra then jumps up from behind it.
-	if intro_elapsed() >= INTRO_FALL_AT - 0.4 and not _told:
-		_told = true
-		intro_done.emit()
 	if intro_elapsed() >= INTRO_FALL_AT and not _landed:
 		if not _jumped:
-			# Up from below the screen, over the path, and down onto it.
 			_jumped = true
-			vy = INTRO_JUMP_V
-			Audio.jump_sound(false)
+			vy = INTRO_FALL_V
 		vy -= GRAVITY * dt
 		py += vy * dt
 		if py <= 0 and vy < 0:
