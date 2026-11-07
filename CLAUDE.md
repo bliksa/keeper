@@ -75,7 +75,8 @@ tools/                     setup_godot.sh, test.sh, export_web.sh
 - Textures wider than 8192 px don't load in some browsers — keep
   `process/size_limit=4096` in their `.import` file (see `back.png.import`).
 - Coordinates are in the 1066×600 virtual screen (same as the web build).
-- Dialog boxes use OpenDyslexic (`Text.font_dialog` / `font_dialog_bold`); the
+- Dialog boxes use OpenDyslexic as KeeperDyslexic (`tools/tighten_punctuation.py`: tighter
+  letters, punctuation closer to the word; OFL renaming) (`Text.font_dialog` / `font_dialog_bold`); the
   text steps down from 18 px until it fits (`DialogBox.TEXT_SIZES`). The test
   checks every dialog in all languages fits; keep parts short (≈ 3 lines).
 - Keep `web-export/` untouched; it is the reference implementation.

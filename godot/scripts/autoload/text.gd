@@ -24,7 +24,9 @@ var characters := {}
 ## Comfortaa (the web build's font) — regular and bold weights.
 var font: Font
 var font_bold: Font
-## OpenDyslexic for the dialog boxes (easier to read with dyslexia). It covers
+## OpenDyslexic for the dialog boxes (easier to read with dyslexia), as
+## KeeperDyslexic: the same font with . , ! ? : ; … closer to the letter before
+## them (tools/tighten_punctuation.py; OFL, renamed as the licence asks). It covers
 ## every character in the SK / EN / PT texts (the pad / arrow glyphs are images).
 var font_dialog: Font
 var font_dialog_bold: Font
@@ -73,8 +75,8 @@ func _ready() -> void:
 	bold.base_font = base
 	bold.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700}
 	font_bold = bold
-	font_dialog = _dialog_font("res://assets/fonts/OpenDyslexic-Regular.otf")
-	font_dialog_bold = _dialog_font("res://assets/fonts/OpenDyslexic-Bold.otf")
+	font_dialog = _dialog_font("res://assets/fonts/KeeperDyslexic-Regular.otf")
+	font_dialog_bold = _dialog_font("res://assets/fonts/KeeperDyslexic-Bold.otf")
 
 
 ## OpenDyslexic has very tall built-in line spacing (≈ 1.9 × size); trimmed to
@@ -85,7 +87,9 @@ func _dialog_font(path: String) -> Font:
 	f.spacing_top = -3
 	f.spacing_bottom = -3
 	# OpenDyslexic is wide-set; pull the letters a little closer together.
-	f.spacing_glyph = -3
+	# The letters are tightened in the font itself (KeeperDyslexic); a pixel
+	# spacing would squeeze narrow glyphs like dots into each other.
+	f.spacing_glyph = 0
 	return f
 
 

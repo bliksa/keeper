@@ -140,7 +140,7 @@ func _run() -> void:
 
 	step("dialog font")
 	var nb := node_box()
-	check(nb._text.get_theme_font("normal_font") == Text.font_dialog and (Text.font_dialog as FontVariation).base_font.resource_path.ends_with("OpenDyslexic-Regular.otf"), "dialog text uses OpenDyslexic")
+	check(nb._text.get_theme_font("normal_font") == Text.font_dialog and (Text.font_dialog as FontVariation).base_font.resource_path.ends_with("KeeperDyslexic-Regular.otf"), "dialog text uses OpenDyslexic (KeeperDyslexic: punctuation closer)")
 	var too_long := []
 	var smallest := 99
 	var lang0: String = Text.language
