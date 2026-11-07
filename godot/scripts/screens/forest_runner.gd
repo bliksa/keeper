@@ -97,7 +97,9 @@ const VIEW := 70.0
 const ROOT_H := 0.5
 const BRANCH_H := 1.05
 ## Height above which a bird catches her (in the air, in its lane).
-const BIRD_REACH := 0.75
+const BIRD_REACH := 1.0
+## How high the flying notifications fly (m): over her head, dodge them sideways.
+const BIRD_Y := 1.7
 const BIRD_SPEED := 6.0
 
 ## Updated by Main.
@@ -220,7 +222,7 @@ func build_course() -> void:
 						_add("branch", z, l)
 				"V":
 					if on_path:
-						_add("bird", z, l, 1.1)
+						_add("bird", z, l, BIRD_Y)
 				"D":
 					_add("drop", z, pl, 0.45)
 				"U":
@@ -367,7 +369,7 @@ func _update(dt: float) -> void:
 	if carry_t > 0:
 		carry_t -= dt
 		dist = move_toward(dist, _roll_to, CARRY_BACK / 1.2 * dt)
-		py = lerpf(py, 1.8, dt * 3)
+		py = lerpf(py, 2.2, dt * 3)
 		if carry_t <= 0:
 			vy = 0
 			jumps = 1
