@@ -56,6 +56,9 @@ var _saved_chars := {}
 var button_texts := {}
 var _btn_bundled := {}
 var _buttons_box: VBoxContainer
+var _buttons_scroll: ScrollContainer
+## The buttons area grows with its content up to this height (then it scrolls).
+const BUTTONS_MAX_H := 300.0
 ## Saved to the repo from here, not in this build yet: id -> model (null = deleted).
 var _saved := {}
 var group := "1"
@@ -717,7 +720,9 @@ func _build_left() -> void:
 	add_child(panel)
 	var box := VBoxContainer.new()
 	box.position = Vector2(12, top + 10)
-	box.custom_minimum_size = Vector2(LIST_W - 24, 0)
+	# Full height: the dialog list takes what the buttons (at the bottom) leave.
+	box.custom_minimum_size = Vector2(LIST_W - 24, 600 - top - 20)
+	box.size = box.custom_minimum_size
 	box.add_theme_constant_override("separation", 6)
 	add_child(box)
 	box.add_child(UiKit.label("LEVEL", 11, Color("#94a3b8"), true))
@@ -744,7 +749,8 @@ func _build_left() -> void:
 	row.add_child(db)
 	box.add_child(row)
 	var sc := ScrollContainer.new()
-	sc.custom_minimum_size = Vector2(LIST_W - 24, 170)
+	sc.custom_minimum_size = Vector2(LIST_W - 24, 80)
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	box.add_child(sc)
 	_list = VBoxContainer.new()
@@ -754,7 +760,8 @@ func _build_left() -> void:
 	# The dialog's buttons (they close it; several = a choice).
 	box.add_child(UiKit.label("BUTTONS OF THIS DIALOG", 11, Color("#94a3b8"), true))
 	var bsc := ScrollContainer.new()
-	bsc.custom_minimum_size = Vector2(LIST_W - 24, 600 - top - 20 - 100 - 170 - 26)
+	_buttons_scroll = bsc
+	bsc.custom_minimum_size = Vector2(LIST_W - 24, 60)
 	bsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	box.add_child(bsc)
 	_buttons_box = VBoxContainer.new()
@@ -891,6 +898,13 @@ func _refresh_buttons() -> void:
 	add.tooltip_text = "Another button: several buttons make a choice"
 	add.pressed.connect(add_button)
 	_buttons_box.add_child(add)
+	_fit_buttons.call_deferred()
+
+
+## The buttons area as tall as its content (at most BUTTONS_MAX_H).
+func _fit_buttons() -> void:
+	if _buttons_scroll and is_instance_valid(_buttons_box):
+		_buttons_scroll.custom_minimum_size.y = minf(_buttons_box.get_combined_minimum_size().y, BUTTONS_MAX_H)
 
 
 func _refresh_list() -> void:
