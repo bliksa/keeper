@@ -1,6 +1,25 @@
 {
  "_comment": "Character animation variants. anims.<animation>.<variant> = frame paths (the built-in 'original' variant is not listed). in_game.<animation> = variant the game uses. settings = scale / anim_fps / run_rate. Written by the animation lab's 'Save to repo' and by tools/add_anim_variant.py.",
- "anims": {},
- "in_game": {},
- "settings": {"scale": 1.6, "anim_fps": 12.0, "run_rate": 0.026}
+ "anims": {
+  "iron": {
+   "drawn nut": [
+    "res://assets/anim_test/iron/drawn-nut/matica1.png",
+    "res://assets/anim_test/iron/drawn-nut/matica2.png",
+    "res://assets/anim_test/iron/drawn-nut/matica3.png",
+    "res://assets/anim_test/iron/drawn-nut/matica4.png",
+    "res://assets/anim_test/iron/drawn-nut/matica5.png",
+    "res://assets/anim_test/iron/drawn-nut/matica6.png",
+    "res://assets/anim_test/iron/drawn-nut/matica7.png",
+    "res://assets/anim_test/iron/drawn-nut/matica8.png"
+   ]
+  }
+ },
+ "in_game": {
+  "iron": "drawn nut"
+ },
+ "settings": {
+  "scale": 1.6,
+  "anim_fps": 12.0,
+  "run_rate": 0.026
+ }
 }

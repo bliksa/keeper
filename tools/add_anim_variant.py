@@ -3,7 +3,10 @@
 
   tools/add_anim_variant.py run "v2 longer stride" frames/*.png [--in-game]
 
-Animations: idle walk run jump sidejump doublejump fall lookdown sit pain dead hang.
+Animations: idle walk run jump sidejump doublejump fall lookdown sit pain dead hang,
+and the sprites of scripts/ui/sprite_art.gd (SpriteArt.DEFS: iron, drop, seed,
+sun_piece, cramp, spike, boss, bird, vine, distraction, thorn, shadow, estra,
+portrait_estra, portrait_kyra, portrait_iskra).
 Frames play in natural file-name order (run1, run2, … run10). Copies files to
 godot/assets/anim_test/<anim>/<variant-slug>/ and updates
 godot/data/anim_variants.json; --in-game also makes the game use it.
@@ -15,6 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent / "godot"
 MANIFEST = ROOT / "data" / "anim_variants.json"
 ANIMS = "idle walk run jump sidejump doublejump fall lookdown sit pain dead hang".split()
+# Sprite ids: the keys of SpriteArt.DEFS.
+ANIMS += re.findall(r'^\t"([a-z_]+)": \{"cat"', (ROOT / "scripts" / "ui" / "sprite_art.gd").read_text(encoding="utf-8"), re.M)
 
 
 def natural(p: Path):

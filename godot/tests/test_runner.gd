@@ -1149,6 +1149,7 @@ func _run() -> void:
 	check(pngs.size() == 2 and m.anims.run.has("other") and m.anims.run["fast run"].size() == 3 and m.in_game.run == "fast run", "save builds PNGs + merged manifest")
 	check(m.anims.run["fast run"][1].begins_with("res://assets/anim_test/run/fast-run/02-") and m.anims.run["fast run"][0] == "res://assets/images/idle2.png", "saved manifest points at committed PNGs and picked repo assets")
 	# Collectibles, enemies and NPCs.
+	var sprites_before: Dictionary = lab._saved_state.sprites
 	check(SpriteArt.DEFS.keys().all(func(id): return not PlayerArt.ANIMS.has(id)), "sprite ids don't clash with Kyra's animations")
 	lab.select_category("enemies")
 	await frames(2)
@@ -1181,6 +1182,7 @@ func _run() -> void:
 	lab.select_category("collectibles")
 	await frames(2)
 	check(lab.anim == "iron" and lab._settings_grid.get_child_count() == 2, "the Items tab shows a sprite's fps and size")
+	check(lab.current_variant() == "drawn nut" and lab.current_paths().size() == 8 and SpriteArt.has_art("iron"), "the drawn nut (8 frames) is the iron in game")
 	var sremote := JSON.stringify({"anims": {}, "in_game": {}, "settings": {}, "sprites": {"bird": {"scale": 2.0, "fps": 4.0}}})
 	var sm: Dictionary = JSON.parse_string(lab.build_commit(sremote)["godot/data/anim_variants.json"].get_string_from_utf8())
 	check(sm.in_game.cramp == lab.chosen.cramp and sm.sprites.cramp.fps == 5.0 and sm.sprites.bird.scale == 2.0 and sm.anims.portrait_kyra[lab.chosen.portrait_kyra].size() == 2, "save commits sprite variants and settings")
@@ -1198,7 +1200,7 @@ func _run() -> void:
 	dev._show("shortcuts")
 	await frames(3)
 	check(PlayerArt.overrides.is_empty(), "leaving without 'Use in game' restores the original frames")
-	check(SpriteArt.overrides.is_empty() and not SpriteArt.settings.has("cramp"), "… and the original sprites")
+	check(SpriteArt.overrides.keys() == SpriteArt.DEFS.keys().filter(func(id): return sprites_before.has(id)) and not SpriteArt.overrides.has("cramp") and not SpriteArt.settings.has("cramp"), "… and the sprites the game had before")
 	DirAccess.remove_absolute(AnimLab.LOCAL_MANIFEST)
 	if FileAccess.file_exists(LevelEditor.AUTOSAVE):
 		DirAccess.remove_absolute(LevelEditor.AUTOSAVE)
