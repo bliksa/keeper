@@ -86,7 +86,6 @@ func _dialog_font(path: String) -> Font:
 	f.base_font = load(path)
 	f.spacing_top = -3
 	f.spacing_bottom = -3
-	# OpenDyslexic is wide-set; pull the letters a little closer together.
 	# The letters are tightened in the font itself (KeeperDyslexic); a pixel
 	# spacing would squeeze narrow glyphs like dots into each other.
 	f.spacing_glyph = 0
