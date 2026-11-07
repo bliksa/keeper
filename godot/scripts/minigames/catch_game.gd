@@ -110,25 +110,37 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, 1066, 600), Color(0, 0, 0, 0.6))
 	var a := 0.5 if dialog_active else 1.0
 	var fb: Font = Text.font_bold
-	var board := Rect2(117, 20, 832, 418)
+	var board := Rect2(117, 16, 832, 418)
 	Draw.panel(self, board, Color("#f0eee9", a), 16, Color("#f43f5e") if _flash > 0 else Color("#d1fae5"), 4 if _flash > 0 else 1)
 	# Counters.
 	draw_string(fb, Vector2(board.position.x + 24, board.position.y + 34), "%s  %d / %d" % [Text.plain(Text.t("MG9_NUTRIENTS")), caught, GOAL], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#064e3b", a))
-	var st := "%s  %s" % [Text.plain(Text.t("MG9_STRESS")), "⚡".repeat(strikes) + "·".repeat(3 - strikes)]
+	# Stress: three small bolts, filled per strike (the fonts have no ⚡ glyph).
+	var st := Text.plain(Text.t("MG9_STRESS"))
 	var sw := fb.get_string_size(st, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-	draw_string(fb, Vector2(board.end.x - 24 - sw, board.position.y + 34), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#9f1239", a))
+	var bx := board.end.x - 24 - 3 * 16
+	draw_string(fb, Vector2(bx - 10 - sw, board.position.y + 34), st, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#9f1239", a))
+	for k in 3:
+		var bc := Vector2(bx + 8 + k * 16, board.position.y + 28)
+		var bp := PackedVector2Array([bc + Vector2(2, -9), bc + Vector2(-3, 1), bc + Vector2(0.5, 1), bc + Vector2(-2, 9), bc + Vector2(3.5, -1.5), bc + Vector2(0, -1.5)])
+		if k < strikes:
+			draw_colored_polygon(bp, Color("#facc15", a))
+		draw_polyline(bp + PackedVector2Array([bp[0]]), Color("#9f1239", a * (1.0 if k < strikes else 0.35)), 1.5, true)
 	# Falling things.
 	for it in items:
 		var c := Vector2(it.x, it.y)
+		# Fade in at the board's top edge instead of showing outside the board.
+		var ia: float = clampf((it.y - board.position.y - 18) / 24.0, 0, 1) * a
+		if ia <= 0:
+			continue
 		if it.kind == "bolt":
 			var pts := PackedVector2Array([c + Vector2(4, -18), c + Vector2(-6, 2), c + Vector2(1, 2), c + Vector2(-4, 18), c + Vector2(7, -3), c + Vector2(0, -3)])
-			draw_colored_polygon(pts, Color("#facc15", a))
-			draw_polyline(pts + PackedVector2Array([pts[0]]), Color("#a16207", a), 1.5, true)
+			draw_colored_polygon(pts, Color("#facc15", ia))
+			draw_polyline(pts + PackedVector2Array([pts[0]]), Color("#a16207", ia), 1.5, true)
 		else:
 			var f: Dictionary = FOODS[it.type]
 			draw_set_transform(c, it.rot, Vector2.ONE)
-			draw_circle(Vector2.ZERO, 13, Color(f.col, a))
-			draw_circle(Vector2(-4, -4), 4, Color(1, 1, 1, 0.4 * a))
+			draw_circle(Vector2.ZERO, 13, Color(f.col, ia))
+			draw_circle(Vector2(-4, -4), 4, Color(1, 1, 1, 0.4 * ia))
 			draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	# The cushion (thinner with each strike).
 	var thick := 26.0 - strikes * 6

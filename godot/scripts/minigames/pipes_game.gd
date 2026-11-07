@@ -54,7 +54,7 @@ func _on_dialog_active_changed() -> void:
 
 func _send_hint() -> void:
 	if not dialog_active and not _done:
-		hint.emit({"title": "Spring path", "text": "DIA_028", "hide_button": true})
+		hint.emit({"title": "NAME_ESTRA", "text": "DIA_028", "hide_button": true})
 
 
 func _openings(c: Dictionary) -> Array:
@@ -115,7 +115,7 @@ func _rotate(i: int, d: int) -> void:
 
 
 func _board() -> Rect2:
-	return Rect2((1066 - BOARD) / 2, 236 - BOARD / 2, BOARD, BOARD)
+	return Rect2((1066 - BOARD) / 2, (450 - BOARD) / 2, BOARD, BOARD)
 
 
 func _cell_rect(i: int) -> Rect2:

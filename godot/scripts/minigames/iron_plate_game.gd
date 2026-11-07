@@ -5,6 +5,9 @@ extends Minigame
 ## helps, tea / coffee / cola block the absorption, sweets add nothing.
 
 const PICK := 4
+## Top of the card grid: the grid (2 × 150 px + gap) and the plate counter
+## under it sit centred in the free area above the hint panel (y 0–450).
+const TOP := 50.0
 const ITEMS := [
 	{"id": "lentils", "name": "FOOD_LENTILS", "good": true, "fact": "FOOD_LENTILS_FACT", "col": "#b45309"},
 	{"id": "seeds", "name": "FOOD_SEEDS", "good": true, "fact": "FOOD_SEEDS_FACT", "col": "#4d7c0f"},
@@ -97,7 +100,7 @@ func _card_rect(i: int) -> Rect2:
 	var h := 150.0
 	var gap := 12.0
 	var x0 := (1066 - (4 * w + 3 * gap)) / 2
-	return Rect2(x0 + (i % 4) * (w + gap), 70 + (i / 4) * (h + gap), w, h)
+	return Rect2(x0 + (i % 4) * (w + gap), TOP + (i / 4) * (h + gap), w, h)
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -131,10 +134,11 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, 1066, 600), Color(0, 0, 0, 0.6))
 	var a := 0.5 if dialog_active and not evaluated else 1.0
 	var fb: Font = Text.font_bold
-	# The plate: how many foods are on it.
-	var pr := Rect2(1066 / 2 - 110, 20, 220, 36)
-	Draw.panel(self, pr, Color("#f0eee9", a), 18, Color("#d1fae5"), 1)
-	Draw.text_center(self, fb, pr.get_center() + Vector2(0, 6), "%s  %d / %d" % [Text.plain(Text.t("MG5_PLATE")), chosen.size(), PICK], 15, Color("#064e3b", a))
+	# The plate counter: a small line under the cards.
+	var grid_end := _card_rect(ITEMS.size() - 1).end.y
+	var pr := Rect2(1066 / 2 - 90, grid_end + 14, 180, 28)
+	Draw.panel(self, pr, Color("#f0eee9", a), 14, Color("#d1fae5"), 1)
+	Draw.text_center(self, fb, pr.get_center() + Vector2(0, 5), "%s  %d / %d" % [Text.plain(Text.t("MG5_PLATE")), chosen.size(), PICK], 14, Color("#064e3b", a))
 	for i in ITEMS.size():
 		var it := _item(i)
 		var r := _card_rect(i)
@@ -157,12 +161,23 @@ func _draw() -> void:
 		var c := Vector2(r.position.x + 36, r.position.y + 40)
 		draw_circle(c, 22, Color(it.col, a))
 		draw_circle(c + Vector2(-7, -7), 7, Color(1, 1, 1, 0.35 * a))
-		draw_string(fb, Vector2(r.position.x + 68, r.position.y + 46), Text.plain(Text.t(it.name)), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 76, 14, Color("#064e3b", a))
+		draw_string(fb, Vector2(r.position.x + 68, r.position.y + 46), Text.plain(Text.t(it.name)), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 80, 14, Color("#064e3b", a))
 		if on and not evaluated:
-			Draw.text_center(self, fb, Vector2(r.end.x - 18, r.position.y + 22), "✓", 16, Color("#059669", a))
+			_mark(c + Vector2(18, 18), true, Color("#059669", a))
 		if evaluated and _reveal > 0.3:
-			var mark := "✓" if it.good else "✗"
-			Draw.text_center(self, fb, Vector2(r.end.x - 18, r.position.y + 22), mark, 18, Color("#059669") if it.good else Color("#e11d48"))
+			_mark(c + Vector2(18, 18), it.good, Color("#059669") if it.good else Color("#e11d48"))
 			draw_multiline_string(Text.font, Vector2(r.position.x + 12, r.position.y + 84), Text.plain(Text.t(it.fact)), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 24, 11, 4, Color("#065f46", _reveal))
 		elif not evaluated:
 			draw_multiline_string(Text.font, Vector2(r.position.x + 12, r.position.y + 84), Text.plain(Text.t("MG5_PICK_HINT")), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 24, 11, 3, Color("#059669", 0.7 * a))
+
+
+## A tick or a cross drawn with lines (the UI font has no glyph for them).
+func _mark(c: Vector2, tick: bool, col: Color) -> void:
+	# A small badge on the food blob, so long names keep their whole line.
+	draw_circle(c, 11, Color("#ffffff", col.a))
+	draw_arc(c, 11, 0, TAU, 32, col, 2.0, true)
+	if tick:
+		draw_polyline(PackedVector2Array([c + Vector2(-5, 0), c + Vector2(-1, 4), c + Vector2(5, -5)]), col, 3.0, true)
+	else:
+		draw_line(c + Vector2(-4, -4), c + Vector2(4, 4), col, 3.0, true)
+		draw_line(c + Vector2(4, -4), c + Vector2(-4, 4), col, 3.0, true)

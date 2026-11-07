@@ -4,7 +4,8 @@ extends Minigame
 ## 2 s (hold), hold ▼ 6 s (exhale). Port of the web `f2` component.
 
 const CYCLES := 6
-const CENTER := Vector2(842, 360)
+## In the space above the hint panel (the panel is at the bottom, y 450–600).
+const CENTER := Vector2(842, 225)
 const DOT_R := 140.0
 const TEAL := Color("#5f9b99")
 const RUST := Color("#b15827")

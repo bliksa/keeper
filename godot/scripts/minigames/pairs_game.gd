@@ -12,6 +12,10 @@ const PAIRS := [
 	{"sig": "SIG_IRREGULAR", "exp": "EXP_IRREGULAR", "hint": "HINT_IRREGULAR"},
 ]
 
+## Top of the card columns; the column labels sit just above, the hint line
+## below; everything stays above the hint panel (y 450).
+const CARDS_Y := 48.0
+
 var right_order: Array = []
 var sel_left := -1
 var sel_right := -1
@@ -81,9 +85,9 @@ func pick(c: int, i: int) -> void:
 
 func _card_rect(c: int, i: int) -> Rect2:
 	var w := 400.0
-	var h := 52.0
+	var h := 50.0
 	var x := 117.0 if c == 0 else 549.0
-	return Rect2(x, 68 + i * (h + 8), w, h)
+	return Rect2(x, CARDS_Y + i * (h + 8), w, h)
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -118,8 +122,8 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, 1066, 600), Color(0, 0, 0, 0.6))
 	var a := 0.5 if dialog_active else 1.0
 	var fb: Font = Text.font_bold
-	Draw.text_center(self, fb, Vector2(317, 50), Text.plain(Text.t("MG10_SIGNALS")), 14, Color("#a7f3d0", a))
-	Draw.text_center(self, fb, Vector2(749, 50), Text.plain(Text.t("MG10_MEANINGS")), 14, Color("#a7f3d0", a))
+	Draw.text_center(self, fb, Vector2(317, CARDS_Y - 12), Text.plain(Text.t("MG10_SIGNALS")), 14, Color("#a7f3d0", a))
+	Draw.text_center(self, fb, Vector2(749, CARDS_Y - 12), Text.plain(Text.t("MG10_MEANINGS")), 14, Color("#a7f3d0", a))
 	for c in 2:
 		for i in PAIRS.size():
 			var r := _card_rect(c, i)
@@ -142,13 +146,23 @@ func _draw() -> void:
 				bw = 3
 			Draw.panel(self, r, Color("#ecfdf5", a) if done else Color("#f0eee9", a), 10, border, bw)
 			var key: String = PAIRS[pair_i].sig if c == 0 else PAIRS[pair_i].exp
-			draw_multiline_string(fb if c == 0 else Text.font, Vector2(r.position.x + 14, r.position.y + 20), Text.plain(Text.t(key)), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 28, 12 if c == 0 else 11, 3, Color("#064e3b", (0.55 if done else 1.0) * a))
+			# Text centred vertically in the card, clear of the ✓ on the right.
+			var f: Font = fb if c == 0 else Text.font
+			var fs := 12 if c == 0 else 11
+			var tw := r.size.x - 50
+			var txt := Text.plain(Text.t(key))
+			var th := f.get_multiline_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, tw, fs, 3).y
+			var ty := r.position.y + (r.size.y - th) / 2 + f.get_ascent(fs)
+			draw_multiline_string(f, Vector2(r.position.x + 14, ty), txt, HORIZONTAL_ALIGNMENT_LEFT, tw, fs, 3, Color("#064e3b", (0.55 if done else 1.0) * a))
 			if done:
-				Draw.text_center(self, fb, Vector2(r.end.x - 14, r.position.y + 18), "✓", 14, Color("#059669", a))
-	var foot := Rect2(117, 432, 832, 30)
+				# A drawn tick (the UI fonts have no ✓ glyph).
+				var k := Vector2(r.end.x - 24, r.get_center().y)
+				draw_polyline(PackedVector2Array([k + Vector2(-6, 0), k + Vector2(-1, 5), k + Vector2(8, -6)]), Color("#059669", a), 3, true)
+	var last := _card_rect(0, PAIRS.size() - 1)
+	var foot := Rect2(117, last.end.y + 12, 832, 32)
 	if all_matched():
 		Draw.panel(self, foot, Color("#ecfdf5", a), 10, Color("#10b981"), 2)
-		Draw.text_center(self, fb, foot.get_center() + Vector2(0, 5), Text.plain(Text.t("MG10_DONE")), 14, Color("#064e3b", a))
+		Draw.text_center(self, fb, foot.get_center(), Text.plain(Text.t("MG10_DONE")), 14, Color("#064e3b", a))
 	elif hint_text != "":
 		Draw.panel(self, foot, Color("#fffbeb", a), 10, Color("#f59e0b"), 2)
-		Draw.text_center(self, Text.font, foot.get_center() + Vector2(0, 5), Text.plain(Text.t(hint_text)), 12, Color("#92400e", a))
+		Draw.text_center(self, Text.font, foot.get_center(), Text.plain(Text.t(hint_text)), 12, Color("#92400e", a))

@@ -9,7 +9,7 @@ const SPEED := 420.0
 const WINDOW := 0.15
 const NEED := 10
 const TARGET_X := 300.0
-const LINE_Y := 250.0
+const LINE_Y := 190.0
 
 var hits := 0
 var misses := 0
@@ -102,7 +102,7 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, 1066, 600), Color(0, 0, 0, 0.6))
 	var a := 0.5 if dialog_active else 1.0
 	var fb: Font = Text.font_bold
-	var board := Rect2(117, 60, 832, 370)
+	var board := Rect2(117, 40, 832, 370)
 	Draw.panel(self, board, Color("#f0eee9", a), 16, Color("#d1fae5"), 1)
 	# Track and the ring.
 	draw_line(Vector2(board.position.x + 30, LINE_Y), Vector2(board.end.x - 30, LINE_Y), Color("#a7f3d0", a), 4.0)
@@ -125,12 +125,11 @@ func _draw() -> void:
 		draw_circle(Vector2(x, LINE_Y), r, col)
 		draw_circle(Vector2(x - r * 0.3, LINE_Y - r * 0.3), r * 0.3, Color(1, 1, 1, 0.5 * a))
 	# Energy bar.
-	var bar := Rect2(board.position.x + 40, board.end.y - 70, board.size.x - 80, 22)
+	var bar := Rect2(board.position.x + 40, board.end.y - 64, board.size.x - 80, 22)
 	Draw.panel(self, bar, Color("#d1fae5", a), 11)
 	Draw.panel(self, Rect2(bar.position, Vector2(bar.size.x * minf(1, hits / float(NEED)), bar.size.y)), Color("#10b981", a), 11)
 	draw_string(fb, Vector2(bar.position.x, bar.position.y - 12), "%s  %d / %d" % [Text.plain(Text.t("MG6_ENERGY")), hits, NEED], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color("#064e3b", a))
 	var mtxt := "%s %d" % [Text.plain(Text.t("MG6_MISSES")), misses]
 	var mw := Text.font.get_string_size(mtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
 	draw_string(Text.font, Vector2(bar.end.x - mw, bar.position.y - 12), mtxt, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#9f1239", a))
-	Draw.text_center(self, fb, Vector2(board.get_center().x, board.position.y + 40), Text.plain(Text.t("MG6_TITLE")), 20, Color("#064e3b", a))
 	Draw.text_center(self, Text.font, Vector2(board.get_center().x, LINE_Y + 80), Text.plain(Text.t("MG6_KEYS")), 13, Color("#059669", a))

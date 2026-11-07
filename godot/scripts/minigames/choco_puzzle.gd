@@ -47,7 +47,8 @@ func _is_solved() -> bool:
 func _board_rect() -> Rect2:
 	var w := COLS * TILE + (COLS - 1) * GAP + PAD * 2
 	var h := ROWS * TILE + (ROWS - 1) * GAP + PAD * 2
-	return Rect2((1066 - w) / 2, 72, w, h)
+	# Centred in the space above the dialog panel (y 0–450).
+	return Rect2((1066 - w) / 2, (450 - h) / 2, w, h)
 
 
 func _tile_rect(i: int) -> Rect2:
@@ -112,7 +113,7 @@ func _draw() -> void:
 	if dialog_active:
 		var w := 448.0
 		var h := w * _choco.get_height() / _choco.get_width()
-		draw_texture_rect(_choco, Rect2((1066 - w) / 2, 64, w, h), false, Color(1, 1, 1, 0.9))
+		draw_texture_rect(_choco, Rect2((1066 - w) / 2, (450 - h) / 2, w, h), false, Color(1, 1, 1, 0.9))
 		return
 	var b := _board_rect()
 	var border := Color("#1a0a04")

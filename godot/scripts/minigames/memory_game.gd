@@ -116,14 +116,36 @@ func _next() -> void:
 	_start_round()
 
 
-func _grid_rect(i: int, n: int) -> Rect2:
+## Below the board: the status line (+26) and the timer bar (+40, 8 px high);
+## the whole block is centred in the free area y 16–434 (the hint panel covers
+## y 450–600).
+const BELOW_GRID := 48.0
+
+
+func _grid_layout(n: int) -> Dictionary:
 	var cols := 4 if n <= 12 else 5
-	var w := (832.0 - (cols - 1) * 10) / cols
 	var rows := int(ceil(n / float(cols)))
-	var h := minf(76.0, (360.0 - (rows - 1) * 10) / rows)
-	var x0 := 117.0
-	var y0 := 60.0 + (360.0 - rows * h - (rows - 1) * 10) / 2
-	return Rect2(x0 + (i % cols) * (w + 10), y0 + (i / cols) * (h + 10), w, h)
+	var h := minf(76.0, (340.0 - (rows - 1) * 10) / rows)
+	var gh := rows * h + (rows - 1) * 10
+	return {"cols": cols, "h": h, "top": 16.0 + (418.0 - gh - BELOW_GRID) / 2, "bottom": 16.0 + (418.0 - gh - BELOW_GRID) / 2 + gh}
+
+
+## The board: x 60–1006.
+func _grid_rect(i: int, n: int) -> Rect2:
+	var g := _grid_layout(n)
+	var cols: int = g.cols
+	var h: float = g.h
+	var w := (946.0 - (cols - 1) * 10) / cols
+	var y0: float = g.top
+	return Rect2(60.0 + (i % cols) * (w + 10), y0 + (i / cols) * (h + 10), w, h)
+
+
+## A label left-aligned in a tile: steps the size down until it fits the width.
+func _label(font: Font, x: float, cy: float, width: float, s: String, col: Color) -> void:
+	var size := 13
+	while size > 9 and font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width:
+		size -= 1
+	draw_string(font, Vector2(x, cy + size * 0.38), s, HORIZONTAL_ALIGNMENT_LEFT, width, size, col)
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -172,18 +194,19 @@ func _draw() -> void:
 	var a := 0.5 if dialog_active else 1.0
 	var fb: Font = Text.font_bold
 	var sc := _scene()
-	var head := "%s  ·  %s %d / 3" % [Text.plain(Text.t(sc.name)), Text.plain(Text.t("MG8_ROUND")), round_i + 1]
-	var hr := Rect2(1066 / 2 - 220, 14, 440, 34)
-	Draw.panel(self, hr, Color("#f0eee9", a), 17, Color("#d1fae5"), 1)
-	Draw.text_center(self, fb, hr.get_center() + Vector2(0, 6), head, 14, Color("#064e3b", a))
+	# Compact status right under the board (no heading at the top).
+	var status := "%s  ·  %s %d / %d" % [Text.plain(Text.t(sc.name)), Text.plain(Text.t("MG8_ROUND")), round_i + 1, ROUNDS.size()]
+	var gb: float = _grid_layout(shown.size() if phase == "show" else options.size()).bottom
+	var status_y := 290.0 if phase == "result" else gb + 26
+	Draw.text_center(self, Text.font, Vector2(533, status_y), status, 12, Color("#a7f3d0", a))
 	match phase:
 		"show":
 			for i in shown.size():
 				var r := _grid_rect(i, shown.size())
 				Draw.panel(self, r, Color("#f0eee9", a), 10, Color(sc.col), 2)
 				draw_circle(Vector2(r.position.x + 22, r.get_center().y), 12, Color(sc.col, a))
-				draw_string(fb, Vector2(r.position.x + 42, r.get_center().y + 5), Text.plain(Text.t(shown[i])), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 50, 13, Color("#064e3b", a))
-			var bar := Rect2(117, 436, 832, 8)
+				_label(fb, r.position.x + 42, r.get_center().y, r.size.x - 52, Text.plain(Text.t(shown[i])), Color("#064e3b", a))
+			var bar := Rect2(60, gb + 40, 946, 8)
 			Draw.panel(self, bar, Color("#d1fae5", a), 4)
 			Draw.panel(self, Rect2(bar.position, Vector2(bar.size.x * clampf(show_left / (5.0 + shown.size() * 0.5), 0, 1), 8)), Color("#10b981", a), 4)
 		"pick":
@@ -194,9 +217,9 @@ func _draw() -> void:
 				Draw.panel(self, r, Color("#ecfdf5", a) if on else Color("#f0eee9", a), 10, Color("#065f46") if sel else (Color("#10b981") if on else Color("#d1fae5")), 3 if (sel or on) else 1)
 				if on:
 					Draw.text_center(self, fb, Vector2(r.position.x + 20, r.get_center().y + 6), "✓", 16, Color("#059669", a))
-				draw_string(fb, Vector2(r.position.x + 36, r.get_center().y + 5), Text.plain(Text.t(options[i])), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 44, 13, Color("#064e3b", a))
+				_label(fb, r.position.x + 36, r.get_center().y, r.size.x - 46, Text.plain(Text.t(options[i])), Color("#064e3b", a))
 		"result":
-			var r := Rect2(1066 / 2 - 200, 170, 400, 120)
+			var r := Rect2(1066 / 2 - 200, 144, 400, 120)
 			Draw.panel(self, r, Color("#f0eee9", a), 16, Color("#10b981"), 3)
 			Draw.text_center(self, fb, r.get_center() + Vector2(0, -12), Text.plain(Text.t("MG8_RESULT")), 16, Color("#065f46", a))
 			Draw.text_center(self, fb, r.get_center() + Vector2(0, 26), "%d / %d" % [found, shown.size()], 30, Color("#064e3b", a))

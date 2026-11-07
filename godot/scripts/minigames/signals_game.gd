@@ -82,11 +82,11 @@ func _phase_rect(i: int) -> Rect2:
 	var w := 196.0
 	var gap := 12.0
 	var x0 := (1066 - (4 * w + 3 * gap)) / 2
-	return Rect2(x0 + i * (w + gap), 250, w, 190)
+	return Rect2(x0 + i * (w + gap), 196, w, 232)
 
 
 func _card_rect() -> Rect2:
-	return Rect2(1066 / 2 - 230, 60, 460, 150)
+	return Rect2(1066 / 2 - 240, 24, 480, 136)
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -124,10 +124,10 @@ func _draw() -> void:
 		cr.position.x += sin(_shake * 60) * 6 * _shake
 	if not all_placed():
 		Draw.panel(self, cr, Color("#f0eee9", a), 14, Color("#f43f5e") if _shake > 0 else Color("#d1fae5"), 3 if _shake > 0 else 1)
-		draw_string(fb, Vector2(cr.position.x + 20, cr.position.y + 30), "%s %d / %d" % [Text.plain(Text.t("MG7_SIGNAL")), current + 1, order.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#059669", a))
-		draw_multiline_string(fb, Vector2(cr.position.x + 20, cr.position.y + 70), Text.plain(Text.t(card().text)), HORIZONTAL_ALIGNMENT_LEFT, cr.size.x - 40, 20, 3, Color("#064e3b", a))
+		draw_string(fb, Vector2(cr.position.x + 20, cr.position.y + 28), "%s %d / %d" % [Text.plain(Text.t("MG7_SIGNAL")), current + 1, order.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#059669", a))
+		draw_multiline_string(fb, Vector2(cr.position.x + 20, cr.position.y + 62), Text.plain(Text.t(card().text)), HORIZONTAL_ALIGNMENT_LEFT, cr.size.x - 40, 20, 2, Color("#064e3b", a))
 		if _last_wrong >= 0:
-			draw_string(Text.font, Vector2(cr.position.x + 20, cr.end.y - 16), Text.plain(Text.t("MG7_NOT_THAT")), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#be123c", a))
+			draw_string(Text.font, Vector2(cr.position.x + 20, cr.end.y - 14), Text.plain(Text.t("MG7_NOT_THAT")), HORIZONTAL_ALIGNMENT_LEFT, cr.size.x - 40, 12, Color("#be123c", a))
 	else:
 		Draw.panel(self, cr, Color("#ecfdf5", a), 14, Color("#10b981"), 3)
 		Draw.text_center(self, fb, cr.get_center(), Text.plain(Text.t("MG7_DONE")), 20, Color("#064e3b", a))
@@ -151,7 +151,7 @@ func _draw() -> void:
 		var list: Array = placed[ph.id]
 		for j in list.size():
 			var cd: Dictionary = CARDS[list[j]]
-			var y := r.position.y + 62 + j * 58
-			Draw.panel(self, Rect2(r.position.x + 8, y, r.size.x - 16, 50), Color("#ecfdf5", a), 8, Color("#a7f3d0"), 1)
-			draw_multiline_string(Text.font, Vector2(r.position.x + 16, y + 18), Text.plain(Text.t(cd.text)), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 32, 10, 3, Color("#065f46", a))
-	Draw.text_center(self, Text.font, Vector2(533, 228), Text.plain(Text.t("MG7_KEYS")), 12, Color("#a7f3d0", a))
+			var y := r.position.y + 56 + j * 60
+			Draw.panel(self, Rect2(r.position.x + 8, y, r.size.x - 16, 52), Color("#ecfdf5", a), 8, Color("#a7f3d0"), 1)
+			draw_multiline_string(Text.font, Vector2(r.position.x + 16, y + 19), Text.plain(Text.t(cd.text)), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 32, 10, 3, Color("#065f46", a))
+	Draw.text_center(self, Text.font, Vector2(533, 178), Text.plain(Text.t("MG7_KEYS")), 12, Color("#a7f3d0", a))

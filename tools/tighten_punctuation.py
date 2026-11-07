@@ -20,8 +20,9 @@ PUNCT = ".,!?:;…"
 SIDE = 80
 SHIFT = {"Regular": 60, "Bold": 55}
 # Per glyph (style -> char -> units; negative = more room before it): Bold's "!"
-# already hugs the letter before it.
-OVERRIDE = {"Bold": {"!": -45}}
+# has a wide wedge-shaped dot that reaches left under the letter before it, so
+# it gets clearly more room than a letter gap (≈ 220 units of air before its ink).
+OVERRIDE = {"Bold": {"!": -135}, "Regular": {"!": 0, "?": 30}}
 
 
 def move(top, cff, gs, hmtx, g, dx, shrink):

@@ -102,7 +102,9 @@ func _rect(col: Color) -> ColorRect:
 
 func _set_state(s: String) -> void:
 	state = s
-	_node_box.at_top = s in ["intro", "mg1"]
+	# The forest intro's dialogs sit at the top (Kyra walks below); minigames
+	# keep theirs at the bottom like everywhere else.
+	_node_box.at_top = s == "intro"
 	_panel_box.at_top = _node_box.at_top
 	match s:
 		"intro", "mg1": Audio.play_bgm("forest.mp3", 0.4)
