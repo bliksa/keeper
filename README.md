@@ -21,7 +21,8 @@ Godot editor na to netreba. Všetko je v čitateľných súboroch:
 
 | Čo chceš meniť | Kde |
 |---|---|
-| Levely: jaskyňa (1), lúka (2), vrchol (3) | `godot/data/levels/cave.txt`, `meadow.txt`, `garden.txt` (legenda v `godot/scripts/level_data.gd`) |
+| Levely: jaskyňa (1), vrchol (3), stará lúka | `godot/data/levels/cave.txt`, `garden.txt`, `meadow.txt` (legenda v `godot/scripts/level_data.gd`) |
+| Level 2: beh lesom | `godot/scripts/screens/forest_runner.gd` (`build_course()` = rozloženie prekážok) |
 | Texty a preklady (SK/EN/PT) | `godot/data/i18n/*.json` |
 | Dialógy (poradie, kto hovorí, tlačidlá) | `godot/data/dialogs.json` |
 | Fyzika, správanie kŕčov, boss | `godot/scripts/screens/platformer.gd` |

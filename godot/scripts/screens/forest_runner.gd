@@ -72,6 +72,11 @@ var objects: Array = []
 var trees: Array = []
 var _font: Font
 var _prev_slow := false
+## Lane / jump presses made while she is bumped or carried, applied after.
+var _pending_lane := 0
+var _pending_jump := false
+## Obstacles closer than this to where a roll-back lands stay disarmed.
+const GRACE := 5.0
 
 
 func _ready() -> void:
@@ -154,14 +159,31 @@ func _add_drops(z: float, l: int, n: int) -> void:
 
 # --- input & update ---------------------------------------------------------------------
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not active or dialog_open or done or carry_t > 0:
+## Lanes and jumps are read as "just pressed" each frame: a stick tilt (many
+## motion events) then changes lane once, like a key press.
+func _read_input() -> void:
+	var d := 0
+	if Input.is_action_just_pressed("move_left"):
+		d = -1
+	elif Input.is_action_just_pressed("move_right"):
+		d = 1
+	var j := Input.is_action_just_pressed("jump")
+	if carry_t > 0 or bump_t > 0:
+		# Remember what was pressed while she couldn't act.
+		if d != 0:
+			_pending_lane = d
+		if j:
+			_pending_jump = true
 		return
-	if event.is_action_pressed("move_left") and not event.is_echo():
-		lane = maxi(-1, lane - 1)
-	elif event.is_action_pressed("move_right") and not event.is_echo():
-		lane = mini(1, lane + 1)
-	elif event.is_action_pressed("jump") and not event.is_echo():
+	if _pending_lane != 0 and d == 0:
+		d = _pending_lane
+	if _pending_jump:
+		j = true
+	_pending_lane = 0
+	_pending_jump = false
+	if d != 0:
+		lane = clampi(lane + d, -1, 1)
+	if j:
 		jump()
 
 
@@ -183,14 +205,17 @@ func _process(delta: float) -> void:
 
 
 func _update(dt: float) -> void:
-	# Slowed time: the world runs slower, Kyra keeps her own pace (focus).
-	var want_slow := Input.is_action_pressed("slow_time") and water > (0.0 if _prev_slow else SLOW_MIN)
+	_read_input()
+	# Slowed time: the world (and her fall) runs slower while her steering stays
+	# quick, so a tight spot can be read and taken. Not while bumped / carried.
+	var rolling := carry_t > 0 or bump_t > 0
+	var want_slow := not rolling and Input.is_action_pressed("slow_time") and water > (0.0 if _prev_slow else SLOW_MIN)
 	slow = want_slow
 	_prev_slow = slow
 	var wdt := dt * (SLOW_SCALE if slow else 1.0)
 	if slow:
 		water = maxf(0, water - SLOW_DRAIN * dt)
-	# Moving sideways and jumping use real time.
+	# Moving sideways uses real time (the focus advantage).
 	px = move_toward(px, lane * LANE, LANE_SPEED * dt)
 	if carry_t > 0:
 		carry_t -= dt
@@ -200,8 +225,10 @@ func _update(dt: float) -> void:
 			vy = 0
 			jumps = 1
 		return
-	vy -= GRAVITY * dt
-	py += vy * dt
+	# Jumps follow the world's clock, so a jump clears the same obstacles with or
+	# without slowed time.
+	vy -= GRAVITY * wdt
+	py += vy * wdt
 	if py <= 0:
 		py = 0
 		vy = 0
@@ -275,10 +302,20 @@ func carried() -> void:
 	_reset_behind()
 
 
-## Obstacles she now has to pass again are armed again.
+## Obstacles she now has to pass again are armed again — except the ones right
+## where she lands (no hit straight after a roll-back). Birds go back to where
+## they started and fly at her again.
 func _reset_behind() -> void:
 	for o in objects:
-		if o.kind in ["root", "branch", "bird"] and o.z + o.dz > _roll_to - 1 and o.z <= dist + 1:
+		if not o.kind in ["root", "branch", "bird"]:
+			continue
+		var here: float = o.z + o.dz
+		var passed: bool = here <= dist + 1 or o.hit
+		if not passed or o.z < _roll_to - 1:
+			continue
+		if o.z < _roll_to + GRACE:
+			o.hit = true
+		else:
 			o.hit = false
 			o.dz = 0.0
 

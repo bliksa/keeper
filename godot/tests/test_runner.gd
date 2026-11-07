@@ -292,6 +292,21 @@ func _run() -> void:
 	_key(KEY_LEFT, false)
 	await seconds(0.3)
 	check(rn.lane == 0, "← back to the middle")
+	# A stick tilt sends many motion events but changes lane once.
+	for v in [0.3, 0.5, 0.7, 0.9, 1.0, 1.0]:
+		var jm := InputEventJoypadMotion.new()
+		jm.axis = JOY_AXIS_LEFT_X
+		jm.axis_value = v
+		Input.parse_input_event(jm)
+		await frames(1)
+	var jm0 := InputEventJoypadMotion.new()
+	jm0.axis = JOY_AXIS_LEFT_X
+	jm0.axis_value = 0.0
+	Input.parse_input_event(jm0)
+	await frames(2)
+	check(rn.lane == 1, "a stick tilt moves one path, not two")
+	rn.lane = 0
+	rn.px = 0
 	rn.build_course()
 	var roots: Array = rn.objects.filter(func(o): return o.kind == "root")
 	var root0: Dictionary = roots[0]
@@ -319,6 +334,26 @@ func _run() -> void:
 	check(rn.carry_t > 0, "a bird catches her in the air")
 	await seconds(1.4)
 	check(rn.dist < before - 10 and rn.carry_t <= 0, "and carries her back along the path")
+	check(not bird.hit and bird.z + bird.dz > rn.dist + 3, "the bird is ahead of her again and comes again")
+	# With slowed time a single jump still clears a branch.
+	var brs: Array = rn.objects.filter(func(o): return o.kind == "branch")
+	var rbr: Dictionary = brs[0]
+	rn.objects = rn.objects.filter(func(o): return o == rbr)
+	rn.lane = rbr.lane
+	rn.px = rbr.lane * ForestRunner.LANE
+	rn.py = 0
+	rn.vy = 0
+	rn.bump_t = 0
+	rn.water = 100
+	rn.dist = rbr.z - 3.1
+	Input.action_press("slow_time")
+	await frames(2)
+	rn.dist = rbr.z - 3.1
+	rn.jump()
+	var passed_br := await until(func(): return rn.dist > rbr.z + 1.0, 4)
+	Input.action_release("slow_time")
+	check(passed_br and rn.bump_t <= 0 and not rbr.hit, "a single jump clears a branch with slowed time too")
+	rn.build_course()
 	var drops: Array = rn.objects.filter(func(o): return o.kind == "drop" and o.y < 1.0 and not o.taken)
 	var rdrop: Dictionary = drops[0]
 	rn.lane = 0 if rdrop.lane == -9 else rdrop.lane
@@ -712,6 +747,13 @@ func _run() -> void:
 	check(summit, "the summit (level 3) starts after the meadow")
 	main._quit_to_title()
 	await frames(5)
+
+	step("an aborted fade can't cover the next run")
+	main._fade_to(1.0, 3.0, Color.WHITE)
+	await frames(5)
+	main._abort_run()
+	await seconds(0.5)
+	check(main._fade.modulate.a == 0.0, "aborting a run stops a fade in progress")
 
 	step("game over")
 	main._dev_action("checkpoint", 1)

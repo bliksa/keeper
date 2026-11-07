@@ -12,7 +12,8 @@ godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
   scenes/main.tscn         the only real scene — everything else is built in code
   scripts/main.gd          game flow / state machine (boot → title → forest → cave → boss → forest run → summit)
   scripts/autoload/        Game (state + input actions), Text (strings, dialogs, fonts), Audio
-  scripts/screens/         boot, title, forest_intro, platformer (cave + boss; garden + LH wave)
+  scripts/screens/         boot, title, forest_intro, platformer (cave + boss; meadow; summit + LH wave),
+                           forest_runner (level 2: the forest run)
   scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4),
                            iron_plate (mg5), rhythm (mg6), signals (mg7) — level 2
   scripts/ui/              dialog_box, platformer_hud, player_art (sprite anim), draw helpers
@@ -166,8 +167,11 @@ towards the end): `root` (all lanes, `ROOT_H`), `branch` (one lane, `BRANCH_H`),
 `bird` (flies at her when near, `BIRD_REACH`), `drop` (+`DROP_WATER`), `seed`.
 Hitting a root / branch = `bump()` (rolls `dist` back `BUMP_BACK`), a bird in the
 air = `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass
-again. Slow time: action `slow_time` (Shift / E / LB / Y) while `water` lasts
-(`SLOW_SCALE`, `SLOW_DRAIN`). Kyra from behind is drawn in `_draw_player()`
+again, except within `GRACE` of where she lands; birds go back to their start.
+Lanes / jumps are read with `is_action_just_pressed` in `_read_input()` (a stick
+tilt = one lane) and buffered during a bump / carry. Slow time: action
+`slow_time` (Shift / E / LB / Y) while `water` lasts (`SLOW_SCALE`, `SLOW_DRAIN`);
+the world and her jump arc use the slowed clock, steering stays real-time. Kyra from behind is drawn in `_draw_player()`
 (placeholder art). Flow: `boss_win` → `Platformer.open_corridor()` (corridor drawn
 in the arena, `walk_to_x`) → `main._start_runner()` (state "runner", dialog
 `runner_start`) → `finished` → `runner_end` → `_start_summit`. Dev menu: "Forest

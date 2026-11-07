@@ -28,6 +28,9 @@ var _pause: PauseMenu
 ## Bumped when a run is aborted (pause menu) so pending fades/timers of the
 ## old run don't act on the new one.
 var _run_id := 0
+## Running screen fades (killed when a run is aborted, so a fade frozen by the
+## pause menu can't cover the new run).
+var _fade_tws: Array = []
 
 
 func _ready() -> void:
@@ -97,6 +100,8 @@ func _set_state(s: String) -> void:
 func _fade_to(to: float, time := 0.5, col := Color.BLACK) -> void:
 	_fade.color = col
 	var tw := create_tween()
+	_fade_tws = _fade_tws.filter(func(t): return t.is_valid())
+	_fade_tws.append(tw)
 	tw.tween_property(_fade, "modulate:a", to, time)
 	await tw.finished
 
@@ -239,6 +244,10 @@ func _abort_run() -> void:
 	_node_box.close()
 	_panel_box.close()
 	_dim.modulate.a = 0
+	for t in _fade_tws:
+		if t.is_valid():
+			t.kill()
+	_fade_tws.clear()
 	_fade.modulate.a = 0
 
 
@@ -637,6 +646,9 @@ func _on_boss_lost() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	# Debug keys in the cave (same as the web build).
 	if state != "platformer" or not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	if platformer and platformer.corridor_t > 0:
+		# Walking into the corridor: the run is about to start.
 		return
 	if event.shift_pressed and event.physical_keycode in [KEY_2, KEY_3, KEY_4, KEY_5]:
 		# Shift+2…5: jump to the minigame / boss (level 2: LH wave) trigger.
