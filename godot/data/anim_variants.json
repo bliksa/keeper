@@ -18,8 +18,11 @@
   "iron": "drawn nut"
  },
  "settings": {
-  "scale": 1.6,
   "anim_fps": 12.0,
-  "run_rate": 0.026
+  "run_rate": 0.026,
+  "scale": 1.6
+ },
+ "sprites": {
+
  }
 }
