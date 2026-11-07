@@ -159,27 +159,39 @@ func _build_shortcuts() -> void:
 	card.position = Vector2(33, 20)
 	card.size = Vector2(1000, 508)
 	_content.add_child(card)
-	var title := UiKit.label("PLAY FROM", 13, Color("#94a3b8"), true)
+	var title := UiKit.label("PLAY FROM  ·  the cycle", 13, Color("#94a3b8"), true)
 	title.position = Vector2(24, 18)
 	card.add_child(title)
+	# A rainbow across the levels that comes back to its start: the cycle goes round.
+	var strip := Control.new()
+	strip.position = Vector2(24, 40)
+	strip.size = Vector2(952, 4)
+	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	strip.draw.connect(func():
+		for i in 120:
+			var hue := fposmod(275.0 + i / 120.0 * 300.0, 360.0) / 360.0
+			strip.draw_rect(Rect2(i * strip.size.x / 120.0, 0, strip.size.x / 120.0 + 1, 4), Color.from_hsv(hue, 0.7, 0.8)))
+	card.add_child(strip)
 	# The game in its order: one column per level, each from its start onwards.
-	const COL_W := 226.0
+	const COL_W := 177.0
 	var cols := [
-		["0 · Prologue", "the forest + breathing", Color("#6d28d9"), [
+		["0 · Prologue", "the forest + breathing", Color.from_hsv(275.0 / 360, 0.7, 0.75), [
 			["New game", "From the very start (the forest intro)", "new_game", 0],
 			[Text.t("BTN_SKIP_INTRO"), "Straight into the cave (breathing learnt)", "skip_intro", 0]]],
-		["1 · Cave", "menstruation · iron, cramps", Color("#b91c1c"), [
-			["Start", "", "checkpoint", 1], ["After chocolate puzzle", "", "checkpoint", 2],
+		["1 · Cave", "menstruation · iron, cramps", Color.from_hsv(0.0, 0.75, 0.75), [
+			["Start", "", "checkpoint", 1], ["After chocolate", "After the chocolate puzzle", "checkpoint", 2],
 			["After pipes", "", "checkpoint", 3], ["After prices", "", "checkpoint", 4],
 			["Boss fight", "The Big Cramp, with the iron below", "boss", -1]]],
-		["2 · Forest run", "follicular phase · the sun", Color("#047857"), [
+		["2 · Forest run", "follicular · the sun", Color.from_hsv(38.0 / 360, 0.8, 0.75), [
 			["Start", "", "runner", 0], ["Stage 2", "3 sun pieces found, after the memory game", "runner", 1],
 			["Stage 3", "6 pieces, after catch: flying notifications", "runner", 2],
 			["Stage 4", "9 pieces, after pairs: fastest + side traps", "runner", 3]]],
-		["3 · Summit", "ovulation · LH wave", Color("#a16207"), [
+		["3 · Summit", "ovulation · LH wave", Color.from_hsv(130.0 / 360, 0.65, 0.6), [
 			["Start", "", "checkpoint3", 1], ["After iron plate", "", "checkpoint3", 2],
 			["After rhythm", "", "checkpoint3", 3], ["After body signals", "", "checkpoint3", 4],
 			["LH wave", "The climb with the wave", "checkpoint3", 5]]],
+		["4 · PMS", "luteal phase · right to left", Color.from_hsv(215.0 / 360, 0.7, 0.75), [
+			["Start", "Level 4 is not built yet (right to left, PMS; the sex-ed branch)", "", 0]]],
 	]
 	for c in cols.size():
 		var x := 24 + c * (COL_W + 16)
@@ -203,6 +215,9 @@ func _build_shortcuts() -> void:
 			b.tooltip_text = it[1]
 			var act: String = it[2]
 			var val: int = it[3]
+			if act == "":
+				b.disabled = true
+				b.text = it[0] + " (soon)"
 			b.pressed.connect(func(): action.emit(act, _iron if val < 0 else val))
 			card.add_child(b)
 		if c == 1:
