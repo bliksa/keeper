@@ -1205,6 +1205,60 @@ func _run() -> void:
 	if FileAccess.file_exists(LevelEditor.AUTOSAVE):
 		DirAccess.remove_absolute(LevelEditor.AUTOSAVE)
 
+	step("dialog editor")
+	if FileAccess.file_exists(DialogEditor.EDIT_PATH):
+		DirAccess.remove_absolute(DialogEditor.EDIT_PATH)
+	dev._show("dialogs")
+	await frames(3)
+	var de: DialogEditor = dev._dialogs
+	check(de != null and de.ids_in("2") == ["2A", "2B", "2C", "2D", "2E"] and de.ids_in("0").size() == 4, "the Dialogs tab lists each level's dialogs (2A–2E, 0A–0D)")
+	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", 3) == "3B" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
+	check(de.ids_in("mg").has("mg8_start") and not DialogEditor.is_story("mg8_start"), "minigame talk is listed apart, under its own names")
+	# Saving the files as they are changes nothing (same format as in the repo).
+	var bundled := {"godot/data/dialogs.json": FileAccess.get_file_as_string("res://data/dialogs.json")}
+	for l in DialogEditor.LANGS:
+		bundled["godot/data/i18n/%s.json" % l] = FileAccess.get_file_as_string("res://data/i18n/%s.json" % l)
+	var same := de.build_commit(bundled)
+	var diff := same.keys().filter(func(k): return same[k] != bundled[k])
+	check(not same.is_empty() and diff.is_empty(), "the dialog files round-trip unchanged %s" % str(diff))
+	de.select_group("2")
+	de.select("2C")
+	await frames(2)
+	check(de._title.text == "Dialog 2C" and de._lines.get_child_count() == 1 + 2, "dialog 2C shows its line, Add line and its button")
+	check(de.fits("Short line.") and not de.fits("Very long line. ".repeat(80)), "a line that doesn't fit the box is marked")
+	de.set_text(0, "en", "Edited line one.")
+	de.add_line()
+	de.set_text(1, "en", "Second line.")
+	de.set_text(1, "sk", "Druhý riadok.")
+	de.move_line(1, -1)
+	check(de.key_of("2C", 0) == "2C1" and de.nodes["2C"].lines[0].text.en == "Second line." and de.is_changed("2C") and FileAccess.file_exists(DialogEditor.EDIT_PATH), "lines are named 2C1, 2C2 in their order; edits are kept locally")
+	de.new_dialog()
+	check(de.current == "2F" and de.nodes.has("2F") and de.ids_in("2").back() == "2F", "a new dialog gets the next free letter (2F)")
+	de.set_text(0, "en", "Brand new.")
+	var dfiles := de.build_commit(bundled)
+	var dj: Dictionary = JSON.parse_string(dfiles["godot/data/dialogs.json"])
+	var den: Dictionary = JSON.parse_string(dfiles["godot/data/i18n/en.json"])
+	var nk: Array = dj.nodes.keys()
+	check(dj.nodes["2C"].parts.size() == 2 and dj.nodes["2C"].parts[1].text == "2C2" and den["2C1"] == "Second line." and den["2C2"] == "Edited line one." and den["2F1"] == "Brand new.", "save writes the dialogs and their lines in every language")
+	check(nk.find("2F") == nk.find("2E") + 1 and nk.find("3A") == nk.find("2F") + 1 and dj.nodes.has("mg8_start"), "saved dialogs stay in level order")
+	de.select("2F")
+	de.delete_dialog()
+	check(not de.nodes.has("2F") and not de.deleted.has("2F"), "a new dialog can be deleted again")
+	de.select("2C")
+	de.use_in_game()
+	check(Text.t("2C2") == "Edited line one." and Text.dialogs["2C"].parts.size() == 2, "Use in game: the game says the edited dialog")
+	de.play("en")
+	await frames(3)
+	check(de._preview != null and de._preview.is_open() and de._preview._node_id == "__preview", "Play shows the dialog in the real dialog box")
+	de.close_preview()
+	await frames(2)
+	de.discard()
+	check(not de.is_changed("2C") and not FileAccess.file_exists(DialogEditor.EDIT_PATH), "discarding the local edits")
+	Text._ready()
+	check(Text.dialogs["2C"].parts.size() == 1, "the game's dialogs back as built")
+	dev._show("shortcuts")
+	await frames(2)
+
 
 # --- helpers ------------------------------------------------------------------
 

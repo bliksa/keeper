@@ -22,7 +22,7 @@ godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
   data/levels/cave.txt     the cave level, one text row per 120 px band, 25 columns
   data/levels/garden.txt   level 2 (climbed upwards: spawn at the bottom, summit E at the top)
   docs/                    GDD drafts (gdd_levely_fazy_cyklu.md = level 2 design, implemented)
-  data/dialogs.json        dialog nodes (parts, speaker, buttons), voice overrides, letter→dialog map
+  data/dialogs.json        dialog nodes (parts, speaker, buttons), voice overrides
   data/i18n/{en,sk,pt}.json  all strings; <KB>…</KB> keyboard-only, <GP>…</GP> gamepad-only
   assets/                  images, audio, font (from the web prototype)
   tests/test_runner.gd     headless end-to-end test — plays the whole game
@@ -39,11 +39,18 @@ tools/                     setup_godot.sh, test.sh, export_web.sh
   dialogs; level 2: `@` bubble, `%` popping bubble, `~` updraft, `N` distraction,
   `6/7/8` minigames, `9` LH wave, `E` summit). Keep 25 columns. Minigame / boss /
   wave / summit triggers span the whole row. `Game.LEVELS` maps level id → file.
-- **Dialog text**: change the string in `data/i18n/*.json` (all three languages).
-  New dialog = add node in `data/dialogs.json` + keys in every i18n file;
-  voice = `assets/audio/<KEY>.wav` (or `voice_overrides`).
-- **Dialog trigger in the level**: put a lowercase letter in the level and map it
-  in `letter_dialogs` in `data/dialogs.json`.
+- **Dialogs**: story dialogs are named `<level><letter>` (0 = prologue in the forest,
+  1 cave, 2 forest run, 3 summit, M old meadow; `Game.DIALOG_LEVEL` maps level ids),
+  their lines `<level><letter><n>`: `2C3` = level 2, dialog C, line 3 (also the text
+  key in `data/i18n/*.json`). Each level starts with its dialog A. Minigame talk
+  (`mg*_start` / `_after` …) is not a story dialog and keeps its own names. Edit them in
+  **Developer mode > Dialogs** (`scripts/dev/dialog_editor.gd`, `DialogEditor`:
+  lines in SK / EN / PT, speaker, buttons, a fit check, Play, Use in game, Save to repo
+  which commits `data/dialogs.json` + `data/i18n/*.json`; local edits in
+  `user://dialogs_edit.json`) or by hand (all three languages). Voice =
+  `assets/audio/<KEY>.wav` or `voice_overrides`.
+- **Dialog trigger in the level**: a lowercase letter in a level map starts that
+  level's dialog with the letter (`c` in level 2 = `2C`, `Text.dialog_for_letter`).
 - **Physics / feel**: constants at the top of `scripts/screens/platformer.gd`
   (gravity, jump, speed). Values match the web build, scaled per frame by `dt60`.
 - **Flow** (what happens after a trigger/minigame): `scripts/main.gd`.

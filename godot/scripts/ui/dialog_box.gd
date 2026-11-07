@@ -76,7 +76,7 @@ func _ready() -> void:
 	_text.fit_content = false
 	_text.scroll_active = false
 	_text.position = Vector2(H + 8, 38)
-	_text.size = Vector2(1066 - H - 8 - 240 - 16, H - 46)
+	_text.size = text_area()
 	_text.add_theme_font_override("normal_font", Text.font_dialog)
 	_text.add_theme_font_size_override("normal_font_size", TEXT_SIZES[0])
 	_text.add_theme_color_override("default_color", Color("#064e3b"))
@@ -93,6 +93,11 @@ func _ready() -> void:
 	visible = false
 	Game.control_mode_changed.connect(_refresh)
 	Text.language_changed.connect(_refresh)
+
+
+## Size of the dialog text area (the dialog editor measures lines with it).
+static func text_area() -> Vector2:
+	return Vector2(1066 - H - 8 - 240 - 16, H - 46)
 
 
 func _layout() -> void:

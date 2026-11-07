@@ -1,7 +1,7 @@
 class_name DevMenu
 extends Control
 ## Developer menu (port of the web "start" screen): shortcuts, the level
-## editor and the animation lab (run / jump frame variants).
+## editor, the animation lab and the dialog editor.
 
 signal back
 ## Main handles these: ("skip_intro"), ("boss", iron), ("checkpoint", n)
@@ -13,6 +13,7 @@ var _tabs := {}
 var _iron := 20
 var _editor: LevelEditor
 var _lab: AnimLab
+var _dialogs: DialogEditor
 ## Header slot the active tab can fill with its own icon buttons.
 var header_tools: HBoxContainer
 var _help: Label
@@ -33,7 +34,7 @@ func _ready() -> void:
 	bar.size = Vector2(1066, BAR_H)
 	add_child(bar)
 	var x := 8.0
-	for t in [["shortcuts", "Shortcuts"], ["level", "Level editor"], ["anim", "Animations"]]:
+	for t in [["shortcuts", "Shortcuts"], ["level", "Level editor"], ["anim", "Animations"], ["dialogs", "Dialogs"]]:
 		var b := UiKit.button(t[1], Vector2(110, ICON), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
 		b.position = Vector2(x, (BAR_H - ICON) / 2)
 		b.pressed.connect(_show.bind(t[0]))
@@ -88,7 +89,16 @@ func _show(tab: String) -> void:
 		remove_child(_lab)
 		_lab.free()
 		_lab = null
-	if tab == "anim":
+	if _dialogs:
+		_dialogs.queue_free()
+		_dialogs = null
+	if tab == "dialogs":
+		_dialogs = DialogEditor.new()
+		_dialogs.top = BAR_H
+		_dialogs.header = header_tools
+		add_child(_dialogs)
+		move_child(_dialogs, 1)
+	elif tab == "anim":
 		_lab = AnimLab.new()
 		_lab.top = BAR_H
 		_help.text = "Space pause / play\n← → step frames"
