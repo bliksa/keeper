@@ -90,7 +90,9 @@ const LANE_SPEED := 11.0
 const SLOW_SCALE := 0.4
 const SLOW_DRAIN := 28.0
 const SLOW_MIN := 6.0
-const DROP_WATER := 8.0
+const DROP_WATER := 5.0
+## Water (focus) a hit on an obstacle costs.
+const HIT_WATER := 8.0
 const BUMP_BACK := 6.0
 const CARRY_BACK := 14.0
 const VIEW := 70.0
@@ -629,6 +631,7 @@ func _land_pending() -> void:
 
 ## Ran into a root or a branch: bounce back, the path rolls back a bit.
 func bump() -> void:
+	water = maxf(0, water - HIT_WATER)
 	bump_t = 0.45
 	_roll_to = maxf(_stage_start(), dist - BUMP_BACK)
 	vy = 3.0
@@ -639,6 +642,7 @@ func bump() -> void:
 
 ## Caught by a bird in the air: carried back along the path.
 func carried() -> void:
+	water = maxf(0, water - HIT_WATER)
 	carry_t = 1.2
 	_roll_to = maxf(_stage_start(), dist - CARRY_BACK)
 	flash = 0.3

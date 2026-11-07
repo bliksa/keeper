@@ -47,6 +47,7 @@ def stage(n_rows, level, n_sun=3, notes=False, traps=False, marker=True, dialog=
     if notes: pats += ["note_lane", "note_gate"]
     if traps: pats += ["trap_gate", "squeeze"]
     gates = []  # (row, free lane) for sun placement
+    done = 0
     while r < end:
         pat = rng.choice(pats)
         if pat == "gate":
@@ -111,6 +112,14 @@ def stage(n_rows, level, n_sun=3, notes=False, traps=False, marker=True, dialog=
             trail(r - 4, r - 1, free, 0)
             free = 0
         r += rng.randint(*gaps)
+        # Now and then a calm stretch: just running and a few drops.
+        done += 1
+        if done % 3 == 0 and r < end - 30:
+            calm = rng.randint(14, 22)
+            l = free
+            for k in range(2, calm - 2, 3):
+                put(r + k, L[l], "D")
+            r += calm
     # Sun pieces: in the free path right behind a gate (you have to weave to get them).
     picks = sorted(gates, key=lambda g: g[0])
     want = [start + int(n_rows * f) for f in ([0.25, 0.55, 0.85] if n_sun == 3 else [0.5])]
@@ -122,10 +131,10 @@ def stage(n_rows, level, n_sun=3, notes=False, traps=False, marker=True, dialog=
             rr += 1
         rows[rr][L[gl]] = "+"
 
-stage(150, 1, marker=False)
-stage(165, 2)
-stage(180, 3, notes=True, dialog="b")
-stage(195, 4, notes=True, traps=True, dialog="c")
+stage(240, 1, marker=False)
+stage(260, 2)
+stage(280, 3, notes=True, dialog="b")
+stage(300, 4, notes=True, traps=True, dialog="c")
 blank(6)
 gd = open(__import__("pathlib").Path(__file__).resolve().parent.parent / "godot/scripts/screens/forest_runner.gd").read()
 out = re.search(r'const MAP_HEADER := """(.*?)"""', gd, re.S).group(1).rstrip("\n").split("\n")

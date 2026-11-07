@@ -338,11 +338,14 @@ func _run() -> void:
 	check(not rn.objects.any(func(o): return o.kind == "bird" and o.stage == 0), "stage 1 has no crows (only jumping and water)")
 	var roots: Array = rn.objects.filter(func(o): return o.kind == "root" and o.lane == -9)
 	var root0: Dictionary = roots[0]
+	rn.water = 50
+	var w_before := rn.water
 	rn.jump_to(root0.z - 0.4)
 	rn.py = 0
 	rn.vy = 0
 	await frames(3)
 	check(rn.bump_t > 0, "running into a root bounces her off")
+	check(rn.water <= w_before - ForestRunner.HIT_WATER + 0.01 or w_before < ForestRunner.HIT_WATER, "a hit costs focus (water)")
 	await seconds(0.45)
 	check(rn.dist < root0.z - 4 and not root0.hit, "the path rolls back and the root waits for her again")
 	await frames(2)
