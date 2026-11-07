@@ -12,10 +12,23 @@
     "res://assets/anim_test/iron/drawn-nut/matica7.png",
     "res://assets/anim_test/iron/drawn-nut/matica8.png"
    ]
+  },
+  "run": {
+   "original edit": [
+    "res://assets/anim_test/run/original-edit/01-1.png",
+    "res://assets/anim_test/run/original-edit/02-2.png",
+    "res://assets/anim_test/run/original-edit/03-3.png",
+    "res://assets/anim_test/run/original-edit/04-4.png",
+    "res://assets/anim_test/run/original-edit/05-5.png",
+    "res://assets/anim_test/run/original-edit/06-6.png",
+    "res://assets/anim_test/run/original-edit/07-7.png",
+    "res://assets/anim_test/run/original-edit/08-8.png"
+   ]
   }
  },
  "in_game": {
-  "iron": "drawn nut"
+  "iron": "drawn nut",
+  "run": "original edit"
  },
  "settings": {
   "anim_fps": 12.0,
