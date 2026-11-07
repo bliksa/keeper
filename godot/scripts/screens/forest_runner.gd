@@ -33,13 +33,16 @@ signal intro_done
 
 ## Coming from the cave: the arena (a snapshot) crossfades into the forest, the
 ## grain the nuts formed flies to the top-left and becomes the sun (the progress
-## meter), the trees appear from the middle, then Kyra drops in and stands with
-## her back to us.
+## meter), the trees appear from the middle, then Kyra jumps up from below (she
+## dropped out of the arena) and stands with her back to us.
 const INTRO_TIME := 3.7
 const INTRO_FADE := 1.0
 const INTRO_GRAIN := [0.35, 1.55]
 const INTRO_TREES := 1.0
 const INTRO_FALL_AT := 2.35
+## She starts this far below the path and jumps up with this speed.
+const INTRO_FROM_Y := -3.5
+const INTRO_JUMP_V := 14.0
 ## Where the grain is in the arena (Platformer._draw_egg) and its size there.
 const GRAIN_FROM := Vector2(533, 250)
 const GRAIN_R := 45.0
@@ -142,6 +145,7 @@ var intro := 0.0
 ## Landing squash after the drop (s left).
 var land_t := 0.0
 var _landed := false
+var _jumped := false
 ## The last frame of the cave (crossfaded away), or null.
 var _from_cave: Texture2D
 ## A minigame (n) or the end waiting for the flying piece to land.
@@ -506,9 +510,10 @@ func _sun_piece() -> void:
 func start_intro(from_cave: Texture2D = null) -> void:
 	_from_cave = from_cave
 	intro = INTRO_TIME
-	py = 9.0
+	py = INTRO_FROM_Y
 	vy = 0.0
 	_landed = false
+	_jumped = false
 
 
 func intro_elapsed() -> float:
@@ -518,9 +523,14 @@ func intro_elapsed() -> float:
 func _update_intro(dt: float) -> void:
 	intro = maxf(0, intro - dt)
 	if intro_elapsed() >= INTRO_FALL_AT and not _landed:
+		if not _jumped:
+			# Up from below the screen, over the path, and down onto it.
+			_jumped = true
+			vy = INTRO_JUMP_V
+			Audio.jump_sound(false)
 		vy -= GRAVITY * dt
 		py += vy * dt
-		if py <= 0:
+		if py <= 0 and vy < 0:
 			py = 0
 			vy = 0
 			_landed = true
@@ -730,7 +740,8 @@ func _draw() -> void:
 		_draw_player()
 	# Slowed time: a cool tint and a focus ring.
 	if slow:
-		draw_rect(Rect2(0, 0, W, H), Color(0.35, 0.55, 0.9, 0.18))
+		# Focus: the edges darken, the middle stays clear.
+		Draw.vignette(self, Rect2(0, 0, W, H), Color(0.02, 0.04, 0.1, 0.75), 0.3)
 		Draw.vignette(self, Rect2(0, 0, W, H), Color(0.1, 0.15, 0.35, 0.45), 0.35)
 	if flash > 0:
 		draw_rect(Rect2(0, 0, W, H), Color(1, 0.4, 0.3, flash * 0.6))
@@ -895,11 +906,12 @@ func _draw_player() -> void:
 		return
 	var k := c.z / 100.0
 	# Shadow on the path, smaller the higher she is.
-	draw_set_transform(Vector2(g.x, g.y), 0, Vector2(1, 0.3))
-	draw_circle(Vector2.ZERO, 34 * k * (1.0 - clampf(py / 3.0, 0, 0.6)), Color(0, 0, 0, 0.25))
-	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+	if py > -0.05:
+		draw_set_transform(Vector2(g.x, g.y), 0, Vector2(1, 0.3))
+		draw_circle(Vector2.ZERO, 34 * k * (1.0 - clampf(py / 3.0, 0, 0.6)), Color(0, 0, 0, 0.25))
+		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	var run := sin(time * (16.0 if not slow else 9.0))
-	var air := py > 0.05 or carry_t > 0
+	var air := absf(py) > 0.05 or carry_t > 0
 	if intro > 0 and _landed:
 		# She stands still (back to us) until the run starts.
 		run = 0.0

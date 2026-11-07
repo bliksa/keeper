@@ -275,6 +275,15 @@ func _run() -> void:
 	Input.action_release("breathe")
 	var won := await until(func(): return node_box().node_id() == "1D", 5)
 	check(won, "boss defeated")
+	# Click through 1D; on its last line Kyra drops away behind the box.
+	var nb1 := node_box()
+	var guard1 := 0
+	while nb1.node_id() == "1D" and not nb1._is_last() and guard1 < 20:
+		nb1._press(0)
+		await frames(2)
+		guard1 += 1
+	await frames(2)
+	check(main.platformer.exit_fall and main.platformer.p.vy != 0, "on the last line of 1D Kyra drops away behind the dialog box")
 	await finish_dialog("1D")
 	await frames(5)
 	var run_ok := await until(func(): return main.state == "runner" and main.runner != null, 8)
@@ -282,10 +291,10 @@ func _run() -> void:
 
 	step("level 2 – the forest run")
 	var rn0: ForestRunner = main.runner
-	check(rn0.intro > 0 and rn0.py > 3 and node_box().node_id() != "2A" and rn0._intro_k(rn0.dist + 20) < 1.0, "level start: the trees appear from the middle, Kyra not there yet, no dialog")
+	check(rn0.intro > 0 and rn0.py < -3 and node_box().node_id() != "2A" and rn0._intro_k(rn0.dist + 20) < 1.0, "level start: the trees appear from the middle, Kyra not there yet, no dialog")
 	check(rn0.intro_elapsed() < ForestRunner.INTRO_FADE + 0.5, "the arena crossfades straight into the forest (no corridor, no dark)")
 	var rn_landed := await until(func(): return rn0._landed, 6)
-	check(rn_landed and rn0.py == 0 and rn0.land_t > 0, "Kyra drops in and lands (back to us)")
+	check(rn_landed and rn0.py == 0 and rn0.land_t > 0, "Kyra jumps up from below and lands (back to us)")
 	await finish_dialog("2A")
 	var rn: ForestRunner = main.runner
 	await frames(3)

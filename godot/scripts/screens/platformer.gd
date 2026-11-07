@@ -101,6 +101,8 @@ var scripted_walk := 0.0
 var corridor_t := 0.0
 ## The grain is drawn by the forest run's intro instead (the crossfade).
 var hide_egg := false
+## After the boss: Kyra drops out of the arena, down behind the dialog box.
+var exit_fall := false
 var walk_to_x := -1.0
 ## 1 = the cave (down, cramps, boss), 2 = the garden (up, bubbles, LH wave).
 var level_id := 1
@@ -338,6 +340,10 @@ func start_boss(iron: int) -> void:
 func _process(delta: float) -> void:
 	var dt := minf(delta, 0.1)
 	time_ms += dt * 1000.0
+	if exit_fall:
+		var f60 := dt * 60.0
+		p.vy = minf(p.vy + 0.55 * f60, 18.0)
+		p.y += p.vy * f60
 	if active:
 		_update(dt)
 		if active and not _initial_dialog_sent and _start_checkpoint <= 1:
@@ -573,7 +579,23 @@ func _hurt(from_x: float) -> void:
 	_spray_nuts(lost)
 
 
+## Kyra hops and drops out of the bottom of the screen (level 1 is over).
+func start_exit_fall() -> void:
+	if exit_fall:
+		return
+	exit_fall = true
+	p.vy = -5.0
+	p.is_grounded = false
+
+
+## She is out of sight (below the screen).
+func exit_fall_done() -> bool:
+	return exit_fall and p.y > camera_y + H + 40
+
+
 func _update(dt: float) -> void:
+	if exit_fall:
+		return
 	var d60 := dt * 60.0
 	hud.breath_error = false
 	if shake_timer > 0:

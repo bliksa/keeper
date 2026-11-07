@@ -149,6 +149,9 @@ func _process(_delta: float) -> void:
 		platformer.active = state == "platformer"
 		platformer.dialog_open = any_dialog
 		platformer.active_dialog_id = _node_box.node_id()
+		# The boss is beaten: on the last line of 1D Kyra drops away behind the box.
+		if _node_box.node_id() == "1D" and _node_box._is_last() and not platformer.exit_fall:
+			platformer.start_exit_fall()
 		platformer.hide_platforms = state in ["mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
 		platformer.hud.visible = state == "platformer"
 	if forest:
@@ -590,6 +593,14 @@ func _into_corridor() -> void:
 	# The last frame of the arena (without the grain, which flies on in the
 	# forest run's intro) crossfades into the forest.
 	var shot: Texture2D = null
+	if platformer:
+		platformer.start_exit_fall()
+		for i in 90:
+			if platformer.exit_fall_done():
+				break
+			await get_tree().process_frame
+		if run != _run_id:
+			return
 	if platformer and DisplayServer.get_name() != "headless":
 		platformer.hide_egg = true
 		await get_tree().process_frame
