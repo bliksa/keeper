@@ -57,10 +57,15 @@ func _ready() -> void:
 		add_child(tb)
 		_flags[lang] = tb
 		x += 36
-	var ver := UiKit.label(Game.build_label(), 12, Color("#6b7280"))
-	ver.position = Vector2(1066 - 14 - 360, 600 - 26)
-	ver.size = Vector2(360, 18)
-	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	# Under the green bar, exactly where the browser's loading screen shows it.
+	var ver := Label.new()
+	ver.text = Game.build_label()
+	ver.add_theme_font_override("font", Text.font)
+	ver.add_theme_font_size_override("font_size", 12)
+	ver.add_theme_color_override("font_color", Color("#6b7280"))
+	ver.position = Vector2(533 - 200, 240)
+	ver.size = Vector2(400, 16)
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(ver)
 	_version = ver
 	Text.language_changed.connect(_refresh)
