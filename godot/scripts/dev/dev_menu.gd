@@ -15,6 +15,7 @@ var _editor: LevelEditor
 var _lab: AnimLab
 var _dialogs: DialogEditor
 var _gh: GitHubSave
+var _old_pick: OptionButton
 ## Header slot the active tab can fill with its own icon buttons.
 var header_tools: HBoxContainer
 var _help: Label
@@ -155,76 +156,102 @@ func _build_shortcuts() -> void:
 	sb.border_color = Color("#334155")
 	sb.set_border_width_all(1)
 	card.add_theme_stylebox_override("panel", sb)
-	card.position = Vector2(83, 24)
-	card.size = Vector2(900, 500)
+	card.position = Vector2(33, 20)
+	card.size = Vector2(1000, 508)
 	_content.add_child(card)
+	var title := UiKit.label("PLAY FROM", 13, Color("#94a3b8"), true)
+	title.position = Vector2(24, 18)
+	card.add_child(title)
+	# The game in its order: one column per level, each from its start onwards.
+	const COL_W := 226.0
+	var cols := [
+		["0 · Prologue", "the forest + breathing", Color("#6d28d9"), [
+			["New game", "From the very start (the forest intro)", "new_game", 0],
+			[Text.t("BTN_SKIP_INTRO"), "Straight into the cave (breathing learnt)", "skip_intro", 0]]],
+		["1 · Cave", "menstruation · iron, cramps", Color("#b91c1c"), [
+			["Start", "", "checkpoint", 1], ["After chocolate puzzle", "", "checkpoint", 2],
+			["After pipes", "", "checkpoint", 3], ["After prices", "", "checkpoint", 4],
+			["Boss fight", "The Big Cramp, with the iron below", "boss", -1]]],
+		["2 · Forest run", "follicular phase · the sun", Color("#047857"), [
+			["Start", "", "runner", 0], ["Stage 2", "3 sun pieces found, after the memory game", "runner", 1],
+			["Stage 3", "6 pieces, after catch: flying notifications", "runner", 2],
+			["Stage 4", "9 pieces, after pairs: fastest + side traps", "runner", 3]]],
+		["3 · Summit", "ovulation · LH wave", Color("#a16207"), [
+			["Start", "", "checkpoint3", 1], ["After iron plate", "", "checkpoint3", 2],
+			["After rhythm", "", "checkpoint3", 3], ["After body signals", "", "checkpoint3", 4],
+			["LH wave", "The climb with the wave", "checkpoint3", 5]]],
+	]
+	for c in cols.size():
+		var x := 24 + c * (COL_W + 16)
+		var head := ColorRect.new()
+		head.color = cols[c][2]
+		head.position = Vector2(x, 48)
+		head.size = Vector2(COL_W, 4)
+		card.add_child(head)
+		var name := UiKit.label(cols[c][0], 15, Color.WHITE, true)
+		name.position = Vector2(x, 58)
+		card.add_child(name)
+		var sub := UiKit.label(cols[c][1], 11, Color("#94a3b8"))
+		sub.position = Vector2(x, 80)
+		card.add_child(sub)
+		var items: Array = cols[c][3]
+		for k in items.size():
+			var it: Array = items[k]
+			var first := k == 0
+			var b := UiKit.button(it[0], Vector2(COL_W, 36), 12, cols[c][2].darkened(0.35) if first else Color("#0f172a"), Color.WHITE if first else Color("#cbd5e1"))
+			b.position = Vector2(x, 106 + k * 42)
+			b.tooltip_text = it[1]
+			var act: String = it[2]
+			var val: int = it[3]
+			b.pressed.connect(func(): action.emit(act, _iron if val < 0 else val))
+			card.add_child(b)
+		if c == 1:
+			# Iron for the cave checkpoints' boss shortcut.
+			var iron_lbl := UiKit.label("Iron for the boss: %d" % _iron, 11, Color("#cbd5e1"))
+			iron_lbl.position = Vector2(x, 106 + items.size() * 42 + 4)
+			card.add_child(iron_lbl)
+			var slider := HSlider.new()
+			slider.min_value = 0
+			slider.max_value = 100
+			slider.value = _iron
+			slider.position = Vector2(x, 106 + items.size() * 42 + 24)
+			slider.size = Vector2(COL_W, 20)
+			slider.focus_mode = Control.FOCUS_NONE
+			slider.value_changed.connect(func(v):
+				_iron = int(v)
+				iron_lbl.text = "Iron for the boss: %d" % _iron)
+			card.add_child(slider)
 
-	var h1 := UiKit.label("CORE ACTIONS", 13, Color("#94a3b8"), true)
-	h1.position = Vector2(32, 28)
-	card.add_child(h1)
-	var skip := UiKit.button(Text.t("BTN_SKIP_INTRO").to_upper(), Vector2(400, 64), 20, Color("#059669"), Color.BLACK)
-	skip.position = Vector2(32, 60)
-	skip.pressed.connect(func(): action.emit("skip_intro", 0))
-	card.add_child(skip)
-	var iron_lbl := UiKit.label("IRON: %d" % _iron, 12, Color.WHITE, true)
-	iron_lbl.position = Vector2(32, 152)
-	card.add_child(iron_lbl)
-	var slider := HSlider.new()
-	slider.min_value = 0
-	slider.max_value = 100
-	slider.value = _iron
-	slider.position = Vector2(32, 180)
-	slider.size = Vector2(400, 20)
-	slider.value_changed.connect(func(v):
-		_iron = int(v)
-		iron_lbl.text = "IRON: %d" % _iron)
-	card.add_child(slider)
-	var boss := UiKit.button("SKIP TO BOSS", Vector2(160, 34), 12, Color("#022c22"), Color("#34d399"))
-	boss.position = Vector2(272, 140)
-	boss.pressed.connect(func(): action.emit("boss", _iron))
-	card.add_child(boss)
+	# Old and deprecated: the first level-2 draft (the meadow).
+	var sep := ColorRect.new()
+	sep.color = Color("#334155")
+	sep.position = Vector2(24, 404)
+	sep.size = Vector2(952, 1)
+	card.add_child(sep)
+	var old_lbl := UiKit.label("OLD / DEPRECATED", 11, Color("#64748b"), true)
+	old_lbl.position = Vector2(24, 418)
+	card.add_child(old_lbl)
+	var old := OptionButton.new()
+	old.add_theme_font_size_override("font_size", 12)
+	old.focus_mode = Control.FOCUS_NONE
+	old.position = Vector2(170, 412)
+	old.size = Vector2(300, 30)
+	var olds := [["Old meadow (level 2 draft): start", "checkpoint2", 1],
+		["Old meadow: after its minigames", "checkpoint2", 4], ["Old meadow: the gate", "checkpoint2", 5]]
+	for o in olds:
+		old.add_item(o[0])
+	card.add_child(old)
+	var go := UiKit.button("Play", Vector2(80, 30), 12, Color("#334155"))
+	go.position = Vector2(478, 412)
+	go.pressed.connect(func():
+		var o: Array = olds[old.selected]
+		action.emit(o[1], o[2]))
+	card.add_child(go)
+	_old_pick = old
 
-	var h2 := UiKit.label("CHECKPOINTS (cave)", 13, Color("#94a3b8"), true)
-	h2.position = Vector2(480, 28)
-	card.add_child(h2)
-	var cps := [[1, "Cave start"], [2, "After chocolate puzzle"], [3, "After pipes"], [4, "After prices"]]
-	for i in cps.size():
-		var b := UiKit.button(cps[i][1], Vector2(380, 38), 13)
-		b.position = Vector2(480, 56 + i * 44)
-		b.pressed.connect(func(): action.emit("checkpoint", cps[i][0]))
-		card.add_child(b)
-	var h4 := UiKit.label("LEVEL 2", 13, Color("#94a3b8"), true)
-	h4.position = Vector2(32, 230)
-	card.add_child(h4)
-	var rb := UiKit.button("Forest run", Vector2(160, 40), 13, Color("#059669"))
-	rb.position = Vector2(32, 256)
-	rb.pressed.connect(func(): action.emit("runner", 0))
-	card.add_child(rb)
-	for k: int in [1, 2, 3]:
-		var stb := UiKit.button("Stage %d" % (k + 1), Vector2(74, 40), 11, Color("#047857"))
-		stb.position = Vector2(200 + (k - 1) * 78, 256)
-		stb.tooltip_text = "The forest run from stage %d (%d sun pieces found)" % [k + 1, k * ForestRunner.SUN_PER_GAME]
-		stb.pressed.connect(func(): action.emit("runner", k))
-		card.add_child(stb)
-	var cps2 := [[1, "Old meadow: start"], [4, "Old meadow: after its minigames"], [5, "Old meadow: the gate"]]
-	for i in cps2.size():
-		var b := UiKit.button(cps2[i][1], Vector2(400, 34), 12, Color("#1e3a5f"))
-		b.position = Vector2(32, 304 + i * 40)
-		b.pressed.connect(func(): action.emit("checkpoint2", cps2[i][0]))
-		card.add_child(b)
-	var h5 := UiKit.label("SUMMIT (level 3)", 13, Color("#94a3b8"), true)
-	h5.position = Vector2(480, 244)
-	card.add_child(h5)
-	var cps3 := [[1, "Summit start"], [2, "After iron plate"], [3, "After rhythm"], [4, "After body signals"], [5, "LH wave (summit climb)"]]
-	for i in cps3.size():
-		var b := UiKit.button(cps3[i][1], Vector2(380, 34), 12, Color("#14532d"))
-		b.position = Vector2(480, 272 + i * 40)
-		b.pressed.connect(func(): action.emit("checkpoint3", cps3[i][0]))
-		card.add_child(b)
-
-	var h3 := UiKit.label("DEBUG KEYS: 1–4 restart at checkpoint · Shift+2–5 jump to minigame / boss / gate / wave · 5 boss (meadow: gate, summit: wave) · H meadow full vessel · G summit with power-ups · C breath + 20 iron · X skip minigame", 11, Color("#64748b"))
-	h3.autowrap_mode = TextServer.AUTOWRAP_WORD
-	h3.custom_minimum_size = Vector2(840, 0)
-	h3.position = Vector2(32, 462)
-	h3.size = Vector2(840, 36)
-	card.add_child(h3)
+	var keys := UiKit.label("Keys while playing: 1–4 restart at a checkpoint · Shift+2–5 jump to the next minigame / boss / wave · 5 boss (summit: wave) · G summit with power-ups · C breathing + 20 iron · X skip a minigame · Esc pause", 11, Color("#64748b"))
+	keys.autowrap_mode = TextServer.AUTOWRAP_WORD
+	keys.custom_minimum_size = Vector2(952, 0)
+	keys.position = Vector2(24, 458)
+	keys.size = Vector2(952, 36)
+	card.add_child(keys)

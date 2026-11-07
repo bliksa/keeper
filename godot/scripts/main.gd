@@ -210,6 +210,8 @@ func _open_dev() -> void:
 
 func _dev_action(name: String, value: int) -> void:
 	match name:
+		"new_game":
+			_start_new_game()
 		"skip_intro":
 			Game.reset_run()
 			Game.has_breathing = true
@@ -223,7 +225,7 @@ func _dev_action(name: String, value: int) -> void:
 		"boss":
 			_skip_to_boss(value)
 		"runner":
-			# Level 2: the forest run (value = the stage to start at, 0–2).
+			# Level 2: the forest run (value = the stage to start at, 0–3).
 			Game.reset_run()
 			Game.has_breathing = true
 			Game.intro_done = true

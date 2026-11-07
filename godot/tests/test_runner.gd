@@ -1116,6 +1116,7 @@ func _run() -> void:
 	_clean_bg_state()
 
 	step("animation lab")
+	var player_before: Array = PlayerArt.overrides.keys()
 	if FileAccess.file_exists(AnimLab.LOCAL_MANIFEST):
 		DirAccess.remove_absolute(AnimLab.LOCAL_MANIFEST)
 	dev._show("anim")
@@ -1260,7 +1261,7 @@ func _run() -> void:
 	check(not dev._lab.variant_names("run").has("fast run"), "deleting a variant")
 	dev._show("shortcuts")
 	await frames(3)
-	check(PlayerArt.overrides.is_empty(), "leaving without 'Use in game' restores the original frames")
+	check(PlayerArt.overrides.keys() == player_before, "leaving without 'Use in game' restores the frames the game had")
 	check(SpriteArt.overrides.keys() == SpriteArt.DEFS.keys().filter(func(id): return sprites_before.has(id)) and not SpriteArt.overrides.has("cramp") and not SpriteArt.settings.has("cramp"), "… and the sprites the game had before")
 	DirAccess.remove_absolute(AnimLab.LOCAL_MANIFEST)
 	if FileAccess.file_exists(LevelEditor.AUTOSAVE):
