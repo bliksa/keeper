@@ -24,8 +24,9 @@ func _ready() -> void:
 	bg.color = Color("#121212")
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
-	_full = UiKit.button("", Vector2(300, 40), FONT, Color(0, 0, 0, 0), Color("#9ca3af"))
-	_full.position = Vector2(383, 166)
+	# As wide as the green bar and START + DEV below it.
+	_full = UiKit.button("", Vector2(256, 40), FONT, Color(0, 0, 0, 0), Color("#9ca3af"))
+	_full.position = Vector2(405, 166)
 	_full.pressed.connect(_toggle_fullscreen)
 	add_child(_full)
 	var bar := ColorRect.new()
@@ -44,7 +45,7 @@ func _ready() -> void:
 	_subs = UiKit.label("", FONT, Color("#9ca3af"), true)
 	_subs.position = Vector2(405, 342)
 	add_child(_subs)
-	var x := 560.0
+	var x := 557.0
 	for lang in ["sk", "en", "pt"]:
 		var tb := TextureButton.new()
 		tb.texture_normal = load("res://assets/images/%s.png" % ("gb" if lang == "en" else lang))

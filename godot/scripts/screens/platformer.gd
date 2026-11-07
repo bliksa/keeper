@@ -99,6 +99,8 @@ var scripted_walk := 0.0
 ## After the boss: a corridor into the forest opens in the middle (seconds since)
 ## and Kyra walks to it.
 var corridor_t := 0.0
+## The grain is drawn by the forest run's intro instead (the crossfade).
+var hide_egg := false
 var walk_to_x := -1.0
 ## 1 = the cave (down, cramps, boss), 2 = the garden (up, bubbles, LH wave).
 var level_id := 1
@@ -1458,7 +1460,7 @@ func _draw_world() -> void:
 		_draw_meadow_front(ci, t, left, right)
 	for q in particles:
 		_draw_particle(ci, q)
-	if boss.defeated_timer > 1.5:
+	if boss.defeated_timer > 1.5 and not hide_egg:
 		_draw_egg(ci, t)
 	if wave.active or wave.lost:
 		_draw_wave(ci, t)

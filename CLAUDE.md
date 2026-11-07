@@ -223,7 +223,7 @@ except within `GRACE`. Slow time: action `slow_time` (Shift / E / LB / Y) while
 `water` lasts. `jump_to(z)` moves her (and the stage) for tests / the dev menu
 ("Forest run", "Stage 2", "Stage 3"). Level editor: tool group "Forest run",
 `_draw_runner_row/_cell`, test play `_start_runner_test` (minigames skipped).
-Level start (`start_intro`, `INTRO_TIME`; from the boss via `_into_corridor` with a fade to `CAVE_COL`): the cave's dark fades out, trees fly from the screen centre to their places (`_intro_k`), Kyra drops in (`INTRO_FALL_AT`, `land_t`) and stands, then `intro_done` → dialog 2A. Dialogs 2A (start), 2B (notifications, letter b), 2C (side traps, letter c), 2D (stage repeat), 2E (end). No seeds in the run.
+Level start (`start_intro(from_cave)`; from the boss `main._into_corridor` passes a snapshot of the arena with the grain hidden, `Platformer.hide_egg`): the arena crossfades into the forest (`INTRO_FADE`), the grain the nuts formed flies to the top-left and opens into the sun (`_draw_grain`, `_draw_intro_hud`), the trees appear from the screen centre (`_intro_k`, `INTRO_TREES`), Kyra drops in (`INTRO_FALL_AT`, `land_t`) and stands, then `intro_done` → dialog 2A. Dialogs 2A (start), 2B (notifications, letter b), 2C (side traps, letter c), 2D (stage repeat), 2E (end). No seeds in the run.
 
 ## Old level 2: the meadow (follicular phase, horizontal; dev menu only)
 

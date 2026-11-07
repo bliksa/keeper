@@ -587,26 +587,27 @@ func _on_boss_defeated() -> void:
 
 func _into_corridor() -> void:
 	var run := _run_id
-	if platformer:
-		platformer.open_corridor()
-	await get_tree().create_timer(2.6).timeout
+	# The last frame of the arena (without the grain, which flies on in the
+	# forest run's intro) crossfades into the forest.
+	var shot: Texture2D = null
+	if platformer and DisplayServer.get_name() != "headless":
+		platformer.hide_egg = true
+		await get_tree().process_frame
+		await get_tree().process_frame
+		if run != _run_id:
+			return
+		var img := get_viewport().get_texture().get_image()
+		if img and not img.is_empty():
+			shot = ImageTexture.create_from_image(img)
+	await _start_runner(false, 0, shot)
 	if run != _run_id:
 		return
-	# The arena goes dark like the cave; the forest run's intro fades that dark
-	# out while its trees fly in from the middle.
-	await _fade_to(1.0, 0.7, ForestRunner.CAVE_COL)
-	if run != _run_id:
-		return
-	await _start_runner(false)
-	if run != _run_id:
-		return
-	_fade.modulate.a = 0.0
 
 
 ## Level 2 (demo): the forest run, seen from behind.
 ## Level 2: the forest run. stage > 0 (developer menu): from that stage, with
 ## the sun pieces of the stages before it found.
-func _start_runner(fade := true, stage := 0) -> void:
+func _start_runner(fade := true, stage := 0, from_cave: Texture2D = null) -> void:
 	var run := _run_id
 	if fade:
 		await _fade_to(1.0)
@@ -637,7 +638,7 @@ func _start_runner(fade := true, stage := 0) -> void:
 		_fade_to(0.0)
 	if stage == 0:
 		# The level start: the forest appears, Kyra drops in, then Iskra talks.
-		runner.start_intro()
+		runner.start_intro(from_cave)
 		runner.intro_done.connect(func(): _dialog("2A"))
 	else:
 		_dialog("2A")

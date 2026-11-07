@@ -31,12 +31,18 @@ signal sun_game(n: int)
 ## The level-start sequence is over (Main then shows dialog 2A).
 signal intro_done
 
-## Coming from the cave: its dark fades into the forest, the trees fly out of
-## the middle (where the Big Cramp's nuts vanished) to their places, then Kyra
-## drops in and stands with her back to us.
-const INTRO_TIME := 2.9
-const INTRO_FALL_AT := 1.45
-const CAVE_COL := Color("#2a0a14")
+## Coming from the cave: the arena (a snapshot) crossfades into the forest, the
+## grain the nuts formed flies to the top-left and becomes the sun (the progress
+## meter), the trees appear from the middle, then Kyra drops in and stands with
+## her back to us.
+const INTRO_TIME := 3.7
+const INTRO_FADE := 1.0
+const INTRO_GRAIN := [0.35, 1.55]
+const INTRO_TREES := 1.0
+const INTRO_FALL_AT := 2.35
+## Where the grain is in the arena (Platformer._draw_egg) and its size there.
+const GRAIN_FROM := Vector2(533, 250)
+const GRAIN_R := 45.0
 
 ## The level editor's id of the map (Game.LEVELS).
 const LEVEL_ID := 4
@@ -136,6 +142,8 @@ var intro := 0.0
 ## Landing squash after the drop (s left).
 var land_t := 0.0
 var _landed := false
+## The last frame of the cave (crossfaded away), or null.
+var _from_cave: Texture2D
 ## A minigame (n) or the end waiting for the flying piece to land.
 var _pending_game := 0
 var _pending_end := false
@@ -495,7 +503,8 @@ func _sun_piece() -> void:
 
 
 ## Starts the level-start sequence (see INTRO_TIME).
-func start_intro() -> void:
+func start_intro(from_cave: Texture2D = null) -> void:
+	_from_cave = from_cave
 	intro = INTRO_TIME
 	py = 9.0
 	vy = 0.0
@@ -531,7 +540,7 @@ func _intro_k(z: float) -> float:
 	if intro <= 0:
 		return 1.0
 	var far := clampf((z - dist) / VIEW, 0, 1)
-	var t := clampf((intro_elapsed() - 0.15 - 0.55 * (1.0 - far)) / 0.85, 0, 1)
+	var t := clampf((intro_elapsed() - INTRO_TREES - 0.55 * (1.0 - far)) / 0.85, 0, 1)
 	return 1.0 - pow(1.0 - t, 3)
 
 
@@ -681,10 +690,6 @@ func _draw() -> void:
 		if a.z > 0:
 			draw_line(Vector2(a.x, a.y), Vector2(b.x, b.y), _fog(Color("#9c7448"), sz), maxf(1, a.z * 0.05))
 		sz += 3.0
-	# Coming from the cave: its dark fades away behind the trees flying in.
-	if intro > 0:
-		var fade := 1.0 - clampf(intro_elapsed() / 1.1, 0, 1)
-		draw_rect(Rect2(0, 0, W, H), Color(CAVE_COL, fade * fade * (3 - 2 * fade)))
 	# Far to near: trees and course objects.
 	var items := []
 	for t in trees:
@@ -692,7 +697,7 @@ func _draw() -> void:
 			items.append([t.z, "tree", t])
 	for o in objects:
 		var oz: float = o.z + o.dz
-		if intro > 0 and intro_elapsed() < 1.3:
+		if intro > 0 and intro_elapsed() < INTRO_TREES + 0.8:
 			break
 		if oz > dist - CAM_BACK + 0.5 and oz < dist + VIEW and not o.taken and o.kind != "dialog":
 			items.append([oz, o.kind, o])
@@ -729,9 +734,17 @@ func _draw() -> void:
 		Draw.vignette(self, Rect2(0, 0, W, H), Color(0.1, 0.15, 0.35, 0.45), 0.35)
 	if flash > 0:
 		draw_rect(Rect2(0, 0, W, H), Color(1, 0.4, 0.3, flash * 0.6))
-	if intro <= 0 or intro_elapsed() > 2.2:
+	if intro <= 0:
 		_draw_hud()
+	else:
+		_draw_intro_hud()
 	_draw_flyers()
+	# The arena crossfading away (over everything, the grain flies above it).
+	if intro > 0 and _from_cave and intro_elapsed() < INTRO_FADE:
+		var a := 1.0 - intro_elapsed() / INTRO_FADE
+		draw_texture_rect(_from_cave, Rect2(0, 0, W, H), false, Color(1, 1, 1, a * a * (3 - 2 * a)))
+	if intro > 0:
+		_draw_grain()
 
 
 func _draw_tree(t: Dictionary) -> void:
@@ -942,6 +955,40 @@ func _draw_flyers() -> void:
 		else:
 			Draw.radial_glow(self, p, 22, Color(0.37, 0.7, 0.94, 0.35))
 			SpriteArt.draw_drop(self, p, lerpf(1.2, 0.8, k))
+
+
+## The grain the nuts formed: from the arena's middle to the sun's place, where
+## it opens into the sun.
+func _draw_grain() -> void:
+	var e := intro_elapsed()
+	var t0: float = INTRO_GRAIN[0]
+	var t1: float = INTRO_GRAIN[1]
+	if e > t1 + 0.45:
+		return
+	var k := clampf((e - t0) / (t1 - t0), 0, 1)
+	k = k * k * (3 - 2 * k)
+	var from := GRAIN_FROM if _from_cave else Vector2(W / 2, H / 2)
+	var mid := (from + SUN_HUD) / 2 + Vector2(40, -60)
+	var p := from.lerp(mid, k).lerp(mid.lerp(SUN_HUD, k), k)
+	var r := lerpf(GRAIN_R, 14.0, k)
+	var fade := 1.0 - clampf((e - t1) / 0.45, 0, 1)
+	Draw.radial_glow(self, p, r + 20, Color(224 / 255.0, 89 / 255.0, 122 / 255.0, 0.6 * fade), Color(1, 1, 1, 0.9 * fade))
+	draw_circle(p, r * 0.8, Color("#efdacd", fade))
+	draw_circle(p + Vector2(-r * 0.2, -r * 0.2), maxf(0.1, r * 0.3), Color("#d69c70", fade))
+
+
+## During the intro: the sun opens out of the grain, the water pill comes last.
+func _draw_intro_hud() -> void:
+	var e := intro_elapsed()
+	var t1: float = INTRO_GRAIN[1]
+	if e >= t1:
+		var a := clampf((e - t1) / 0.5, 0, 1)
+		var grow := 1.0 - pow(1.0 - a, 3)
+		if a < 1.0:
+			Draw.radial_glow(self, SUN_HUD, 90 * grow, Color(1, 0.9, 0.5, 0.5 * (1.0 - a)))
+		SpriteArt.draw_sun(self, SUN_HUD, 46 * maxf(0.05, grow), 0, 0.0, time)
+	if e > INTRO_FALL_AT:
+		draw_water_pill(self, WATER_HUD, water, false, time, SLOW_MIN)
 
 
 func _draw_hud() -> void:
