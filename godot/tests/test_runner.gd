@@ -283,7 +283,11 @@ func _run() -> void:
 		await frames(2)
 		guard1 += 1
 	await frames(2)
-	check(main.platformer.exit_fall and main.platformer.p.vy != 0, "on the last line of 1D Kyra drops away behind the dialog box")
+	check(main.platformer.exit_fall and main.platformer._player_canvas.layer < 8, "with the 1D box Kyra jumps down behind it")
+	var bt0: float = main.platformer.boss.defeated_timer
+	await frames(10)
+	var pf_mid: float = main.platformer.camera_x + Platformer.W / 2 - main.platformer.p.width / 2
+	check(main.platformer.boss.defeated_timer > bt0 and absf(main.platformer.p.x - pf_mid) < 120, "the nuts keep forming their ring; she heads for the middle")
 	await finish_dialog("1D")
 	await frames(5)
 	var run_ok := await until(func(): return main.state == "runner" and main.runner != null, 8)

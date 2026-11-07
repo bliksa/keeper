@@ -595,8 +595,9 @@ func _into_corridor() -> void:
 	var shot: Texture2D = null
 	if platformer:
 		platformer.start_exit_fall()
-		for i in 90:
-			if platformer.exit_fall_done():
+		# Kyra out of sight and the nuts' ring closed into the grain (max ~5 s).
+		for i in 300:
+			if platformer.exit_fall_done() and platformer.boss.defeated_timer > 4.6:
 				break
 			await get_tree().process_frame
 		if run != _run_id:

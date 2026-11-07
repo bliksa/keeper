@@ -343,9 +343,14 @@ func _process(delta: float) -> void:
 	var dt := minf(delta, 0.1)
 	time_ms += dt * 1000.0
 	if exit_fall:
+		# A jump down into the middle (where the forest run starts), behind the box.
 		var f60 := dt * 60.0
 		p.vy = minf(p.vy + 0.55 * f60, 18.0)
 		p.y += p.vy * f60
+		var tx := camera_x + W / 2 - p.width / 2
+		p.x = move_toward(p.x, tx, 7.0 * f60)
+		if absf(tx - p.x) > 1:
+			p.facing_right = tx > p.x
 	if active:
 		_update(dt)
 		if active and not _initial_dialog_sent and _start_checkpoint <= 1:
@@ -586,10 +591,13 @@ func start_exit_fall() -> void:
 	if exit_fall:
 		return
 	exit_fall = true
+	p.held_by_cramp = -1
+	p.is_recharging = false
 	# Behind the dialog box (its layer is 8), not in front of it.
 	if _player_canvas:
 		_player_canvas.layer = 4
-	p.vy = -5.0
+	p.vy = -7.0
+	p.vx = 0
 	p.is_grounded = false
 
 
@@ -600,6 +608,12 @@ func exit_fall_done() -> bool:
 
 func _update(dt: float) -> void:
 	if exit_fall:
+		# Kyra is gone (no control, the camera stays); the nuts keep forming
+		# their ring around the grain.
+		var e60 := dt * 60.0
+		_update_particles(dt, e60)
+		if boss.active:
+			_update_boss(dt, e60)
 		return
 	var d60 := dt * 60.0
 	hud.breath_error = false
