@@ -64,6 +64,9 @@ var _play_btn: Button
 var _frame_lbl: Label
 var _mode_btns := {}
 var _cat_btns := {}
+## Sprite settings changed in this browser (id -> {key: value}); only these are
+## kept locally and committed, so the repo's other values are never overwritten.
+var sprite_changes := {}
 var _settings_grid: GridContainer
 var _ids: Array = []
 var _stage: Control
@@ -153,7 +156,9 @@ func _load_manifests() -> void:
 		if sp is Dictionary:
 			for id in sp:
 				if SpriteArt.is_sprite(id) and sp[id] is Dictionary:
-					SpriteArt.settings[id] = sp[id]
+					sprite_changes[id] = sp[id].duplicate()
+					for k in sp[id]:
+						SpriteArt.set_setting(id, k, float(sp[id][k]))
 	# Drop local copies that were saved and are now part of the repo build.
 	for a in local.saved:
 		for name in local.saved[a]:
@@ -178,7 +183,7 @@ func _save_local() -> void:
 		var out := local.duplicate()
 		out["chosen"] = chosen
 		out["bg"] = stage_bg
-		out["sprites"] = SpriteArt.settings
+		out["sprites"] = sprite_changes
 		f.store_string(JSON.stringify(out, " "))
 
 
@@ -369,6 +374,8 @@ func select_category(cat: String) -> void:
 	_build_settings()
 	if not _ids.has(anim):
 		_select_anim("run" if cat == "kyra" else _ids[0])
+	else:
+		_anim_pick.select(_ids.find(anim))
 
 
 func _select_anim(a: String) -> void:
@@ -769,8 +776,10 @@ func build_commit(remote: String) -> Dictionary:
 	manifest["in_game"] = in_game
 	manifest["settings"] = {"scale": PlayerArt.scale, "anim_fps": PlayerArt.anim_fps, "run_rate": PlayerBody.run_rate}
 	var sp: Dictionary = manifest.get("sprites", {}) if manifest.get("sprites", {}) is Dictionary else {}
-	for id in SpriteArt.settings:
-		sp[id] = SpriteArt.settings[id].duplicate()
+	for id in sprite_changes:
+		var e: Dictionary = sp.get(id, {}) if sp.get(id, {}) is Dictionary else {}
+		e.merge(sprite_changes[id], true)
+		sp[id] = e
 	manifest["sprites"] = sp
 	files["godot/data/anim_variants.json"] = (JSON.stringify(manifest, " ") + "\n").to_utf8_buffer()
 	return files
@@ -801,6 +810,7 @@ func save_to_repo() -> void:
 	for a in local.anims:
 		local.saved[a] = local.anims[a].keys()
 	local.deleted = {}
+	sprite_changes = {}
 	_save_local()
 	_applied = true
 	_say("Saved to the repo. Everyone gets it after the next build (~2 min).")
@@ -903,16 +913,21 @@ func _build_settings() -> void:
 	if is_sprite():
 		var id := anim
 		_slider(g, "Frames per second (%s)" % SpriteArt.label(id), 1.0, 30.0, 0.5, SpriteArt.fps_of(id), "%.1f", func(v):
-			SpriteArt.set_setting(id, "fps", v)
-			_save_local())
+			set_sprite_setting(id, "fps", v))
 		_slider(g, "Size in game (%s)" % SpriteArt.label(id), 0.3, 3.0, 0.05, SpriteArt.scale_of(id), "%.2f", func(v):
-			SpriteArt.set_setting(id, "scale", v)
-			_save_local())
+			set_sprite_setting(id, "scale", v))
 		return
 	_slider(g, "Run speed (gameplay)", 2.0, 12.0, 0.1, max_speed, "%.1f", func(v): max_speed = v)
 	_slider(g, "Walk / run frame rate", 0.008, 0.08, 0.001, PlayerBody.run_rate, "%.3f", func(v): PlayerBody.run_rate = v)
 	_slider(g, "Pose frames per second", 2.0, 30.0, 1.0, PlayerArt.anim_fps, "%d", func(v): PlayerArt.anim_fps = v)
 	_slider(g, "Sprite scale", 0.8, 2.6, 0.05, PlayerArt.scale, "%.2f", func(v): PlayerArt.scale = v)
+
+
+## A sprite's fps / scale changed here (kept in this browser until saved).
+func set_sprite_setting(id: String, key: String, v: float) -> void:
+	SpriteArt.set_setting(id, key, v)
+	sprite_changes.get_or_add(id, {})[key] = v
+	_save_local()
 
 
 func _slider(parent: Control, label: String, lo: float, hi: float, step: float, value: float, fmt: String, on_change: Callable) -> void:

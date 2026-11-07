@@ -142,9 +142,11 @@ static func draw(ci: CanvasItem, id: String, c: Vector2, h: float, time_ms: floa
 		return false
 	h *= scale_of(id)
 	var w := t.get_width() * h / t.get_height()
-	ci.draw_set_transform(c, 0.0, Vector2(-1 if flip else 1, 1))
-	ci.draw_texture_rect(t, Rect2(-w / 2, -h / 2, w, h), false, mod)
-	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# No draw_set_transform: it would replace the caller's (camera) transform.
+	var src := Rect2(0, 0, t.get_width(), t.get_height())
+	if flip:
+		src = Rect2(t.get_width(), 0, -t.get_width(), t.get_height())
+	ci.draw_texture_rect_region(t, Rect2(c.x - w / 2, c.y - h / 2, w, h), src, mod)
 	return true
 
 
