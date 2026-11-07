@@ -52,6 +52,9 @@ const SUN_PER_GAME := 3
 ## Side traps (thorny vines): they lash into the outer path when she is this near.
 const VINE_REACH := 12.0
 const VINE_H := 0.7
+## HUD: the sun (top-left) and the water pill (top-right).
+const SUN_HUD := Vector2(66, 66)
+const WATER_HUD := Rect2(W - 16 - 150, 16, 150, 48)
 
 const W := 1066.0
 const H := 600.0
@@ -113,6 +116,16 @@ var stage := 0
 ## Sun pieces found (0–12).
 var sun := 0
 var sun_flash := 0.0
+## Slices drawn in the sun: a found piece flies up first, then fills its slice.
+var sun_shown := 0
+var sun_pulse := 0.0
+var water_flash := 0.0
+## Pickups flying to their indicator: [{kind: "sun" / "drop", from: Vector2, t}].
+var flyers: Array = []
+## A minigame (n) or the end waiting for the flying piece to land.
+var _pending_game := 0
+var _pending_end := false
+const FLY_TIME := 0.65
 ## Waiting for a minigame (after every SUN_PER_GAME pieces).
 var waiting := false
 var loops := 0
@@ -287,6 +300,9 @@ func _process(delta: float) -> void:
 	time += dt
 	flash = maxf(0, flash - dt)
 	sun_flash = maxf(0, sun_flash - dt)
+	sun_pulse = maxf(0, sun_pulse - dt)
+	water_flash = maxf(0, water_flash - dt)
+	_update_flyers(dt)
 	if active and not dialog_open and not done and not waiting:
 		_update(dt)
 	queue_redraw()
@@ -428,6 +444,7 @@ func _hits(wdt: float) -> void:
 				if absf(py - o.y) < 0.8:
 					o.taken = true
 					water = minf(100, water + DROP_WATER)
+					_fly("drop", o)
 					Audio.play_sfx("cink-%02d.wav" % (1 + int(time * 7) % 11), 0.35)
 			"vine":
 				if py < VINE_H:
@@ -436,6 +453,7 @@ func _hits(wdt: float) -> void:
 			"sun":
 				if absf(py - o.y) < 0.9:
 					o.taken = true
+					_fly("sun", o)
 					_sun_piece()
 
 
@@ -445,11 +463,59 @@ func _sun_piece() -> void:
 	sun += 1
 	sun_flash = 1.0
 	Audio.play_sfx("finished.wav", 0.6)
+	# The world waits while the piece flies up; the minigame / the end follows
+	# once it has filled its slice.
 	if sun >= SUN_TOTAL:
-		_finish()
+		waiting = true
+		_pending_end = true
 	elif sun % SUN_PER_GAME == 0:
 		waiting = true
-		sun_game.emit(sun / SUN_PER_GAME)
+		_pending_game = sun / SUN_PER_GAME
+	if flyers.is_empty():
+		_land_pending()
+
+
+## A pickup flies from where it was to its indicator (sun top-left, water top-right).
+func _fly(kind: String, o: Dictionary) -> void:
+	var c := project(_lane_x(o), o.y, o.z)
+	var from := Vector2(c.x, c.y) if c.z > 0 else Vector2(W / 2, H / 2)
+	flyers.append({"kind": kind, "from": from, "t": 0.0})
+
+
+## Where a flyer lands.
+func fly_target(kind: String) -> Vector2:
+	return SUN_HUD if kind == "sun" else Vector2(WATER_HUD.position.x + 26, WATER_HUD.get_center().y)
+
+
+func _update_flyers(dt: float) -> void:
+	for f in flyers.duplicate():
+		f.t += dt / FLY_TIME
+		if f.t >= 1.0:
+			flyers.erase(f)
+			if f.kind == "sun":
+				sun_shown = mini(sun_shown + 1, sun)
+				sun_flash = 1.0
+				sun_pulse = 0.45
+				Audio.play_sfx("finished.wav", 0.35)
+			else:
+				water_flash = 0.45
+	if not flyers.any(func(f): return f.kind == "sun"):
+		sun_shown = sun
+		_land_pending()
+
+
+func _land_pending() -> void:
+	if _pending_end:
+		_pending_end = false
+		if waiting:
+			waiting = false
+			_finish()
+	elif _pending_game > 0:
+		var n := _pending_game
+		_pending_game = 0
+		# after_minigame() may already have run (tests): then nothing waits for it.
+		if waiting:
+			sun_game.emit(n)
 
 
 ## Ran into a root or a branch: bounce back, the path rolls back a bit.
@@ -587,6 +653,7 @@ func _draw() -> void:
 	if flash > 0:
 		draw_rect(Rect2(0, 0, W, H), Color(1, 0.4, 0.3, flash * 0.6))
 	_draw_hud()
+	_draw_flyers()
 
 
 func _draw_tree(t: Dictionary) -> void:
@@ -778,15 +845,39 @@ func _draw_player() -> void:
 			SpriteArt.draw_bird(self, bp, s, flap)
 
 
+func _draw_flyers() -> void:
+	for f in flyers:
+		var k: float = f.t * f.t * (3 - 2 * f.t)
+		var to := fly_target(f.kind)
+		# An arc: up and over towards the indicator.
+		var mid: Vector2 = (f.from + to) / 2 + Vector2(0, -120)
+		var p: Vector2 = f.from.lerp(mid, k).lerp(mid.lerp(to, k), k)
+		if f.kind == "sun":
+			var s := lerpf(30.0, 16.0, k)
+			Draw.radial_glow(self, p, s * 2.2, Color(1, 0.8, 0.3, 0.6), Color(1, 0.95, 0.7, 0.9))
+			SpriteArt.draw_sun_piece(self, p, s, cos(time * 9))
+		else:
+			Draw.radial_glow(self, p, 22, Color(0.37, 0.7, 0.94, 0.35))
+			SpriteArt.draw_drop(self, p, lerpf(1.2, 0.8, k))
+
+
 func _draw_hud() -> void:
 	# The sun at the top-left (where the iron nut is in the cave): 12 slices, one
 	# per piece found; the ring shows the way through the stage.
-	var sc := Vector2(66, 66)
-	draw_arc(sc, 56, -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)
-	SpriteArt.draw_sun(self, sc, 46, sun, sun_flash, time)
+	var sc := SUN_HUD
+	var grow := 1.0 + 0.18 * sin(clampf(sun_pulse / 0.45, 0, 1) * PI)
+	if sun_pulse > 0:
+		Draw.radial_glow(self, sc, 90 * grow, Color(1, 0.9, 0.5, 0.5 * sun_pulse / 0.45))
+	draw_arc(sc, 56 * grow, -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)
+	SpriteArt.draw_sun(self, sc, 46 * grow, sun_shown, sun_flash, time)
 	# Hydration at the top-right (where the breath is in the cave): the water
 	# that feeds slowed time.
-	draw_water_pill(self, Rect2(W - 16 - 150, 16, 150, 48), water, slow, time, SLOW_MIN)
+	var wr := WATER_HUD
+	if water_flash > 0:
+		var g := 6.0 * sin(water_flash / 0.45 * PI)
+		wr = wr.grow(g)
+		Draw.radial_glow(self, Vector2(wr.position.x + 26, wr.get_center().y), 50, Color(0.37, 0.7, 0.94, 0.6 * water_flash / 0.45))
+	draw_water_pill(self, wr, water, slow, time, SLOW_MIN)
 	if not _slow_used and water >= SLOW_MIN:
 		var hint := Text.plain(Text.t("RUNNER_SLOW_HINT"))
 		var hw := Text.font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x

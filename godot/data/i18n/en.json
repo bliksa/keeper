@@ -337,10 +337,10 @@
  "2A1": "A path through the forest! The heaviness is gone. My legs want to run.",
  "2A2": "Then run! I'm Iskra, I wake things up. <KB>← →</KB><GP>D-pad</GP> to switch paths, <KB>Space</KB><GP>🟡</GP> to jump, twice for a double jump.",
  "2A3": "Roots, branches and flying notifications knock you back. Find the sun pieces: each fills one slice of the sun up there. Water feeds your focus.",
- "2A4": "Water feeds your focus: hold <KB>Shift or E</KB><GP>LB</GP> to slow time and read a tricky spot. It drains the water.",
+ "2A4": "Water feeds your focus: hold <KB>Shift or E</KB><GP>LB</GP> to focus, and the world calms down so you can read a tricky spot. Focus uses water.",
  "2E1": "The sun is whole! It's getting light: ovulation is near.",
  "2E2": "Up you go, to the summit. The light is with you.",
- "RUNNER_SLOW_HINT": "<KB>Hold Shift / E</KB><GP>Hold LB</GP>: slow time",
+ "RUNNER_SLOW_HINT": "<KB>Hold Shift / E</KB><GP>Hold LB</GP>: focus",
  "2D1": "A sun piece got away. The forest path goes round again: look for the golden slice.",
  "2B1": "Notifications! Envelopes with wings fly at you and grab you in the air. Stay low or switch paths.",
  "2C1": "Faster now! Thorny vines lash in from the sides. Watch the edges of the path."

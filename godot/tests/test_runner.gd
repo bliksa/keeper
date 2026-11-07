@@ -372,7 +372,7 @@ func _run() -> void:
 	rn.py = 0
 	rn.jump_to(rdrop.z - 0.3)
 	await frames(3)
-	check(rdrop.taken and rn.water > 10, "a water drop fills the focus bar")
+	check(rdrop.taken and rn.water > 10 and rn.flyers.any(func(f): return f.kind == "drop"), "a water drop fills the focus bar (it flies up to it)")
 	# Slowed time: the world runs slower while the water drains.
 	rn.objects.clear()
 	rn.water = 80
@@ -461,8 +461,11 @@ func _run() -> void:
 		er.px = 0
 		er.py = 0
 		er._hits(0.0)
-	for i in 2:
-		take_next.call()
+	take_next.call()
+	check(er.sun == 1 and er.sun_shown == 0 and er.flyers.size() == 1 and er.flyers[0].kind == "sun", "a found piece flies up to the sun first")
+	await seconds(ForestRunner.FLY_TIME + 0.1)
+	check(er.sun_shown == 1 and er.flyers.is_empty() and er.sun_pulse > 0, "then its slice fills and the sun lights up")
+	take_next.call()
 	er.dist = er.stages[0].end
 	er._stage_end()
 	check(er.sun == 2 and er.stage == 1 and er.loops == 0, "a stage without pieces left goes on (no endless loop)")
