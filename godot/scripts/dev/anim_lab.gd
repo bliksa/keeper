@@ -30,6 +30,8 @@ const POSED := ["jump", "sidejump", "doublejump", "fall", "lookdown", "sit", "pa
 
 ## Space reserved at the top (the developer menu's tab bar).
 var top := 0.0
+## Where the test / use / save buttons go (Developer mode's right side of the bar).
+var top_actions: HBoxContainer
 
 ## Variants from data/anim_variants.json: anim -> {name -> [paths]}
 var repo := {}
@@ -887,19 +889,11 @@ func _build_right() -> void:
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD
 	actions.add_child(_status)
-	var use := UiKit.button("Use in game", Vector2(130, 36), 12, Color("#1e293b"))
-	use.tooltip_text = "Play the game with these frames until the page is reloaded"
-	use.pressed.connect(func():
-		_applied = true
-		_say("Used in game (until reload)."))
-	actions.add_child(use)
-	var save := UiKit.button("Save to repo", Vector2(150, 36), 12, Color("#059669"))
-	save.icon = load(ICONS % "git-commit-horizontal")
-	save.add_theme_constant_override("icon_max_width", 18)
-	save.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	save.tooltip_text = "Commit the variants, the chosen ones and the settings to GitHub;\nthe game for everyone updates after the automatic build."
-	save.pressed.connect(save_to_repo)
-	actions.add_child(save)
+	DevMenu.action_buttons(top_actions if top_actions else actions, ["Gameplay preview: run & jump with these frames", set_preview.bind("game")],
+		["Use these frames in the game (until reload)", func():
+			_applied = true
+			_say("Used in game (until reload).")], save_to_repo,
+		"Save to repo: the variants, the chosen ones and the settings (the game rebuilds in ~2 min)")
 
 
 ## Kyra's settings, or the selected sprite's frame rate and size.

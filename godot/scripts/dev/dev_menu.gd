@@ -20,6 +20,8 @@ var _home: Button
 var _old_pick: OptionButton
 ## Header slot the active tab can fill with its own icon buttons.
 var header_tools: HBoxContainer
+## The tab's test / use-in-game / save buttons, right-aligned (action_buttons).
+var actions: HBoxContainer
 var _help: Label
 
 ## Same thickness as the level editor's tool sidebar (LevelEditor.SIDEBAR).
@@ -42,9 +44,9 @@ func _ready() -> void:
 	home.icon = load("res://assets/images/keeper.png")
 	home.expand_icon = true
 	home.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	home.custom_minimum_size = Vector2(ICON + 8, ICON + 4)
+	home.custom_minimum_size = Vector2(ICON, ICON)
 	home.size = home.custom_minimum_size
-	home.position = Vector2(6, (BAR_H - ICON - 4) / 2)
+	home.position = Vector2(8, (BAR_H - ICON) / 2)
 	home.focus_mode = Control.FOCUS_NONE
 	home.tooltip_text = "Back to the menu"
 	var hsb := StyleBoxFlat.new()
@@ -61,7 +63,7 @@ func _ready() -> void:
 	home.pressed.connect(func(): back.emit())
 	add_child(home)
 	_home = home
-	var x := 6.0 + ICON + 8 + 10
+	var x := 8.0 + ICON + 8
 	# Tabs as wide as their names (the level editor's header needs the room).
 	for t in [["shortcuts", "Shortcuts", 96.0], ["level", "Levels", 74.0], ["anim", "Animations", 102.0], ["dialogs", "Dialogs", 82.0]]:
 		var b := UiKit.button(t[1], Vector2(t[2], ICON), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
@@ -81,8 +83,15 @@ func _ready() -> void:
 	header_tools.position = Vector2(x + 16, (BAR_H - ICON) / 2)
 	header_tools.add_theme_constant_override("separation", 2)
 	add_child(header_tools)
+	# Right of the bar, the same in every tab: test, use in game, save to repo.
+	actions = HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	actions.position = Vector2(700, (BAR_H - ICON) / 2)
+	actions.size = Vector2(1066 - 8 - 700, ICON)
+	actions.add_theme_constant_override("separation", 4)
+	add_child(actions)
 	_help = UiKit.label("", 10, Color("#64748b"))
-	_help.position = Vector2(800, 0)
+	_help.position = Vector2(730, 0)
 	_help.size = Vector2(172, BAR_H)
 	_help.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_help.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -102,6 +111,8 @@ func _show(tab: String) -> void:
 		c.queue_free()
 	for c in header_tools.get_children():
 		c.queue_free()
+	for c in actions.get_children():
+		c.queue_free()
 	_help.text = ""
 
 	if _editor:
@@ -120,11 +131,13 @@ func _show(tab: String) -> void:
 		_dialogs = DialogEditor.new()
 		_dialogs.top = BAR_H
 		_dialogs.header = header_tools
+		_dialogs.top_actions = actions
 		add_child(_dialogs)
 		move_child(_dialogs, 1)
 	elif tab == "anim":
 		_lab = AnimLab.new()
 		_lab.top = BAR_H
+		_lab.top_actions = actions
 		_help.text = "Space pause / play\n← → step frames"
 		add_child(_lab)
 		move_child(_lab, 1)
@@ -133,12 +146,39 @@ func _show(tab: String) -> void:
 		_editor = LevelEditor.new()
 		_editor.top = BAR_H
 		_editor.header = header_tools
+		_editor.top_actions = actions
 		# The level editor's header is full; its tips are in the tooltips.
 		_help.text = ""
 		add_child(_editor)
 		move_child(_editor, 1)
 	else:
 		_build_shortcuts()
+
+
+## The same actions in every tab, in this order: test (play icon), use in game
+## (gamepad), save to repo (a floppy disk, green). test / use: [tooltip, Callable]
+## or []. Returns [test, use, save] (null where left out).
+static func action_buttons(box: HBoxContainer, test: Array, use: Array, save: Callable, save_tip := "Save to repo (commits to GitHub; the game rebuilds in ~2 min)") -> Array:
+	var out := [null, null, null]
+	if not test.is_empty():
+		var t := UiKit.icon_button("res://assets/ui/icons/play.svg", test[0], ICON)
+		t.pressed.connect(test[1])
+		box.add_child(t)
+		out[0] = t
+	if not use.is_empty():
+		var u := UiKit.icon_button("res://assets/ui/icons/gamepad-2.svg", use[0], ICON)
+		u.pressed.connect(use[1])
+		box.add_child(u)
+		out[1] = u
+	var sep := VSeparator.new()
+	sep.custom_minimum_size = Vector2(8, ICON)
+	box.add_child(sep)
+	var s := UiKit.icon_button("res://assets/ui/icons/save.svg", save_tip, ICON)
+	UiKit.set_icon_active(s, true)
+	s.pressed.connect(save)
+	box.add_child(s)
+	out[2] = s
+	return out
 
 
 ## Forgets this browser's unlock: DEV asks for the team password next time.

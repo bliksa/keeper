@@ -278,6 +278,8 @@ const ICONS := "res://assets/ui/icons/%s.svg"
 ## Optional header (the developer menu's top bar) for the level actions.
 var header: HBoxContainer
 var _test_button: Button
+## Where the test / use / save buttons go (Developer mode's right side of the bar).
+var top_actions: HBoxContainer
 ## The event group's tool list (its dialog letters change with the level).
 var _events_items: Array = []
 ## group id -> {button, menu, current: [char, icon, name]}
@@ -421,16 +423,13 @@ func _build_header() -> void:
 	_level_pick.item_selected.connect(func(i): select_level(Game.LEVELS.keys()[i]))
 	header.add_child(_level_pick)
 	var items := [
-		["play", "Test level (Enter)", start_test], null,
-		["gamepad-2", "Use this level in the game", _use_in_game],
 		["undo-2", "Back to the bundled level", _use_bundled], null,
 		["folder-open", "Load the game level from the build", _load_game_level],
 		["file-plus", "New empty level", _new_level],
 		["list-plus", "Add 20 rows (horizontal levels: 20 columns)", _add_rows],
 		["layers", "Background: parallax layers", toggle_bg_panel], null,
 		["import", "Import level text", _open_import],
-		["download", "Export: copy + download the level text", _export], null,
-		["git-commit-horizontal", "Save to repo (commits the level to GitHub)", save_to_repo],
+		["download", "Export: copy + download the level text", _export],
 	]
 	for it in items:
 		if it == null:
@@ -441,9 +440,9 @@ func _build_header() -> void:
 		var b := UiKit.icon_button(ICONS % it[0], it[1], ICON)
 		b.pressed.connect(it[2])
 		header.add_child(b)
-		if it[0] == "play":
-			_test_button = b
-			UiKit.set_icon_active(b, true)
+	var bs := DevMenu.action_buttons(top_actions if top_actions else header, ["Test level (Enter)", start_test],
+		["Use this level in the game", _use_in_game], save_to_repo, "Save to repo (commits the level to GitHub)")
+	_test_button = bs[0]
 
 
 func _select_tool(t: String) -> void:

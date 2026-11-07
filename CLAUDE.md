@@ -141,6 +141,13 @@ place in the canvas as in the original frames.
 Uploads in the browser go to `user://anim_uploads/` (IndexedDB, local only) until
 the user clicks **Save to repo**.
 
+## Developer mode bar
+
+`DevMenu`: the logo (home, back to the menu), tabs Shortcuts / Levels / Animations /
+Dialogs, the tab's own tools (`header_tools`) and, right-aligned in every tab, the
+same actions from `DevMenu.action_buttons`: test (play), use in game (gamepad), save
+to repo (floppy, green). Editors get the box as `top_actions`.
+
 ## Saving from the browser (GitHub commits)
 
 `scripts/dev/github_save.gd` (`GitHubSave`) commits files through the GitHub Git

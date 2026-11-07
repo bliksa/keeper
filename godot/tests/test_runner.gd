@@ -1280,6 +1280,7 @@ func _run() -> void:
 	dev._show("dialogs")
 	await frames(3)
 	var de: DialogEditor = dev._dialogs
+	check(dev.actions.get_child_count() == 4 and (dev.actions.get_child(3) as Button).icon.resource_path.ends_with("save.svg"), "test / use in game / save (floppy) on the right of the bar")
 	check(de != null and de.ids_in("2") == ["2A", "2B", "2C", "2D", "2E"] and de.ids_in("0").size() == 4, "the Dialogs tab lists each level's dialogs (2A–2E, 0A–0D)")
 	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", 3) == "3B" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
 	check(de.ids_in("mg").has("mg8_start") and not DialogEditor.is_story("mg8_start"), "minigame talk is listed apart, under its own names")

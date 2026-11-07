@@ -39,6 +39,8 @@ const ICONS := "res://assets/ui/icons/%s.svg"
 var top := 0.0
 ## Optional header (the developer menu's top bar) for the actions.
 var header: HBoxContainer
+## Where the test / use / save buttons go (Developer mode's right side of the bar).
+var top_actions: HBoxContainer
 
 ## Working copy: id -> {"lines": [{"key", "speaker", "text": {lang: s}, "voice"}],
 ## "buttons": [keys], "has_buttons": bool}
@@ -699,9 +701,10 @@ func _build_header() -> void:
 		header.position = Vector2(LIST_W + 16, top + 6)
 		add_child(header)
 	header.add_theme_constant_override("separation", 2)
-	for it in [["gamepad-2", "Use these dialogs in the game (until reload)", use_in_game],
-			["undo-2", "Discard local edits (back to the dialogs in the build)", discard], null,
-			["git-commit-horizontal", "Save to repo (commits the dialogs and the texts to GitHub)", save_to_repo]]:
+	DevMenu.action_buttons(top_actions if top_actions else header, ["Play this dialog in the dialog box", func(): play(Text.language)],
+		["Use these dialogs in the game (until reload)", use_in_game], save_to_repo,
+		"Save to repo (commits the dialogs and the texts to GitHub)")
+	for it in [["undo-2", "Discard local edits (back to the dialogs in the build)", discard]]:
 		if it == null:
 			var sep := VSeparator.new()
 			sep.custom_minimum_size = Vector2(10, 36)
