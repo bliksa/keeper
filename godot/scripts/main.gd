@@ -628,17 +628,13 @@ func _runner_dialog(id: String) -> void:
 		_dialog(id)
 
 
-## Every 4 sun pieces: a minigame (memory, then catch), then the next stage.
+## Every 3 sun pieces: a minigame (memory, catch, pairs), then the next stage.
 func _runner_minigame(n: int) -> void:
-	if n == 1:
-		_on_trigger("mg8")
-	else:
-		_on_trigger("mg9")
+	_on_trigger(["mg8", "mg9", "mg10"][clampi(n - 1, 0, 2)])
 
 
 func _runner_done() -> void:
 	if runner:
-		Game.seeds = runner.seeds
 		Game.water = int(runner.water)
 	_dialog("2E", func():
 		Game.upgrades = {}

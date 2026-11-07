@@ -20,7 +20,6 @@ extends Node2D
 ##    height: one that meets her in the air carries her back along the path.
 ##  * Water drops fill the focus bar; holding Slow (Shift / E / LB) slows time
 ##    while it drains, so a tight cluster of obstacles can be read and jumped.
-##  * Light seeds are counted for the end of the level (to be designed).
 ## Coordinates: x = sideways (m, lane centres -LANE..LANE), y = up (m),
 ## z = along the path (m). The camera follows behind and above Kyra.
 
@@ -36,8 +35,8 @@ const LEVEL_ID := 4
 const MAP_HEADER := """# Forest run (level 2), a top-down map: the bottom row is the start, she runs up the file.
 # Columns: left side | left path | middle path | right path | right side. One row = 2 m.
 # R root (jump)  H branch (high: change path or double jump)  V flying notification  D water drop  U drop up high
-# Y light seed  + sun piece (12 = the sun; every 4 a minigame, the 12th leads to the summit)
-# < > side trap from the left / right side   A next stage starts here (faster; stage 3: random side traps)
+# + sun piece (12 = the sun; every 3 a minigame, the 12th leads to the summit)
+# < > side trap from the left / right side   A next stage starts here (faster; stage 4: random side traps)
 # a-z dialog of level 2 (c = dialog 2C, Developer mode > Dialogs)
 """
 const COLS := 5
@@ -45,11 +44,11 @@ const ROW_M := 2.0
 ## The first row lies this far ahead of the start.
 const START_Z := 8.0
 ## Base speed per stage (m/s); within a stage it grows by STAGE_RAMP.
-const STAGE_SPEED := [9.0, 11.5, 14.0]
+const STAGE_SPEED := [9.0, 11.0, 12.5, 14.5]
 const STAGE_RAMP := 1.5
-const RANDOM_TRAPS_FROM := 2
+const RANDOM_TRAPS_FROM := 3
 const SUN_TOTAL := 12
-const SUN_PER_GAME := 4
+const SUN_PER_GAME := 3
 ## Side traps (thorny vines): they lash into the outer path when she is this near.
 const VINE_REACH := 12.0
 const VINE_H := 0.7
@@ -94,7 +93,6 @@ var vy := 0.0
 var jumps := 2
 var slow := false
 var water := 30.0
-var seeds := 0
 var time := 0.0
 ## Rolling back after a bump (s left) or being carried by a bird (s left).
 var bump_t := 0.0
@@ -132,7 +130,6 @@ const GRACE := 5.0
 func _ready() -> void:
 	_font = Text.font_bold
 	water = Game.water if Game.water > 0 else 30.0
-	seeds = Game.seeds
 	build_course()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
@@ -145,7 +142,7 @@ func _ready() -> void:
 
 ## The course from the top-down map. Per cell:
 ##   R root (jump; RRR across the paths = one long root)   H branch (high)
-##   V flying notification (flies at her)   D water drop   U water drop up high   Y light seed
+##   V flying notification (flies at her)   D water drop   U water drop up high
 ##   + sun piece   < > side trap from the left / right side (any column)
 ##   A a new stage starts at this row   a–z dialog (c = 2C)
 func build_course() -> void:
@@ -179,8 +176,6 @@ func build_course() -> void:
 					_add("drop", z, pl, 0.45)
 				"U":
 					_add("drop", z, pl, BRANCH_H + 0.5)
-				"Y":
-					_add("seed", z, pl, 0.4)
 				"+":
 					_add("sun", z, pl, 0.5)
 				"<":
@@ -352,7 +347,7 @@ func _stage_end() -> void:
 
 
 ## Back to the start of the stage: the forest goes round again. Obstacles and
-## water come back; found seeds and sun pieces stay found.
+## water come back; found sun pieces stay found.
 func _loop_stage() -> void:
 	loops += 1
 	dist = stages[stage].start
@@ -376,7 +371,7 @@ func _loop_stage() -> void:
 func after_minigame() -> void:
 	waiting = false
 	# The stage whose quota is next (an edited map may hold more or fewer than
-	# 4 pieces per stage): never back, never past the last one.
+	# 3 pieces per stage): never back, never past the last one.
 	var target := mini(sun / SUN_PER_GAME, stages.size() - 1)
 	if target > stage:
 		jump_to(stages[target].start)
@@ -430,11 +425,6 @@ func _hits(wdt: float) -> void:
 					o.taken = true
 					water = minf(100, water + DROP_WATER)
 					Audio.play_sfx("cink-%02d.wav" % (1 + int(time * 7) % 11), 0.35)
-			"seed":
-				if absf(py - o.y) < 0.9:
-					o.taken = true
-					seeds += 1
-					Audio.play_sfx("finished.wav", 0.4)
 			"vine":
 				if py < VINE_H:
 					o.hit = true
@@ -582,7 +572,6 @@ func _draw() -> void:
 			"branch": _draw_branch(it[2])
 			"bird": _draw_bird(it[2])
 			"drop": _draw_drop(it[2])
-			"seed": _draw_seed(it[2])
 			"sun": _draw_sun_piece(it[2])
 			"vine": _draw_vine(it[2])
 	if not player_drawn:
@@ -690,17 +679,6 @@ func _draw_drop(o: Dictionary) -> void:
 	draw_circle(Vector2(c.x - s * 0.3, c.y), s * 0.25, Color(1, 1, 1, 0.8))
 
 
-func _draw_seed(o: Dictionary) -> void:
-	var c := project(_lane_x(o), o.y + sin(time * 3 + o.z) * 0.08, o.z)
-	if c.z <= 0:
-		return
-	var s := 0.18 * c.z
-	if SpriteArt.draw(self, "seed", Vector2(c.x, c.y), s * 3.3, time * 1000.0 + o.z * 37.0):
-		return
-	Draw.radial_glow(self, Vector2(c.x, c.y), s * 3, Color(1, 0.85, 0.4, 0.5), Color(1, 0.98, 0.8, 0.95))
-	draw_circle(Vector2(c.x, c.y), s * 0.6, Color("#fff4c2"))
-
-
 ## A sun piece: a golden triangular slice, turning slowly, with a glow.
 func _draw_sun_piece(o: Dictionary) -> void:
 	var c := project(_lane_x(o), o.y + sin(time * 3 + o.z) * 0.08, o.z)
@@ -798,16 +776,6 @@ func _draw_player() -> void:
 
 func _draw_hud() -> void:
 	var bg := Color("#f0eee9")
-	var ink := Color("#064e3b")
-	# Seeds.
-	var label := str(seeds)
-	var tw := _font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
-	var r := Rect2(16, 16, tw + 70, 48)
-	Draw.panel(self, r, bg, 16, Color(0.37, 0.61, 0.6, 0.2), 2)
-	draw_string(_font, Vector2(r.position.x + 20, r.position.y + 31), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, ink)
-	var ic := Vector2(r.end.x - 26, r.position.y + 24)
-	Draw.radial_glow(self, ic, 16, Color(1, 0.85, 0.4, 0.5), Color(1, 0.98, 0.8, 0.95))
-	draw_circle(ic, 6, Color("#fff4c2"))
 	# The sun: 12 slices, one per piece found; a ring shows the way through the stage.
 	var sc := Vector2(W / 2, 62)
 	draw_arc(sc, 56, -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)

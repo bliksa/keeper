@@ -23,6 +23,16 @@ const GROUPS := [["0", "0 · Prologue (forest)"], ["1", "1 · Cave"], ["2", "2 �
 	["3", "3 · Summit"], ["M", "M · Old meadow"], ["mg", "Minigames"]]
 const SPEAKERS := ["Kyra", "Estrogenka", "Iskra"]
 const LIST_W := 270.0
+## Dialogs the game starts by name (not by a map letter): they can't be deleted
+## and their letters are never given to a new dialog.
+const BY_GAME := {
+	"0A": "the forest intro (start)", "0B": "the forest intro (Estra appears)", "0C": "the forest intro (before breathing)",
+	"0D": "the end of the breathing minigame", "1A": "the start of the cave", "1B": "the first cramp (X in the cave)",
+	"1C": "the boss fight (start)", "1D": "the boss defeated (then the corridor)", "1E": "the boss lost",
+	"2A": "the start of the forest run", "2D": "a stage repeating (sun pieces missing)", "2E": "the full sun (end of level 2)",
+	"3A": "the start of the summit", "3F": "the LH wave", "3G": "the summit (end)",
+	"MA": "the start of the old meadow", "MF": "the locked gate", "MG": "the open gate (end)",
+}
 const ICONS := "res://assets/ui/icons/%s.svg"
 
 ## Space reserved at the top (the developer menu's tab bar).
@@ -37,6 +47,8 @@ var nodes := {}
 var order: Array = []
 ## Deleted ids (they exist in the bundled files).
 var deleted := {}
+## Saved to the repo from here, not in this build yet: id -> model (null = deleted).
+var _saved := {}
 var group := "1"
 var current := ""
 
@@ -49,6 +61,11 @@ var _status: Label
 var _group_pick: OptionButton
 var _measure: RichTextLabel
 var _preview: DialogBox
+var _preview_layer: CanvasLayer
+## The game's language while a preview plays in another one.
+var _lang_before := ""
+## "Use in game" was pressed in this session.
+var _used := false
 var _gh: GitHubSave
 
 
@@ -102,6 +119,25 @@ func load_data() -> void:
 		_bundled[id] = JSON.stringify(nodes[id])
 	var e: Variant = _read(EDIT_PATH)
 	if e is Dictionary:
+		# Saved to the repo but not in this build yet: the new base.
+		var saved: Variant = e.get("saved", {})
+		if saved is Dictionary:
+			for id in saved.keys():
+				# Once the build has it, the build is the base again.
+				var built: bool = (saved[id] == null and not nodes.has(id)) or (saved[id] is Dictionary and _bundled.get(id, "") == JSON.stringify(saved[id]))
+				if built:
+					saved.erase(id)
+					continue
+				if saved[id] == null:
+					nodes.erase(id)
+					order.erase(id)
+					_bundled.erase(id)
+				elif saved[id] is Dictionary:
+					nodes[id] = saved[id]
+					_bundled[id] = JSON.stringify(saved[id])
+					if not order.has(id):
+						order.append(id)
+			_saved = saved
 		for id in e.get("nodes", {}):
 			if e.nodes[id] is Dictionary:
 				nodes[id] = e.nodes[id]
@@ -176,7 +212,7 @@ func has_unsaved() -> bool:
 
 
 func _save_local() -> void:
-	var out := {"nodes": {}, "deleted": deleted}
+	var out := {"nodes": {}, "deleted": deleted, "saved": _saved}
 	for id in changed_ids():
 		out.nodes[id] = _normalized(id)
 	var f := FileAccess.open(EDIT_PATH, FileAccess.WRITE)
@@ -200,7 +236,7 @@ func node_json(id: String) -> Dictionary:
 func next_id(g: String) -> String:
 	for i in 26:
 		var id := g + char(65 + i)
-		if not nodes.has(id):
+		if not nodes.has(id) and not BY_GAME.has(id):
 			return id
 	return ""
 
@@ -243,6 +279,9 @@ func delete_dialog() -> void:
 		return
 	if not is_story(current):
 		_say("Minigame talk can't be deleted (its minigame starts it).")
+		return
+	if BY_GAME.has(current):
+		_say("%s is started by the game (%s): it can't be deleted." % [current, BY_GAME[current]])
 		return
 	var id := current
 	nodes.erase(id)
@@ -321,8 +360,14 @@ func _changed(msg: String) -> void:
 
 ## Undo every local edit (back to the bundled dialogs).
 func discard() -> void:
-	DirAccess.remove_absolute(EDIT_PATH)
+	# Dialogs already saved to the repo stay (they are in the next build).
+	var f := FileAccess.open(EDIT_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"saved": _saved}, " ", false))
+		f.close()
 	load_data()
+	if _used:
+		use_in_game()
 	current = ""
 	select_group(group)
 	_say("Local edits discarded.")
@@ -334,7 +379,8 @@ func discard() -> void:
 func use_in_game() -> void:
 	for id in deleted:
 		Text.dialogs.erase(id)
-	for id in changed_ids():
+	# Every dialog, not only the changed ones: an earlier "Use in game" is undone too.
+	for id in order:
 		var n: Dictionary = nodes[id]
 		for i in n.lines.size():
 			var key := key_of(id, i)
@@ -345,6 +391,7 @@ func use_in_game() -> void:
 			else:
 				Text.voice_overrides.erase(key)
 		Text.dialogs[id] = node_json(id)
+	_used = true
 	_say("The game uses these dialogs now (until reload).")
 
 
@@ -431,8 +478,17 @@ func save_to_repo() -> void:
 		if "token" in res.error:
 			GitHubSave.forget_token()
 		return
-	DirAccess.remove_absolute(EDIT_PATH)
+	# Until the next build these are the base (reopening must not show the old text).
+	for id in deleted:
+		_saved[id] = null
+		_bundled.erase(id)
+	for id in changed_ids():
+		_saved[id] = _normalized(id)
+		_bundled[id] = JSON.stringify(_saved[id])
+	deleted = {}
+	_save_local()
 	use_in_game()
+	_refresh_list()
 	_say("Saved to the repo. Everyone gets it after the next build (~2 min).")
 
 
@@ -457,24 +513,31 @@ func play(lang: String) -> void:
 			Text._strings.get_or_add(l, {})[key] = n.lines[i].text[l]
 		parts.append({"speaker": n.lines[i].speaker, "text": key})
 	Text.dialogs[pid] = {"parts": parts, "buttons": n.buttons.duplicate() if not (n.buttons as Array).is_empty() else ["BTN_CONTINUE"]}
-	var lang0 := Text.language
+	if _lang_before == "":
+		_lang_before = Text.language
 	Text.language = lang
-	var layer := CanvasLayer.new()
-	layer.layer = 40
-	layer.name = "Preview"
-	add_child(layer)
+	_preview_layer = CanvasLayer.new()
+	_preview_layer.layer = 40
+	add_child(_preview_layer)
 	_preview = DialogBox.new()
-	layer.add_child(_preview)
-	_preview.show_node(pid, func(_b):
-		Text.language = lang0
-		close_preview.call_deferred())
+	_preview_layer.add_child(_preview)
+	_preview.show_node(pid, func(_b): close_preview.call_deferred())
 
 
 func close_preview() -> void:
-	if has_node("Preview"):
-		get_node("Preview").queue_free()
+	if _preview_layer and is_instance_valid(_preview_layer):
+		remove_child(_preview_layer)
+		_preview_layer.queue_free()
+	_preview_layer = null
 	_preview = null
 	Text.dialogs.erase("__preview")
+	for l in LANGS:
+		for k in Text._strings.get(l, {}).keys():
+			if str(k).begins_with("__preview_"):
+				Text._strings[l].erase(k)
+	if _lang_before != "":
+		Text.language = _lang_before
+		_lang_before = ""
 
 
 # --- UI -----------------------------------------------------------------------------
@@ -634,8 +697,8 @@ func where_of(id: String) -> String:
 	for lid in Game.DIALOG_LEVEL:
 		if Game.DIALOG_LEVEL[lid] == id[0]:
 			level = Game.LEVEL_NAMES[lid]
-	if id[0] == "0":
-		return "Prologue in the forest: started by the game."
+	if BY_GAME.has(id):
+		return "Started by the game: %s." % BY_GAME[id]
 	if id[1] == "A":
 		return "Said when %s starts (or letter a in its map)." % level
 	return "Letter %s in the %s map starts it (level editor)." % [id[1].to_lower(), level]

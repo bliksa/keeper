@@ -26,7 +26,7 @@ const DEFS := {
 	"drop": {"cat": "collectibles", "label": "Water drop", "size": 26.0, "fps": 8.0, "frames": [],
 		"where": "Forest run + meadow"},
 	"seed": {"cat": "collectibles", "label": "Light seed", "size": 30.0, "fps": 8.0, "frames": [],
-		"where": "Forest run + meadow"},
+		"where": "Meadow (old level 2)"},
 	"sun_piece": {"cat": "collectibles", "label": "Sun piece", "size": 40.0, "fps": 8.0, "frames": [],
 		"where": "Forest run (12 fill the sun)"},
 	"cramp": {"cat": "enemies", "label": "Cramp", "size": 52.0, "fps": 10.0, "frames": [],
@@ -370,8 +370,8 @@ static func draw_sun(ci: CanvasItem, c: Vector2, r: float, found: int, flash := 
 		else:
 			Draw.polygon_safe(ci, tri, Color(1, 1, 1, 0.16))
 			ci.draw_polyline(tri + PackedVector2Array([tri[0]]), Color(1, 1, 1, 0.45), 1.5, true)
-	# Every 4 slices: a minigame (a dot on the rim); the last one leads to the summit.
-	for k: int in [4, 8]:
+	# Every 3 slices: a minigame (a dot on the rim); the last one leads to the summit.
+	for k: int in [3, 6, 9]:
 		var a := -PI / 2 + k * TAU / 12
 		ci.draw_circle(c + Vector2(cos(a), sin(a)) * (r + 3), 4.0, Color("#fef3c7") if found >= k else Color(1, 1, 1, 0.6))
 	ci.draw_circle(c, r * 0.16, Color("#fff7d6"))

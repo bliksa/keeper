@@ -18,8 +18,16 @@ func _ready() -> void:
 	get_tree().root.size = Vector2i(1066, 600)
 	await get_tree().process_frame
 	await _run()
+	# A script error stops _run() early: that is a failure too.
+	if not _finished:
+		failures += 1
+		print("  FAIL the test run stopped early (script error above)")
 	print("\n%s (%d failure%s)" % ["PASSED" if failures == 0 else "FAILED", failures, "" if failures == 1 else "s"])
 	get_tree().quit(1 if failures > 0 else 0)
+
+
+## Set by the last line of _run().
+var _finished := false
 
 
 func check(cond: bool, msg: String) -> void:
@@ -308,7 +316,8 @@ func _run() -> void:
 	rn.lane = 0
 	rn.px = 0
 	rn.build_course()
-	check(rn.stages.size() == 3 and rn.objects.filter(func(o): return o.kind == "sun").size() == ForestRunner.SUN_TOTAL, "the map has 3 stages and 12 sun pieces")
+	check(rn.stages.size() == 4 and rn.objects.filter(func(o): return o.kind == "sun").size() == ForestRunner.SUN_TOTAL, "the map has 4 stages and 12 sun pieces")
+	check(not rn.objects.any(func(o): return o.kind == "bird" and o.stage < 2) and not rn.objects.any(func(o): return o.kind == "seed"), "no flying notifications before stage 3, no seeds")
 	check(not rn.objects.any(func(o): return o.kind == "bird" and o.stage == 0), "stage 1 has no crows (only jumping and water)")
 	var roots: Array = rn.objects.filter(func(o): return o.kind == "root" and o.lane == -9)
 	var root0: Dictionary = roots[0]
@@ -323,7 +332,7 @@ func _run() -> void:
 	rn.jump()
 	var cleared := await until(func(): return rn.dist > root0.z + 1.5, 3)
 	check(cleared and rn.bump_t <= 0 and not root0.hit, "a jump clears the root")
-	var birds: Array = rn.objects.filter(func(o): return o.kind == "bird")
+	var birds: Array = rn.objects.filter(func(o): return o.kind == "bird" and o.z - rn.stages[o.stage].start > ForestRunner.CARRY_BACK + 6)
 	var bird: Dictionary = birds[0]
 	rn.lane = bird.lane
 	rn.px = bird.lane * ForestRunner.LANE
@@ -364,14 +373,6 @@ func _run() -> void:
 	rn.jump_to(rdrop.z - 0.3)
 	await frames(3)
 	check(rdrop.taken and rn.water > 10, "a water drop fills the focus bar")
-	var seeds_l: Array = rn.objects.filter(func(o): return o.kind == "seed" and o.y < 1.0 and not o.taken)
-	var sd: Dictionary = seeds_l[0]
-	rn.lane = sd.lane
-	rn.px = sd.lane * ForestRunner.LANE
-	var seeds_before := rn.seeds
-	rn.jump_to(sd.z - 0.3)
-	await frames(3)
-	check(rn.seeds == seeds_before + 1, "a light seed is collected")
 	# Slowed time: the world runs slower while the water drains.
 	rn.objects.clear()
 	rn.water = 80
@@ -428,7 +429,7 @@ func _run() -> void:
 			check(got, "sun piece %d is found" % (n + 1))
 			break
 		if (n + 1) % ForestRunner.SUN_PER_GAME == 0:
-			var game_id := "mg8" if n + 1 == 4 else "mg9"
+			var game_id: String = ["mg8", "mg9", "mg10"][(n + 1) / ForestRunner.SUN_PER_GAME - 1]
 			var opened := await until(func(): return main.state == game_id and main.minigame != null, 3)
 			await frames(2)
 			check(opened and rn.waiting and not rn.visible and rn.sun == n + 1, "%d sun pieces open minigame %s" % [n + 1, game_id])
@@ -436,17 +437,17 @@ func _run() -> void:
 			main.minigame.completed.emit()
 			await finish_dialog(game_id + "_after")
 			await frames(3)
-			check(main.state == "runner" and not rn.waiting and rn.stage == (n + 1) / 4 and rn.visible, "after the minigame the run goes on with stage %d" % ((n + 1) / 4 + 1))
-	check(rn.objects.any(func(o): return o.get("random", false) and o.stage == 2), "the last stage has random side traps")
+			check(main.state == "runner" and not rn.waiting and rn.stage == (n + 1) / ForestRunner.SUN_PER_GAME and rn.visible, "after the minigame the run goes on with stage %d" % ((n + 1) / ForestRunner.SUN_PER_GAME + 1))
+	check(rn.objects.any(func(o): return o.get("random", false) and o.stage == 3), "the last stage has random side traps")
 	var fin := await until(func(): return node_box().node_id() == "2E", 5)
-	check(fin and rn.sun == ForestRunner.SUN_TOTAL and Game.seeds == rn.seeds, "the 12th piece completes the sun and ends the level; the seeds are kept")
+	check(fin and rn.sun == ForestRunner.SUN_TOTAL, "the 12th piece completes the sun and ends the level")
 	await finish_dialog("2E")
 	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
 	check(summit, "the summit (level 3) starts after the forest run")
 
 	step("forest run – an edited map")
-	# Stage 1 has 3 pieces, stage 2 has 5 and a dialog after them, stage 3 has 4.
-	var map_up := ["..+..", "..+..", "..+..", "A....", "..+..", "..+..", "..+..", "..+..", "..+..", "..b..", "A....", "..+..", "..+..", "..+..", "..+.."]
+	# Stage 1 has 2 pieces, stage 2 has 4 and a dialog after them, stage 3 has 3.
+	var map_up := ["..+..", "..+..", "A....", "..+..", "..+..", "..+..", "..+..", "..b..", "A....", "..+..", "..+..", "..+.."]
 	map_up.reverse()
 	var er := ForestRunner.new()
 	er.rows = PackedStringArray(map_up)
@@ -460,18 +461,18 @@ func _run() -> void:
 		er.px = 0
 		er.py = 0
 		er._hits(0.0)
-	for i in 3:
+	for i in 2:
 		take_next.call()
 	er.dist = er.stages[0].end
 	er._stage_end()
-	check(er.sun == 3 and er.stage == 1 and er.loops == 0, "a stage without pieces left goes on (no endless loop)")
+	check(er.sun == 2 and er.stage == 1 and er.loops == 0, "a stage without pieces left goes on (no endless loop)")
 	take_next.call()
-	check(er.waiting and er.sun == 4, "the 4th piece (in stage 2) starts a minigame")
+	check(er.waiting and er.sun == 3, "the 3rd piece (in stage 2) starts a minigame")
 	er.after_minigame()
 	check(er.stage == 1 and not er.waiting, "after it the run stays in stage 2: its other pieces can still be found")
-	for i in 4:
+	for i in 3:
 		take_next.call()
-	check(er.waiting and er.sun == 8, "8 pieces: the second minigame")
+	check(er.waiting and er.sun == 6, "6 pieces: the second minigame")
 	var said := []
 	er.show_dialog.connect(func(id): said.append(id))
 	er.after_minigame()
@@ -903,9 +904,18 @@ func _run() -> void:
 	ed.select_level(2)
 	await frames(2)
 	check(ed.horizontal() and ed.cols() > 100 and ed.rows.size() == 10 and ed._tool_info.has("Y") and ed._tool_info.has("G"), "editor switches to the horizontal meadow and has its tools")
+	# An autosave from before the dialog renaming gets today's letters.
+	var old_txt := LevelData.to_text(Game.level_rows(3)).replace("b", "h")
+	var af := FileAccess.open(LevelEditor.AUTOSAVE_FMT % 3, FileAccess.WRITE)
+	af.store_string(old_txt)
+	af.close()
 	ed.select_level(3)
 	await frames(2)
 	check(not ed.horizontal() and ed.rows.size() == Game.level_rows(3).size() and ed._tool_info.has("@") and ed._tool_info.has("E"), "editor switches to the summit and has its tools")
+	check(ed.rows == Game.level_rows(3), "an old autosave's dialog letters are moved to the new names (h → b)")
+	DirAccess.remove_absolute(LevelEditor.AUTOSAVE_FMT % 3)
+	if FileAccess.file_exists(LevelEditor.AUTOSAVE_FMT % ForestRunner.LEVEL_ID):
+		DirAccess.remove_absolute(LevelEditor.AUTOSAVE_FMT % ForestRunner.LEVEL_ID)
 	ed.select_level(ForestRunner.LEVEL_ID)
 	await frames(3)
 	check(ed.is_runner() and ed.cols() == ForestRunner.COLS and ed.rows.size() == Game.level_rows(ForestRunner.LEVEL_ID).size() and ed._tool_info.has("+") and ed._tool_info.has("<"), "editor shows the forest run as a top-down map with its tools")
@@ -1253,11 +1263,25 @@ func _run() -> void:
 	de.close_preview()
 	await frames(2)
 	de.discard()
-	check(not de.is_changed("2C") and not FileAccess.file_exists(DialogEditor.EDIT_PATH), "discarding the local edits")
+	check(not de.is_changed("2C") and not de.has_unsaved(), "discarding the local edits")
+	Text.language = "sk"
+	de.play("en")
+	await frames(2)
+	de.play("pt")
+	await frames(2)
+	check(Text.language == "pt", "Play shows the dialog in the chosen language")
+	de.close_preview()
+	check(Text.language == "sk" and not Text.dialogs.has("__preview") and not Text._strings.en.has("__preview_0"), "closing the preview restores the game's language")
+	de.select_group("1")
+	de.select("1C")
+	de.delete_dialog()
+	check(de.nodes.has("1C") and de.where_of("1C").begins_with("Started by the game"), "a dialog the game starts (1C, the boss) can't be deleted")
+	check(de.next_id("2") == "2F" and de.next_id("1") == "1F", "new dialogs never take a letter the game uses")
 	Text._ready()
 	check(Text.dialogs["2C"].parts.size() == 1, "the game's dialogs back as built")
 	dev._show("shortcuts")
 	await frames(2)
+	_finished = true
 
 
 # --- helpers ------------------------------------------------------------------

@@ -17,6 +17,10 @@ const END_PAD := 96.0
 const SIDEBAR := 48.0
 const ICON := 36.0
 const AUTOSAVE := "user://custom_level.txt"
+## First line of autosaves written since dialogs are named per level (2C …).
+const AUTOSAVE_MARK := "# editor autosave v2"
+## Dialog letters of older autosaves -> today's letters, per level id.
+const OLD_LETTERS := {1: {"x": "b"}, 4: {"o": "b", "p": "c"}, 3: {"h": "b", "k": "c", "m": "d", "n": "e"}, 2: {"c": "b", "d": "c", "e": "d", "f": "e"}}
 ## Autosave of the level being edited, per level id (1 cave, 2 garden).
 const AUTOSAVE_FMT := "user://custom_level_%d.txt"
 ## Backgrounds being edited (level id -> BackgroundData config), kept in this browser.
@@ -126,7 +130,17 @@ func _load_initial() -> void:
 	rows = PackedStringArray()
 	if FileAccess.file_exists(_autosave_path()):
 		var f := FileAccess.open(_autosave_path(), FileAccess.READ)
-		rows = LevelData.parse_text(f.get_as_text(), Game.level_cols(level_id))
+		var txt := f.get_as_text()
+		rows = LevelData.parse_text(txt, Game.level_cols(level_id))
+		if not txt.begins_with(AUTOSAVE_MARK):
+			# Saved before the dialogs were renamed: move its letters over.
+			var m: Dictionary = OLD_LETTERS.get(level_id, {})
+			for i in rows.size():
+				var r := rows[i]
+				for c in r.length():
+					if m.has(r[c]):
+						r[c] = m[r[c]]
+				rows[i] = r
 		# An autosave of the wrong shape (e.g. from before the level changed orientation) is ignored.
 		if not is_runner() and horizontal() != (rows.size() <= 16 and rows.size() > 0 and rows[0].length() > LevelData.COLS):
 			rows = PackedStringArray()
@@ -186,7 +200,7 @@ func _resize_grid() -> void:
 func _autosave() -> void:
 	var f := FileAccess.open(_autosave_path(), FileAccess.WRITE)
 	if f:
-		f.store_string(_level_text())
+		f.store_string(AUTOSAVE_MARK + "\n" + _level_text())
 
 
 func _toast_msg(s: String) -> void:
@@ -226,19 +240,19 @@ const GROUPS := [
 		["T", "arrow-up-to-line", "Teleport to top (T)"],
 	]},
 	{"id": "forest", "name": "Forest run (level 2)", "items": [
-		["+", "sun", "Sun piece (+): 12 = the sun, every 4 a minigame"],
+		["+", "sun", "Sun piece (+): 12 = the sun, every 3 a minigame"],
 		["R", "sprout", "Root (R): jump over it"],
 		["H", "rectangle-horizontal", "Branch (H): high, change path or double jump"],
 		["V", "bird", "Flying notification (V): grabs her in the air"],
 		["D", "droplets", "Water drop (D)"],
 		["U", "arrow-up", "Water drop up high (U)"],
-		["Y", "sparkles", "Light seed (Y)"],
 		["<", "chevron-right", "Side trap from the left (<)"],
 		[">", "chevron-left", "Side trap from the right (>)"],
 		["A", "flag-triangle-right", "Next stage starts here (A): faster"],
 	]},
 	{"id": "meadow", "name": "Meadow (old level 2)", "items": [
 		["#", "droplets", "River (#)"],
+		["Y", "sparkles", "Light seed (Y)"],
 		["K", "brain", "Minigame: memory (K)"],
 		["M", "cloud-lightning", "Minigame: catch (M)"],
 		["Q", "link", "Minigame: pairs (Q)"],
@@ -623,9 +637,6 @@ func _draw_runner_cell(ci: CanvasItem, ch: String, cell: Rect2) -> bool:
 			if ch == "U":
 				ci.draw_line(mid + Vector2(12, 6), mid + Vector2(12, -8), Color("#93c5fd"), 2.0)
 				ci.draw_colored_polygon(PackedVector2Array([mid + Vector2(8, -6), mid + Vector2(16, -6), mid + Vector2(12, -11)]), Color("#93c5fd"))
-		"Y":
-			ci.draw_circle(mid, 10, Color("#fde68a", 0.5))
-			ci.draw_circle(mid, 5, Color("#fff4c2"))
 		"+":
 			ci.draw_circle(mid, 13, Color("#fbbf24", 0.35))
 			SpriteArt.draw_sun_piece(ci, mid, 18)

@@ -109,7 +109,7 @@ func _process(delta: float) -> void:
 					var ok: Array = Text.breathing_hints.get("success", ["DIA_B01"])
 					_say(ok[cycles % ok.size()])
 				else:
-					hint_key = "0D1"
+					hint_key = Text.dialogs.get("0D", {}).get("parts", [{"text": "0D1"}])[0].text
 					finish(0.5)
 				Audio.play_sfx("breathok.wav", 0.6)
 				phase = "inhale"

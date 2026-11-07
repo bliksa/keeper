@@ -182,15 +182,16 @@ y up, z along the path; `dist` = progress). The course is a **top-down map**,
 `data/levels/forest_run.txt` (level editor id 4 = `ForestRunner.LEVEL_ID`, 5 columns:
 left side | three paths | right side, one row = `ROW_M` m, the bottom row is the
 start; `MAP_HEADER` keeps the legend): `R` root, `H` branch, `V` flying notification (an envelope with wings and "!", kind `bird`), `D`/`U` water
-drop low/high, `Y` light seed, `+` sun piece, `<` `>` side trap (thorny vine),
+drop low/high, `+` sun piece, `<` `>` side trap (thorny vine),
 `A` next stage, `a–z` dialog. `build_course()` reads it (`rows`, or
 `Game.current_level_rows(4)`).
 
 The sun (HUD top centre, `SpriteArt.draw_sun`) has 12 triangular slices; each
-`+` fills one (`sun`). Every `SUN_PER_GAME` = 4 pieces `sun_game(n)` → Main opens
-mg8 (memory) / mg9 (catch) and `_back_to_cave` calls `after_minigame()` (next stage
+`+` fills one (`sun`). Every `SUN_PER_GAME` = 3 pieces `sun_game(n)` → Main opens
+mg8 (memory) / mg9 (catch) / mg10 (pairs) and `_back_to_cave` calls `after_minigame()` (next stage
 from its start); the 12th piece → `finished` → `runner_end` → `_start_summit`.
-`stages` (cut by `A` rows): speed `STAGE_SPEED[stage]` + `STAGE_RAMP` within the
+`stages` (cut by `A` rows; the map has 4 of 3 pieces each: jumping + water, faster,
+flying notifications, fastest + random side traps): speed `STAGE_SPEED[stage]` + `STAGE_RAMP` within the
 stage; from `RANDOM_TRAPS_FROM` random side traps (`_random_traps`, new on every
 repeat). Reaching a stage's end with its pieces still missing repeats it
 (`_loop_stage`: obstacles + drops re-armed, found pieces / seeds stay; dialog
@@ -201,7 +202,7 @@ except within `GRACE`. Slow time: action `slow_time` (Shift / E / LB / Y) while
 `water` lasts. `jump_to(z)` moves her (and the stage) for tests / the dev menu
 ("Forest run", "Stage 2", "Stage 3"). Level editor: tool group "Forest run",
 `_draw_runner_row/_cell`, test play `_start_runner_test` (minigames skipped).
-Dialogs 2A (start), 2B (notifications, letter b), 2C (side traps, letter c), 2D (stage repeat), 2E (end).
+Dialogs 2A (start), 2B (notifications, letter b), 2C (side traps, letter c), 2D (stage repeat), 2E (end). No seeds in the run.
 
 ## Old level 2: the meadow (follicular phase, horizontal; dev menu only)
 
