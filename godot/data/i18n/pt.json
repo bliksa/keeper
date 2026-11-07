@@ -342,6 +342,8 @@
  "2E2": "Agora sobe até ao cume. A luz vai contigo.",
  "RUNNER_SLOW_HINT": "<KB>Mantém Shift / E</KB><GP>Mantém LB</GP>: foco",
  "2D1": "Um pedaço do sol escapou. O caminho da floresta dá a volta: procura a fatia dourada.",
+ "2D2": "O stress e o esforço podem prolongar esta fase do ciclo: o corpo espera até se sentir seguro.",
  "2B1": "Notificações! Envelopes com asas voam direito a ti e apanham-te no ar. Fica junto ao chão ou muda de caminho.",
- "2C1": "Agora mais depressa! Trepadeiras com espinhos atacam dos lados. Atenção às margens do caminho."
+ "2C1": "Agora mais depressa! Trepadeiras com espinhos atacam dos lados. Atenção às margens do caminho.",
+ "RUNNER_LOOP_NOTE": "O stress e o esforço podem prolongar esta fase"
 }

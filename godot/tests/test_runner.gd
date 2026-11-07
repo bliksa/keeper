@@ -429,7 +429,12 @@ func _run() -> void:
 	check(rn.loops == 1 and rn.stage == 0 and rn.dist < rn.stages[0].start + 2, "the stage repeats from its start while its sun pieces are missing")
 	var looped := await until(func(): return node_box().node_id() == "2D", 3)
 	check(looped, "Iskra says the path goes round again")
+	check(Text.dialogs["2D"].parts.size() == 2 and Text.t("2D2").length() > 20, "… and Estra says stress and strain can lengthen this phase")
 	await finish_dialog("2D")
+	rn.jump_to(rn.stages[0].end - 0.2)
+	await frames(3)
+	check(rn.loops == 2 and rn.loop_note > 0 and node_box().node_id() != "2D", "a later repeat shows a short note instead of the dialog")
+	rn.loop_note = 0
 	for n in ForestRunner.SUN_TOTAL:
 		var pieces: Array = rn.objects.filter(func(o): return o.kind == "sun" and not o.taken)
 		var pc: Dictionary = pieces[0]

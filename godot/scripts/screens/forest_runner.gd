@@ -155,6 +155,8 @@ const FLY_TIME := 0.65
 ## Waiting for a minigame (after every SUN_PER_GAME pieces).
 var waiting := false
 var loops := 0
+## Seconds left of the "stress can lengthen this phase" note.
+var loop_note := 0.0
 var _loop_told := false
 var trees: Array = []
 var _font: Font
@@ -328,6 +330,8 @@ func _process(delta: float) -> void:
 	sun_flash = maxf(0, sun_flash - dt)
 	sun_pulse = maxf(0, sun_pulse - dt)
 	water_flash = maxf(0, water_flash - dt)
+	if not dialog_open:
+		loop_note = maxf(0, loop_note - dt)
 	_update_flyers(dt)
 	land_t = maxf(0, land_t - dt)
 	if intro > 0:
@@ -416,6 +420,9 @@ func _loop_stage() -> void:
 	if not _loop_told:
 		_loop_told = true
 		show_dialog.emit("2D")
+	else:
+		# Later repeats: a short reminder instead of the dialog.
+		loop_note = 3.5
 
 
 ## After the minigame: on with the next stage (from its start).
@@ -690,8 +697,9 @@ func _draw() -> void:
 	# The path: a trapezoid to the horizon with moving stripes.
 	var near_l := project(-LANE * 1.9, 0, dist + 0.4 - CAM_BACK + 0.31)
 	var near_r := project(LANE * 1.9, 0, dist + 0.4 - CAM_BACK + 0.31)
-	var far_l := project(-LANE * 1.9, 0, dist + VIEW)
-	var far_r := project(LANE * 1.9, 0, dist + VIEW)
+	# The path runs to the horizon (its vanishing point, far away).
+	var far_l := project(-LANE * 1.9, 0, dist + 100000.0)
+	var far_r := project(LANE * 1.9, 0, dist + 100000.0)
 	draw_colored_polygon(PackedVector2Array([Vector2(near_l.x - 200, H), Vector2(far_l.x, far_l.y), Vector2(far_r.x, far_r.y), Vector2(near_r.x + 200, H)]), Color("#b48a5a"))
 	var sz := floorf(dist / 3.0) * 3.0
 	while sz < dist + VIEW:
@@ -747,6 +755,7 @@ func _draw() -> void:
 		draw_rect(Rect2(0, 0, W, H), Color(1, 0.4, 0.3, flash * 0.6))
 	if intro <= 0:
 		_draw_hud()
+		_draw_loop_note()
 	else:
 		_draw_intro_hud()
 	_draw_flyers()
@@ -1001,6 +1010,17 @@ func _draw_intro_hud() -> void:
 		SpriteArt.draw_sun(self, SUN_HUD, 46 * maxf(0.05, grow), 0, 0.0, time)
 	if e > INTRO_FALL_AT:
 		draw_water_pill(self, WATER_HUD, water, false, time, SLOW_MIN)
+
+
+func _draw_loop_note() -> void:
+	if loop_note <= 0:
+		return
+	var a := clampf(minf(loop_note, 3.5 - loop_note) / 0.4, 0, 1)
+	var txt := Text.plain(Text.t("RUNNER_LOOP_NOTE"))
+	var tw := Text.font_bold.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	var r := Rect2(W / 2 - tw / 2 - 18, 24, tw + 36, 36)
+	Draw.panel(self, r, Color(0.94, 0.93, 0.91, 0.92 * a), 18, Color(0.37, 0.61, 0.6, 0.3 * a), 2)
+	draw_string(Text.font_bold, Vector2(r.position.x + 18, r.position.y + 24), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.02, 0.3, 0.23, a))
 
 
 func _draw_hud() -> void:
