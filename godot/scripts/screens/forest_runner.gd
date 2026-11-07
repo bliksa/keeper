@@ -28,6 +28,15 @@ signal show_dialog(id: String)
 ## n-th group of sun pieces is complete (1, 2): Main runs a minigame, then
 ## after_minigame() continues with the next stage.
 signal sun_game(n: int)
+## The level-start sequence is over (Main then shows dialog 2A).
+signal intro_done
+
+## Coming from the cave: its dark fades into the forest, the trees fly out of
+## the middle (where the Big Cramp's nuts vanished) to their places, then Kyra
+## drops in and stands with her back to us.
+const INTRO_TIME := 2.9
+const INTRO_FALL_AT := 1.45
+const CAVE_COL := Color("#2a0a14")
 
 ## The level editor's id of the map (Game.LEVELS).
 const LEVEL_ID := 4
@@ -122,6 +131,11 @@ var sun_pulse := 0.0
 var water_flash := 0.0
 ## Pickups flying to their indicator: [{kind: "sun" / "drop", from: Vector2, t}].
 var flyers: Array = []
+## Seconds left of the level-start sequence (0 = playing).
+var intro := 0.0
+## Landing squash after the drop (s left).
+var land_t := 0.0
+var _landed := false
 ## A minigame (n) or the end waiting for the flying piece to land.
 var _pending_game := 0
 var _pending_end := false
@@ -303,6 +317,11 @@ func _process(delta: float) -> void:
 	sun_pulse = maxf(0, sun_pulse - dt)
 	water_flash = maxf(0, water_flash - dt)
 	_update_flyers(dt)
+	land_t = maxf(0, land_t - dt)
+	if intro > 0:
+		_update_intro(dt)
+		queue_redraw()
+		return
 	if active and not dialog_open and not done and not waiting:
 		_update(dt)
 	queue_redraw()
@@ -475,6 +494,47 @@ func _sun_piece() -> void:
 		_land_pending()
 
 
+## Starts the level-start sequence (see INTRO_TIME).
+func start_intro() -> void:
+	intro = INTRO_TIME
+	py = 9.0
+	vy = 0.0
+	_landed = false
+
+
+func intro_elapsed() -> float:
+	return INTRO_TIME - intro if intro > 0 else INTRO_TIME
+
+
+func _update_intro(dt: float) -> void:
+	intro = maxf(0, intro - dt)
+	if intro_elapsed() >= INTRO_FALL_AT and not _landed:
+		vy -= GRAVITY * dt
+		py += vy * dt
+		if py <= 0:
+			py = 0
+			vy = 0
+			_landed = true
+			land_t = 0.35
+			flash = 0.0
+			Audio.footstep(0.9)
+	if intro <= 0:
+		py = 0
+		vy = 0
+		_landed = true
+		intro_done.emit()
+
+
+## Growth of a tree during the intro (0 in the middle of the screen, 1 in place):
+## the far ones arrive first.
+func _intro_k(z: float) -> float:
+	if intro <= 0:
+		return 1.0
+	var far := clampf((z - dist) / VIEW, 0, 1)
+	var t := clampf((intro_elapsed() - 0.15 - 0.55 * (1.0 - far)) / 0.85, 0, 1)
+	return 1.0 - pow(1.0 - t, 3)
+
+
 ## A pickup flies from where it was to its indicator (sun top-left, water top-right).
 func _fly(kind: String, o: Dictionary) -> void:
 	var c := project(_lane_x(o), o.y, o.z)
@@ -621,6 +681,10 @@ func _draw() -> void:
 		if a.z > 0:
 			draw_line(Vector2(a.x, a.y), Vector2(b.x, b.y), _fog(Color("#9c7448"), sz), maxf(1, a.z * 0.05))
 		sz += 3.0
+	# Coming from the cave: its dark fades away behind the trees flying in.
+	if intro > 0:
+		var fade := 1.0 - clampf(intro_elapsed() / 1.1, 0, 1)
+		draw_rect(Rect2(0, 0, W, H), Color(CAVE_COL, fade * fade * (3 - 2 * fade)))
 	# Far to near: trees and course objects.
 	var items := []
 	for t in trees:
@@ -628,6 +692,8 @@ func _draw() -> void:
 			items.append([t.z, "tree", t])
 	for o in objects:
 		var oz: float = o.z + o.dz
+		if intro > 0 and intro_elapsed() < 1.3:
+			break
 		if oz > dist - CAM_BACK + 0.5 and oz < dist + VIEW and not o.taken and o.kind != "dialog":
 			items.append([oz, o.kind, o])
 	items.sort_custom(func(a, b): return a[0] > b[0])
@@ -637,7 +703,18 @@ func _draw() -> void:
 			_draw_player()
 			player_drawn = true
 		match it[1]:
-			"tree": _draw_tree(it[2])
+			"tree":
+				var tk := _intro_k(it[0])
+				if tk <= 0.001:
+					continue
+				if tk < 1.0:
+					# From the middle of the screen to its place.
+					var mid := Vector2(W / 2, H / 2)
+					draw_set_transform(mid * (1.0 - tk), 0, Vector2(tk, tk))
+					_draw_tree(it[2])
+					draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+				else:
+					_draw_tree(it[2])
 			"root": _draw_root(it[2])
 			"branch": _draw_branch(it[2])
 			"bird": _draw_bird(it[2])
@@ -652,7 +729,8 @@ func _draw() -> void:
 		Draw.vignette(self, Rect2(0, 0, W, H), Color(0.1, 0.15, 0.35, 0.45), 0.35)
 	if flash > 0:
 		draw_rect(Rect2(0, 0, W, H), Color(1, 0.4, 0.3, flash * 0.6))
-	_draw_hud()
+	if intro <= 0 or intro_elapsed() > 2.2:
+		_draw_hud()
 	_draw_flyers()
 
 
@@ -809,10 +887,15 @@ func _draw_player() -> void:
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	var run := sin(time * (16.0 if not slow else 9.0))
 	var air := py > 0.05 or carry_t > 0
+	if intro > 0 and _landed:
+		# She stands still (back to us) until the run starts.
+		run = 0.0
 	var bob := 0.0 if air else absf(run) * 4 * k
 	var feet := Vector2(c.x, c.y - bob)
 	var lean := -0.25 if bump_t > 0 else 0.0
-	draw_set_transform(feet, lean, Vector2.ONE)
+	# Landing after the drop: squashed, then back up.
+	var sq := sin(clampf(land_t / 0.35, 0, 1) * PI) * 0.22
+	draw_set_transform(feet, lean, Vector2(1.0 + sq, 1.0 - sq))
 	var boot := Color("#8a4b1f")
 	var leg := Color("#9aa3ad")
 	# Legs (alternating while running, tucked in the air).

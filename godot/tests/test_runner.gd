@@ -282,6 +282,10 @@ func _run() -> void:
 	check(run_ok and Game.level == 2, "the forest run (level 2) starts after the boss")
 
 	step("level 2 – the forest run")
+	var rn0: ForestRunner = main.runner
+	check(rn0.intro > 0 and rn0.py > 3 and node_box().node_id() != "2A" and rn0._intro_k(rn0.dist + 20) < 1.0, "level start: the trees fly in from the middle, Kyra not there yet, no dialog")
+	var rn_landed := await until(func(): return rn0._landed, 4)
+	check(rn_landed and rn0.py == 0 and rn0.land_t > 0, "Kyra drops in and lands (back to us)")
 	await finish_dialog("2A")
 	var rn: ForestRunner = main.runner
 	await frames(3)

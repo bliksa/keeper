@@ -592,13 +592,15 @@ func _into_corridor() -> void:
 	await get_tree().create_timer(2.6).timeout
 	if run != _run_id:
 		return
-	await _fade_to(1.0, 0.8, Color.WHITE)
+	# The arena goes dark like the cave; the forest run's intro fades that dark
+	# out while its trees fly in from the middle.
+	await _fade_to(1.0, 0.7, ForestRunner.CAVE_COL)
 	if run != _run_id:
 		return
 	await _start_runner(false)
 	if run != _run_id:
 		return
-	_fade_to(0.0, 0.8, Color.WHITE)
+	_fade.modulate.a = 0.0
 
 
 ## Level 2 (demo): the forest run, seen from behind.
@@ -633,7 +635,12 @@ func _start_runner(fade := true, stage := 0) -> void:
 	_set_state("runner")
 	if fade:
 		_fade_to(0.0)
-	_dialog("2A")
+	if stage == 0:
+		# The level start: the forest appears, Kyra drops in, then Iskra talks.
+		runner.start_intro()
+		runner.intro_done.connect(func(): _dialog("2A"))
+	else:
+		_dialog("2A")
 
 
 func _runner_dialog(id: String) -> void:

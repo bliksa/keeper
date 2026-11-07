@@ -217,11 +217,6 @@ func _build_shortcuts() -> void:
 	]
 	for c in cols.size():
 		var x := 24 + c * (COL_W + 16)
-		var head := ColorRect.new()
-		head.color = cols[c][2]
-		head.position = Vector2(x, 48)
-		head.size = Vector2(COL_W, 4)
-		card.add_child(head)
 		var name := UiKit.label(cols[c][0], 15, Color.WHITE, true)
 		name.position = Vector2(x, 58)
 		card.add_child(name)
