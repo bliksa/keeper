@@ -221,8 +221,8 @@ flying notifications, fastest + random side traps): speed `STAGE_SPEED[stage]` +
 stage; from `RANDOM_TRAPS_FROM` random side traps (`_random_traps`, new on every
 repeat). Reaching a stage's end with its pieces still missing repeats it
 (`_loop_stage`: seamless, no message: this stage's objects and everything after
-move one stage length ahead, obstacles + drops re-armed, found pieces stay). Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`, costs `JUMP_WATER` / `DOUBLE_WATER`), hits:
-`bump()` (roll back `BUMP_BACK`, not before the stage start), a flying notification in the air =
+move one stage length ahead, obstacles + drops re-armed, found pieces stay). Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`, costs `JUMP_WATER` / `DOUBLE_WATER`; not possible without that much water, `water_short`), hits:
+`bump()` (roll back `BUMP_BACK`, not before the stage start; −`HIT_WATER` and `_lose_slice()`: the stage's last found piece goes back onto the track, never below the last minigame's count), a flying notification in the air =
 `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass again,
 except within `GRACE`. Slow time: action `slow_time` (Shift / E / LB / Y) while
 `water` lasts. `jump_to(z)` moves her (and the stage) for tests / the dev menu

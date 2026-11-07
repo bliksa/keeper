@@ -147,6 +147,10 @@ var sun_flash := 0.0
 var sun_shown := 0
 var sun_pulse := 0.0
 var water_flash := 0.0
+## Too little water for a jump: the pill shakes red for a moment.
+var water_short := 0.0
+## A slice lost in a hit: the sun flashes red.
+var sun_lost := 0.0
 ## Pickups flying to their indicator: [{kind: "sun" / "drop", from: Vector2, t}].
 var flyers: Array = []
 ## Seconds left of the level-start sequence (0 = playing).
@@ -343,9 +347,14 @@ func _read_input() -> void:
 func jump() -> void:
 	if jumps <= 0 or bump_t > 0 or carry_t > 0:
 		return
+	# Jumping costs water, a double jump more; without enough there's no jump
+	# (some places can't be passed dry).
+	var cost := JUMP_WATER if jumps == 2 else DOUBLE_WATER
+	if water < cost:
+		water_short = 0.5
+		return
 	vy = JUMP_V if jumps == 2 else DOUBLE_V
-	# Jumping costs focus water, a double jump more.
-	water = maxf(0, water - (JUMP_WATER if jumps == 2 else DOUBLE_WATER))
+	water -= cost
 	jumps -= 1
 	Audio.jump_sound(jumps == 0)
 
@@ -357,6 +366,8 @@ func _process(delta: float) -> void:
 	sun_flash = maxf(0, sun_flash - dt)
 	sun_pulse = maxf(0, sun_pulse - dt)
 	water_flash = maxf(0, water_flash - dt)
+	water_short = maxf(0, water_short - dt)
+	sun_lost = maxf(0, sun_lost - dt)
 	if not dialog_open and intro <= 0:
 		loop_note = maxf(0, loop_note - dt)
 	_update_flyers(dt)
@@ -656,9 +667,29 @@ func _land_pending() -> void:
 			sun_game.emit(n)
 
 
+## A hit costs a slice of the sun: the last piece found in this stage goes back
+## onto the track (the stage comes round again until it is found). Never below
+## the minigames already played (every SUN_PER_GAME).
+func _lose_slice() -> void:
+	var floor_n := (sun - 1) / SUN_PER_GAME * SUN_PER_GAME if sun % SUN_PER_GAME != 0 else sun
+	if sun <= floor_n or sun <= 0:
+		return
+	var last: Dictionary = {}
+	for o in objects:
+		if o.kind == "sun" and o.taken and o.stage == stage and (last.is_empty() or o.z > last.z):
+			last = o
+	if last.is_empty():
+		return
+	last.taken = false
+	sun -= 1
+	sun_shown = mini(sun_shown, sun)
+	sun_lost = 0.6
+
+
 ## Ran into a root or a branch: bounce back, the path rolls back a bit.
 func bump() -> void:
 	water = maxf(0, water - HIT_WATER)
+	_lose_slice()
 	bump_t = 0.45
 	_roll_to = maxf(_stage_start(), dist - BUMP_BACK)
 	vy = 3.0
@@ -1102,6 +1133,8 @@ func _draw_hud() -> void:
 		Draw.radial_glow(self, sc, 90 * grow, Color(1, 0.9, 0.5, 0.5 * sun_pulse / 0.45))
 	draw_arc(sc, 56 * grow, -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)
 	SpriteArt.draw_sun(self, sc, 46 * grow, sun_shown, sun_flash, time)
+	if sun_lost > 0:
+		draw_arc(sc, 50, 0, TAU, 48, Color(0.94, 0.27, 0.27, sun_lost / 0.6), 4.0, true)
 	# Hydration at the top-right (where the breath is in the cave): the water
 	# that feeds slowed time.
 	var wr := WATER_HUD
@@ -1109,7 +1142,11 @@ func _draw_hud() -> void:
 		var g := 6.0 * sin(water_flash / 0.45 * PI)
 		wr = wr.grow(g)
 		Draw.radial_glow(self, Vector2(wr.position.x + 26, wr.get_center().y), 50, Color(0.37, 0.7, 0.94, 0.6 * water_flash / 0.45))
+	if water_short > 0:
+		wr.position.x += sin(water_short * 60.0) * 5.0
 	draw_water_pill(self, wr, water, slow, time, SLOW_MIN)
+	if water_short > 0:
+		Draw.panel(self, wr.grow(2), Color(0, 0, 0, 0), 18, Color(0.94, 0.27, 0.27, water_short / 0.5), 3)
 	if not _slow_used and water >= SLOW_MIN:
 		var hint := Text.plain(Text.t("RUNNER_SLOW_HINT"))
 		var hw := Text.font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x

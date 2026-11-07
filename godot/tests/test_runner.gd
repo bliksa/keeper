@@ -489,6 +489,16 @@ func _run() -> void:
 	await seconds(ForestRunner.FLY_TIME + 0.1)
 	check(er.sun_shown == 1 and er.flyers.is_empty() and er.sun_pulse > 0, "then its slice fills and the sun lights up")
 	take_next.call()
+	er.bump()
+	check(er.sun == 1 and er.objects.filter(func(o): return o.kind == "sun" and not o.taken and o.stage == 0).size() == 1 and er.sun_lost > 0, "a hit costs a slice: the piece goes back onto the track")
+	er.bump_t = 0
+	er.recover_t = 0
+	take_next.call()
+	er.water = 1
+	er.jumps = 2
+	er.vy = 0
+	er.jump()
+	check(er.vy <= 0 and er.jumps == 2 and er.water_short > 0, "without enough water she can't jump")
 	er.dist = er.stages[0].end
 	er._stage_end()
 	check(er.sun == 2 and er.stage == 1 and er.loops == 0, "a stage without pieces left goes on (no endless loop)")
