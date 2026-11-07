@@ -40,13 +40,14 @@ func _ready() -> void:
 	bar.size = Vector2(256, 8)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bar)
-	_start = UiKit.button("", Vector2(160, 50), FONT)
+	# START (green) and DEV, side by side, the same width; together as wide as the bar.
+	_start = UiKit.button("", Vector2(124, 50), FONT, Color("#059669"))
 	_start.position = Vector2(405, 266)
 	_icon_left(_start, "play")
 	_start.pressed.connect(_go)
 	add_child(_start)
-	_dev = UiKit.button("DEV", Vector2(88, 50), FONT)
-	_dev.position = Vector2(405 + 256 - 88, 266)
+	_dev = UiKit.button("DEV", Vector2(124, 50), FONT)
+	_dev.position = Vector2(405 + 256 - 124, 266)
 	_icon_left(_dev, "lock")
 	_dev.pressed.connect(func(): dev_pressed.emit())
 	add_child(_dev)
@@ -80,17 +81,38 @@ func _ready() -> void:
 	_refresh()
 
 
-## An icon before the button's text.
+## A lucide icon before the button's text (like the developer menu's icons),
+## in the text's colour; icon and text are centred together (_center_icon).
 func _icon_left(b: Button, icon: String) -> void:
 	b.icon = load("res://assets/ui/icons/%s.svg" % icon)
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.add_theme_constant_override("icon_max_width", 20)
-	b.add_theme_constant_override("h_separation", 8)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.add_theme_constant_override("icon_max_width", ICON_W)
+	b.add_theme_constant_override("h_separation", 10)
+	var fg := b.get_theme_color("font_color")
+	for k in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_focus_color"]:
+		b.add_theme_color_override(k, fg)
+
+
+const ICON_W := 22
+
+
+## Left padding so the icon and the text sit in the middle of the button.
+func _center_icon(b: Button) -> void:
+	var tw := b.get_theme_font("font").get_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, -1, b.get_theme_font_size("font_size")).x
+	var pad := maxf(6, (b.size.x - (ICON_W + 10 + tw)) / 2)
+	for st in ["normal", "hover", "pressed"]:
+		var sb: StyleBoxFlat = b.get_theme_stylebox(st).duplicate()
+		sb.content_margin_left = pad
+		sb.content_margin_right = 4
+		b.add_theme_stylebox_override(st, sb)
 
 
 func _refresh() -> void:
 	_full.text = Text.t("UI_SWITCH_FULLSCREEN").to_upper()
 	_start.text = Text.t("UI_CLICK_TO_START").to_upper()
+	for b in [_full, _start, _dev]:
+		_center_icon(b)
 	_subs.text = Text.t("UI_SUBTITLES").to_upper()
 	_dev.tooltip_text = Text.t("UI_DEVELOPER_MODE")
 	for lang in _flags:
