@@ -19,6 +19,9 @@ FONTS = Path(__file__).resolve().parent.parent / "godot" / "assets" / "fonts"
 PUNCT = ".,!?:;…"
 SIDE = 80
 SHIFT = {"Regular": 60, "Bold": 55}
+# Per glyph (style -> char -> units; negative = more room before it): Bold's "!"
+# already hugs the letter before it.
+OVERRIDE = {"Bold": {"!": -45}}
 
 
 def move(top, cff, gs, hmtx, g, dx, shrink):
@@ -45,7 +48,9 @@ for style, shift in SHIFT.items():
         if bp.bounds is None or adv <= 2 * SIDE:
             continue  # spaces, marks
         if g in punct:
-            move(top, cff, gs, hmtx, g, -shift, shift)
+            ch = next(c for c in PUNCT if cmap.get(ord(c)) == g)
+            sh = OVERRIDE.get(style, {}).get(ch, shift)
+            move(top, cff, gs, hmtx, g, -sh, sh)
         else:
             move(top, cff, gs, hmtx, g, -SIDE, 2 * SIDE)
     # Own name (Reserved Font Name).
