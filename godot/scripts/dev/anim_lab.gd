@@ -379,7 +379,7 @@ func select_category(cat: String) -> void:
 
 
 func _select_anim(a: String) -> void:
-	var cat := "kyra" if not SpriteArt.is_sprite(a) else str(SpriteArt.DEFS[a].cat)
+	var cat := "kyra" if not SpriteArt.is_sprite(a) else str(SpriteArt.def(a).cat)
 	anim = a
 	if cat != category or _anim_pick.item_count == 0:
 		select_category(cat)
@@ -1155,7 +1155,7 @@ func _draw_sprite_stage(s: Control) -> void:
 	var n := current_paths().size()
 	var portrait := id.begins_with("portrait_")
 	var game := preview == "game" and not portrait
-	var h: float = SpriteArt.DEFS[id].size
+	var h: float = SpriteArt.def(id).size
 	var zoom := 1.0 if game or portrait or h >= 100 else minf(3.0, 160.0 / h)
 	var c := Vector2(STAGE.size.x / 2, FLOOR_Y - 150)
 	if game:
@@ -1166,7 +1166,7 @@ func _draw_sprite_stage(s: Control) -> void:
 	_sprite_node.position = c
 	_sprite_node.scale = Vector2(zoom, zoom)
 	_sprite_node.queue_redraw()
-	var where: String = SpriteArt.DEFS[id].get("where", "")
+	var where: String = SpriteArt.def(id).get("where", "")
 	s.draw_string(Text.font, Vector2(14, 26), where + ("" if n > 0 else "  ·  drawn in code"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#94a3b8"))
 	if zoom != 1.0:
 		s.draw_string(Text.font_bold, Vector2(14, 46), "×%.1f" % zoom, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#64748b"))
@@ -1191,7 +1191,7 @@ func _draw_sprite_node() -> void:
 	var had: bool = SpriteArt.overrides.has(id)
 	var saved: Variant = SpriteArt.overrides.get(id)
 	SpriteArt.overrides[id] = _textures(paths)
-	SpriteArt.draw(_sprite_node, id, Vector2.ZERO, SpriteArt.DEFS[id].size, _time, Color.WHITE, false, selected if paused else -1)
+	SpriteArt.draw(_sprite_node, id, Vector2.ZERO, SpriteArt.def(id).size, _time, Color.WHITE, false, selected if paused else -1)
 	if had:
 		SpriteArt.overrides[id] = saved
 	else:

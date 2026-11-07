@@ -1248,11 +1248,12 @@ func _run() -> void:
 	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", 3) == "3B" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
 	check(de.ids_in("mg").has("mg8_start") and not DialogEditor.is_story("mg8_start"), "minigame talk is listed apart, under its own names")
 	# Saving the files as they are changes nothing (same format as in the repo).
-	var bundled := {"godot/data/dialogs.json": FileAccess.get_file_as_string("res://data/dialogs.json")}
+	var bundled := {"godot/data/dialogs.json": FileAccess.get_file_as_string("res://data/dialogs.json"),
+		"godot/data/characters.json": FileAccess.get_file_as_string("res://data/characters.json")}
 	for l in DialogEditor.LANGS:
 		bundled["godot/data/i18n/%s.json" % l] = FileAccess.get_file_as_string("res://data/i18n/%s.json" % l)
 	var same := de.build_commit(bundled)
-	var diff := same.keys().filter(func(k): return same[k] != bundled[k])
+	var diff := same.keys().filter(func(k): return same[k] != bundled.get(k))
 	check(not same.is_empty() and diff.is_empty(), "the dialog files round-trip unchanged %s" % str(diff))
 	de.select_group("2")
 	de.select("2C")
@@ -1274,6 +1275,21 @@ func _run() -> void:
 	var nk: Array = dj.nodes.keys()
 	check(dj.nodes["2C"].parts.size() == 2 and dj.nodes["2C"].parts[1].text == "2C2" and den["2C1"] == "Second line." and den["2C2"] == "Edited line one." and den["2F1"] == "Brand new.", "save writes the dialogs and their lines in every language")
 	check(nk.find("2F") == nk.find("2E") + 1 and nk.find("3A") == nk.find("2F") + 1 and dj.nodes.has("mg8_start"), "saved dialogs stay in level order")
+	# Characters: who speaks, with an avatar sprite each.
+	de.select("2C")
+	await frames(2)
+	var sp_pick: OptionButton = de._lines.get_child(0).find_children("*", "OptionButton", true, false)[0]
+	check(sp_pick.get_item_text(sp_pick.item_count - 1) == "New character…" and Text.speaker_name("Estrogenka") in ["Estra", "Estrogenka"], "each line has a speaker dropdown with the characters and New character…")
+	var dlg := de.character_dialog(0)
+	check(dlg != null, "New character asks for the name")
+	dlg.queue_free()
+	check(de.add_character("Luna", {"en": "Moon"}) == "Luna" and de.add_character("Luna", {}) == "", "a new character (a name can't be taken twice)")
+	check(Text.speaker_name("Luna") in ["Luna", "Moon"] and SpriteArt.is_sprite("portrait_luna") and SpriteArt.ids_in("npcs").has("portrait_luna") and SpriteArt.portrait("Luna") != null, "it gets a dialog-avatar slot in Animations > NPCs")
+	de.set_speaker(0, "Luna")
+	var cfiles := de.build_commit(bundled)
+	var cj: Dictionary = JSON.parse_string(cfiles.get("godot/data/characters.json", "{}"))
+	var cd: Dictionary = JSON.parse_string(cfiles["godot/data/dialogs.json"])
+	check(cj.get("characters", {}).has("Luna") and cj.characters.has("Kyra") and cd.nodes["2C"].parts[0].speaker == "Luna", "save commits the new character and who speaks")
 	de.select("2F")
 	de.delete_dialog()
 	check(not de.nodes.has("2F") and not de.deleted.has("2F"), "a new dialog can be deleted again")
@@ -1287,6 +1303,7 @@ func _run() -> void:
 	await frames(2)
 	de.discard()
 	check(not de.is_changed("2C") and not de.has_unsaved(), "discarding the local edits")
+	check(not Text.characters.has("Luna") and not SpriteArt.is_sprite("portrait_luna"), "… new characters too")
 	Text.language = "sk"
 	de.play("en")
 	await frames(2)

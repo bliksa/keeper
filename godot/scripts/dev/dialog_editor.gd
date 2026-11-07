@@ -21,7 +21,7 @@ const LANGS := ["sk", "en", "pt"]
 const LANG_NAMES := {"sk": "SK", "en": "EN", "pt": "PT"}
 const GROUPS := [["0", "0 · Prologue (forest)"], ["1", "1 · Cave"], ["2", "2 · Forest run"],
 	["3", "3 · Summit"], ["M", "M · Old meadow"], ["mg", "Minigames"]]
-const SPEAKERS := ["Kyra", "Estrogenka", "Iskra"]
+const CHARACTERS := "res://data/characters.json"
 const LIST_W := 270.0
 ## Dialogs the game starts by name (not by a map letter): they can't be deleted
 ## and their letters are never given to a new dialog.
@@ -47,6 +47,9 @@ var nodes := {}
 var order: Array = []
 ## Deleted ids (they exist in the bundled files).
 var deleted := {}
+## Who speaks (data/characters.json): id -> {name: {lang: s}, portrait: sprite id}.
+var characters := {}
+var _chars_bundled := {}
 ## Saved to the repo from here, not in this build yet: id -> model (null = deleted).
 var _saved := {}
 var group := "1"
@@ -112,6 +115,9 @@ func load_data() -> void:
 	for l in LANGS:
 		var s: Variant = _read("res://data/i18n/%s.json" % l)
 		strings[l] = s if s is Dictionary else {}
+	var c: Variant = _read(CHARACTERS)
+	characters = c.get("characters", {}).duplicate(true) if c is Dictionary else {}
+	_chars_bundled = characters.duplicate(true)
 	var vo: Dictionary = d.get("voice_overrides", {})
 	for id in d.get("nodes", {}):
 		nodes[id] = _model(d.nodes[id], strings, vo)
@@ -147,6 +153,11 @@ func load_data() -> void:
 			deleted[id] = true
 			nodes.erase(id)
 			order.erase(id)
+		var lc: Variant = e.get("characters", {})
+		if lc is Dictionary:
+			for cid in lc:
+				characters[cid] = lc[cid]
+	_apply_characters()
 
 
 func _read(path: String) -> Variant:
@@ -208,11 +219,42 @@ func changed_ids() -> Array:
 
 
 func has_unsaved() -> bool:
-	return not deleted.is_empty() or not changed_ids().is_empty()
+	return not deleted.is_empty() or not changed_ids().is_empty() or not changed_characters().is_empty()
+
+
+## Characters added (or changed) here: id -> entry.
+func changed_characters() -> Dictionary:
+	var out := {}
+	for cid in characters:
+		if not _chars_bundled.has(cid) or JSON.stringify(characters[cid]) != JSON.stringify(_chars_bundled[cid]):
+			out[cid] = characters[cid]
+	return out
+
+
+## The game knows every character at once (names in the dialog box, an avatar
+## sprite in Developer mode > Animations > NPCs).
+func _apply_characters() -> void:
+	Text.characters = characters.duplicate(true)
+	SpriteArt.sync_characters()
+
+
+## A new speaker; its avatar is the sprite "portrait_<id>" (set it in Animations > NPCs).
+func add_character(id: String, names: Dictionary) -> String:
+	id = id.strip_edges()
+	if id == "" or characters.has(id):
+		return ""
+	var slug := id.to_lower().validate_filename().replace(" ", "_")
+	var n := {}
+	for l in LANGS:
+		n[l] = str(names.get(l, "")).strip_edges() if str(names.get(l, "")).strip_edges() != "" else id
+	characters[id] = {"name": n, "portrait": "portrait_" + slug}
+	_apply_characters()
+	_save_local()
+	return id
 
 
 func _save_local() -> void:
-	var out := {"nodes": {}, "deleted": deleted, "saved": _saved}
+	var out := {"nodes": {}, "deleted": deleted, "saved": _saved, "characters": changed_characters()}
 	for id in changed_ids():
 		out.nodes[id] = _normalized(id)
 	var f := FileAccess.open(EDIT_PATH, FileAccess.WRITE)
@@ -442,6 +484,15 @@ func build_commit(remote: Dictionary) -> Dictionary:
 	d["nodes"] = sorted
 	d["voice_overrides"] = vo
 	var files := {"godot/data/dialogs.json": JSON.stringify(d, " ", false) + "\n"}
+	var newc := changed_characters()
+	if not newc.is_empty():
+		var ctext: String = remote.get("godot/data/characters.json", "")
+		var c: Variant = JSON.parse_string(ctext) if ctext != "" else null
+		var cfile: Dictionary = c if c is Dictionary else {"characters": {}}
+		var cl: Dictionary = cfile.get_or_add("characters", {})
+		for cid in newc:
+			cl[cid] = newc[cid]
+		files["godot/data/characters.json"] = JSON.stringify(cfile, " ", false) + "\n"
 	for l in LANGS:
 		files["godot/data/i18n/%s.json" % l] = JSON.stringify(strings[l], " ", false) + "\n"
 	return files
@@ -456,8 +507,11 @@ func save_to_repo() -> void:
 		return
 	_say("Reading the repo…")
 	var remote := {}
-	for path in ["godot/data/dialogs.json"] + LANGS.map(func(l): return "godot/data/i18n/%s.json" % l):
+	for path in ["godot/data/dialogs.json", "godot/data/characters.json"] + LANGS.map(func(l): return "godot/data/i18n/%s.json" % l):
 		var r := await _gh.read_text(path)
+		if not r.ok and path.ends_with("characters.json") and "404" in str(r.error):
+			# Not in the repo yet: it is created.
+			continue
 		if not r.ok:
 			_say("Save failed: " + r.error)
 			if "token" in r.error:
@@ -471,7 +525,7 @@ func save_to_repo() -> void:
 	var files := {}
 	for k in texts:
 		files[k] = (texts[k] as String).to_utf8_buffer()
-	var names: Array = changed_ids() + deleted.keys()
+	var names: Array = changed_ids() + deleted.keys() + changed_characters().keys()
 	var res := await _gh.commit(files, "Dialog editor: update %s\n\nSaved from Developer mode > Dialogs in the browser." % ", ".join(names))
 	if not res.ok:
 		_say("Save failed: " + res.error)
@@ -486,6 +540,7 @@ func save_to_repo() -> void:
 		_saved[id] = _normalized(id)
 		_bundled[id] = JSON.stringify(_saved[id])
 	deleted = {}
+	_chars_bundled = characters.duplicate(true)
 	_save_local()
 	use_in_game()
 	_refresh_list()
@@ -762,10 +817,19 @@ func _line_card(i: int) -> Control:
 	name.custom_minimum_size = Vector2(70, 0)
 	name.tooltip_text = "Line %d of %s: its text key in data/i18n/*.json" % [i + 1, current]
 	head.add_child(name)
+	# Who speaks: the avatar of the dialog box and a dropdown of the characters.
+	var av := TextureRect.new()
+	av.texture = SpriteArt.portrait(line.speaker)
+	av.custom_minimum_size = Vector2(34, 34)
+	av.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	av.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	av.tooltip_text = "Dialog avatar of %s (Developer mode > Animations > NPCs)" % Text.speaker_name(line.speaker)
+	head.add_child(av)
 	var sp := OptionButton.new()
 	sp.add_theme_font_size_override("font_size", 12)
 	sp.focus_mode = Control.FOCUS_NONE
-	var speakers: Array = SPEAKERS.duplicate()
+	sp.custom_minimum_size = Vector2(130, 0)
+	var speakers: Array = characters.keys()
 	if not speakers.has(line.speaker):
 		speakers.append(line.speaker)
 	for j in speakers.size():
@@ -773,7 +837,16 @@ func _line_card(i: int) -> Control:
 		sp.set_item_metadata(j, speakers[j])
 		if speakers[j] == line.speaker:
 			sp.select(j)
-	sp.item_selected.connect(func(j): set_speaker(i, sp.get_item_metadata(j)))
+	sp.add_separator()
+	sp.add_item("New character…")
+	sp.set_item_metadata(sp.item_count - 1, "")
+	sp.item_selected.connect(func(j):
+		var who: String = sp.get_item_metadata(j)
+		if who == "":
+			character_dialog(i)
+		else:
+			set_speaker(i, who)
+			_refresh_lines())
 	head.add_child(sp)
 	if line.voice != "":
 		var vl := UiKit.label("voice: " + str(line.voice), 10, Color("#64748b"))
@@ -812,6 +885,68 @@ func _line_card(i: int) -> Control:
 		row.add_child(mark)
 		v.add_child(row)
 	return card
+
+
+## Asks for a new character's name (per language), then makes line i theirs.
+func character_dialog(line_i: int) -> Control:
+	var root := Control.new()
+	root.size = Vector2(1066, 600)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.75)
+	dim.size = root.size
+	root.add_child(dim)
+	var card := Panel.new()
+	card.position = Vector2(283, 130)
+	card.size = Vector2(500, 300)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color("#0f172a")
+	sb.border_color = Color("#334155")
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(12)
+	card.add_theme_stylebox_override("panel", sb)
+	root.add_child(card)
+	var title := UiKit.label("New character", 20, Color.WHITE, true)
+	title.position = Vector2(24, 18)
+	card.add_child(title)
+	var help := UiKit.label("Its dialog avatar: Developer mode > Animations > NPCs.", 12, Color("#94a3b8"))
+	help.position = Vector2(24, 52)
+	card.add_child(help)
+	var fields := {}
+	var labels := {"id": "Name (as in the dialogs)", "sk": "Name in SK (optional)", "en": "Name in EN (optional)", "pt": "Name in PT (optional)"}
+	var y := 84.0
+	for k in ["id", "sk", "en", "pt"]:
+		var e := LineEdit.new()
+		e.placeholder_text = labels[k]
+		e.position = Vector2(24, y)
+		e.size = Vector2(452, 32)
+		card.add_child(e)
+		fields[k] = e
+		y += 40
+	var msg := UiKit.label("", 12, Color("#f87171"))
+	msg.position = Vector2(24, 248)
+	card.add_child(msg)
+	var cancel := UiKit.button("Cancel", Vector2(100, 34), 12)
+	cancel.position = Vector2(256, 248)
+	cancel.pressed.connect(func():
+		root.queue_free()
+		_refresh_lines())
+	card.add_child(cancel)
+	var ok := UiKit.button("Add", Vector2(110, 34), 12, Color("#059669"))
+	ok.position = Vector2(366, 248)
+	ok.pressed.connect(func():
+		var id := add_character(fields.id.text, {"sk": fields.sk.text, "en": fields.en.text, "pt": fields.pt.text})
+		if id == "":
+			msg.text = "Empty or taken name."
+			return
+		root.queue_free()
+		set_speaker(line_i, id)
+		_refresh_lines()
+		_say("New character %s. Give it an avatar in Animations > NPCs." % id))
+	card.add_child(ok)
+	add_child(root)
+	fields.id.grab_focus()
+	return root
 
 
 func _mark_fit(mark: Label, text: String) -> void:

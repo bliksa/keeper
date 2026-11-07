@@ -1,0 +1,29 @@
+{
+ "_comment": "Who speaks in the dialogs (data/dialogs.json 'speaker'). name = shown in the dialog box per language; portrait = the sprite of the dialog avatar (Developer mode > Animations > NPCs; one frame = a static avatar). Edited in Developer mode > Dialogs (New character).",
+ "characters": {
+  "Kyra": {
+   "name": {
+    "sk": "Kyra",
+    "en": "Kyra",
+    "pt": "Kyra"
+   },
+   "portrait": "portrait_kyra"
+  },
+  "Estrogenka": {
+   "name": {
+    "sk": "Estrogenka",
+    "en": "Estra",
+    "pt": "Estra"
+   },
+   "portrait": "portrait_estra"
+  },
+  "Iskra": {
+   "name": {
+    "sk": "Iskra",
+    "en": "Iskra",
+    "pt": "Iskra"
+   },
+   "portrait": "portrait_iskra"
+  }
+ }
+}

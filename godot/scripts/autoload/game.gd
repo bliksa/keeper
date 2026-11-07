@@ -54,7 +54,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
 	PlayerArt.load_game_defaults()
-	SpriteArt.load_game_defaults()
+	# SpriteArt.load_game_defaults() runs in Text._ready (it needs the characters).
 
 
 func reset_run() -> void:

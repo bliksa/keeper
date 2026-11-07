@@ -49,6 +49,11 @@ tools/                     setup_godot.sh, test.sh, export_web.sh
   which commits `data/dialogs.json` + `data/i18n/*.json`; local edits in
   `user://dialogs_edit.json`) or by hand (all three languages). Voice =
   `assets/audio/<KEY>.wav` or `voice_overrides`.
+- **Characters** (who speaks): `data/characters.json` (`Text.characters`: name per
+  language, `portrait` sprite id; `Text.speaker_name`, `Text.portrait_of`). Each
+  character has a dialog-avatar sprite in Animations > NPCs (`SpriteArt.extra` for
+  ones added in the dialog editor's "New character…"; one frame = a static avatar,
+  `SpriteArt.portrait`, a plain disc until it has art).
 - **Dialog trigger in the level**: a lowercase letter in a level map starts that
   level's dialog with the letter (`c` in level 2 = `2C`, `Text.dialog_for_letter`).
 - **Physics / feel**: constants at the top of `scripts/screens/platformer.gd`

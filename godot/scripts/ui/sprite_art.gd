@@ -60,8 +60,28 @@ static var overrides := {}
 ## Per-sprite settings: id -> {"scale": float, "fps": float}.
 static var settings := {}
 
+## Dialog avatars of characters added in the dialog editor (not in DEFS):
+## id -> a DEFS-like entry. Rebuilt from Text.characters by sync_characters().
+static var extra := {}
 static var _orig := {}
 static var _iskra: ImageTexture
+
+
+## The entry of a sprite (DEFS or a character's avatar).
+static func def(id: String) -> Dictionary:
+	if DEFS.has(id):
+		return DEFS[id]
+	return extra.get(id, {})
+
+
+## Every character in Text.characters gets a dialog-avatar sprite.
+static func sync_characters() -> void:
+	extra = {}
+	for cid in Text.characters:
+		var pid := Text.portrait_of(cid)
+		if not DEFS.has(pid):
+			extra[pid] = {"cat": "npcs", "label": "%s – dialog portrait" % Text.speaker_name(cid), "size": 118.0,
+				"fps": 6.0, "frames": [], "where": "Dialog box (one frame = a static avatar)"}
 
 
 static func ids_in(cat: String) -> Array:
@@ -69,21 +89,23 @@ static func ids_in(cat: String) -> Array:
 	for id in DEFS:
 		if DEFS[id].cat == cat:
 			out.append(id)
+	if cat == "npcs":
+		out.append_array(extra.keys())
 	return out
 
 
 static func is_sprite(id: String) -> bool:
-	return DEFS.has(id)
+	return DEFS.has(id) or extra.has(id)
 
 
 static func label(id: String) -> String:
-	return DEFS[id].label if DEFS.has(id) else id
+	return str(def(id).get("label", id))
 
 
 ## Original frame files (empty = the code-drawn placeholder).
 static func original_paths(id: String) -> Array:
 	var out := []
-	for f in DEFS.get(id, {}).get("frames", []):
+	for f in def(id).get("frames", []):
 		out.append(IMG + str(f) + ".png")
 	return out
 
@@ -97,7 +119,7 @@ static func scale_of(id: String) -> float:
 
 
 static func fps_of(id: String) -> float:
-	return float(settings.get(id, {}).get("fps", DEFS.get(id, {}).get("fps", 8.0)))
+	return float(settings.get(id, {}).get("fps", def(id).get("fps", 8.0)))
 
 
 static func set_setting(id: String, key: String, v: float) -> void:
@@ -165,8 +187,9 @@ static func load_game_defaults() -> void:
 		return
 	var anims: Dictionary = d.get("anims", {})
 	var in_game: Dictionary = d.get("in_game", {})
+	sync_characters()
 	for id in in_game:
-		if not DEFS.has(id):
+		if not is_sprite(id):
 			continue
 		var tex := []
 		for path in anims.get(id, {}).get(in_game[id], []):
@@ -177,27 +200,46 @@ static func load_game_defaults() -> void:
 	var s: Variant = d.get("sprites", {})
 	if s is Dictionary:
 		for id in s:
-			if DEFS.has(id) and s[id] is Dictionary:
-				settings[id] = {"scale": float(s[id].get("scale", 1.0)), "fps": float(s[id].get("fps", DEFS[id].fps))}
+			if is_sprite(id) and s[id] is Dictionary:
+				settings[id] = {"scale": float(s[id].get("scale", 1.0)), "fps": float(s[id].get("fps", def(id).get("fps", 8.0)))}
 
 
 # --- portraits ------------------------------------------------------------------------
 
-## Dialog portrait of a speaker (frame at `time_ms`).
+## Dialog portrait of a speaker (frame at `time_ms`): the lab's frames, the
+## original art, Iskra's code-drawn sparkle, or a plain avatar for a new character.
 static func portrait(speaker: String, time_ms := 0.0) -> Texture2D:
-	var id := "portrait_estra"
-	if speaker == "Kyra":
-		id = "portrait_kyra"
-	elif speaker == "Iskra":
-		id = "portrait_iskra"
+	var id := Text.portrait_of(speaker)
 	var t := texture(id, time_ms)
-	return t if t else iskra_texture()
+	if t:
+		return t
+	if id == "portrait_iskra":
+		return iskra_texture()
+	return blank_portrait(id)
 
 
 ## True when a speaker's portrait has more than one frame (the dialog animates it).
 static func portrait_animated(speaker: String) -> bool:
-	var id := "portrait_kyra" if speaker == "Kyra" else ("portrait_iskra" if speaker == "Iskra" else "portrait_estra")
-	return frames(id).size() > 1
+	return frames(Text.portrait_of(speaker)).size() > 1
+
+
+static var _blank := {}
+
+## A soft disc in a colour of its own: the avatar of a character without art yet.
+static func blank_portrait(id: String) -> Texture2D:
+	if not _blank.has(id):
+		var col := Color.from_hsv(float(hash(id) % 360) / 360.0, 0.35, 0.85)
+		var img := Image.create(96, 96, false, Image.FORMAT_RGBA8)
+		img.fill(Color("#2b4150"))
+		for y in 96:
+			for x in 96:
+				var d := Vector2(x, y).distance_to(Vector2(48, 44))
+				if d < 26:
+					img.set_pixel(x, y, col)
+				elif Vector2(x, y).distance_to(Vector2(48, 112)) < 46:
+					img.set_pixel(x, y, col.darkened(0.15))
+		_blank[id] = ImageTexture.create_from_image(img)
+	return _blank[id]
 
 
 ## Iskra (FSH) is a sparkle drawn in code.
@@ -414,3 +456,6 @@ static func draw_placeholder(ci: CanvasItem, id: String, c: Vector2, t: float) -
 		"portrait_iskra":
 			var tex := iskra_texture()
 			ci.draw_texture_rect(tex, Rect2(c - Vector2(59, 59), Vector2(118, 118)), false)
+		_:
+			if id.begins_with("portrait_"):
+				ci.draw_texture_rect(blank_portrait(id), Rect2(c - Vector2(59, 59), Vector2(118, 118)), false)

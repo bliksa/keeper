@@ -18,6 +18,8 @@ var _strings := {}
 var dialogs := {}
 var voice_overrides := {}
 var breathing_hints := {}
+## Who speaks in dialogs (data/characters.json): id -> {name: {lang: s}, portrait: sprite id}.
+var characters := {}
 
 ## Comfortaa (the web build's font) — regular and bold weights.
 var font: Font
@@ -48,6 +50,10 @@ func _ready() -> void:
 	dialogs = d.get("nodes", {})
 	voice_overrides = d.get("voice_overrides", {})
 	breathing_hints = d.get("breathing_hints", {})
+	var ch: Variant = _load_json("res://data/characters.json")
+	characters = ch.get("characters", {}) if ch is Dictionary else {}
+	# Sprites (with an avatar for every character) once the characters are known.
+	SpriteArt.load_game_defaults()
 	var base: Font = load("res://assets/fonts/Comfortaa.ttf")
 	var reg := FontVariation.new()
 	reg.base_font = base
@@ -132,9 +138,19 @@ func _filter_mode(s: String) -> String:
 
 
 func speaker_name(speaker: String) -> String:
-	if speaker == "Estrogenka" or speaker == "Estra":
-		return "Estra" if language in ["en", "pt"] else "Estrogenka"
-	return speaker
+	if speaker == "Estra":
+		speaker = "Estrogenka"
+	var c: Dictionary = characters.get(speaker, {})
+	var names: Dictionary = c.get("name", {})
+	return str(names.get(language, names.get("en", speaker)))
+
+
+## Sprite id of a speaker's dialog avatar (SpriteArt).
+func portrait_of(speaker: String) -> String:
+	if speaker == "Estra":
+		speaker = "Estrogenka"
+	var c: Dictionary = characters.get(speaker, {})
+	return str(c.get("portrait", "portrait_" + speaker.to_lower().validate_filename().replace(" ", "_")))
 
 
 func voice_file(key: String) -> String:
