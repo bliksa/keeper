@@ -134,7 +134,10 @@ func commit(files: Dictionary, message: String) -> Dictionary:
 # --- token dialog -----------------------------------------------------------------
 
 ## Overlay asking for a token. Calls on_done(true) once a token is stored.
-static func token_dialog(parent: Control, on_done: Callable) -> Control:
+## Asks for the team password (DevAccess) or, without one / on request, a token.
+static func token_dialog(parent: Control, on_done: Callable, force_token := false) -> Control:
+	if DevAccess.is_set_up() and not force_token:
+		return DevAccess.password_dialog(parent, on_done)
 	var root := Control.new()
 	root.size = Vector2(1066, 600)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP

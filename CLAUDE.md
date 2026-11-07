@@ -150,6 +150,15 @@ Commits land on the repo's default branch and trigger the deploy. **Run `git pul
 before editing**, because the branch may contain commits made from the browser.
 For a local mock API, set `GitHubSave.api_base`, or use `?gh_api=` on the web.
 
+**Team password** (`scripts/dev/dev_access.gd`, `DevAccess`): the token is committed
+encrypted with one shared password (`data/dev_access.json`: SHA-256 stretched key,
+AES-256-CBC + HMAC). Once it exists, DEV on the boot screen and every "Save to repo"
+ask for the password (`DevAccess.password_dialog`, `GitHubSave.token_dialog`), which
+decrypts the token into `user://github_token`. Set up / change: Developer mode >
+Shortcuts > Team password (`DevAccess.setup_dialog`). The dialog editor, level editor
+and animation lab all save through this.
+
+
 ## Backgrounds and the asset browser
 
 `data/backgrounds.json` + `scripts/background_data.gd` (`BackgroundData`): per level

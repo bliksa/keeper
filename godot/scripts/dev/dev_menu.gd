@@ -14,6 +14,7 @@ var _iron := 20
 var _editor: LevelEditor
 var _lab: AnimLab
 var _dialogs: DialogEditor
+var _gh: GitHubSave
 ## Header slot the active tab can fill with its own icon buttons.
 var header_tools: HBoxContainer
 var _help: Label
@@ -117,7 +118,23 @@ func _show(tab: String) -> void:
 		_build_shortcuts()
 
 
+## Sets up / changes the team password (DevAccess).
+func open_team_password() -> void:
+	if _gh == null:
+		_gh = GitHubSave.new()
+		add_child(_gh)
+	DevAccess.setup_dialog(self, _gh, func(ok):
+		if ok:
+			_help.text = "Team password saved.\nLive after the build (~2 min).")
+
+
 func _build_shortcuts() -> void:
+	var tp := UiKit.button("Team password", Vector2(130, ICON), 12, Color("#1e293b"), Color("#cbd5e1"))
+	tp.icon = load("res://assets/ui/icons/key-round.svg")
+	tp.add_theme_constant_override("icon_max_width", 16)
+	tp.tooltip_text = "One password for developer mode and every “Save to repo” (no token for the team)"
+	tp.pressed.connect(open_team_password)
+	header_tools.add_child(tp)
 	var card := Panel.new()
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color("#1e293b")

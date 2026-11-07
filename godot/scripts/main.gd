@@ -186,7 +186,17 @@ func _go_title() -> void:
 	_menu = t
 
 
+## Developer mode: behind the team password once it is set up (DevAccess).
 func _go_dev() -> void:
+	if DevAccess.is_set_up() and not GitHubSave.has_token() and _menu:
+		DevAccess.password_dialog(_menu, func(ok):
+			if ok:
+				_open_dev())
+		return
+	_open_dev()
+
+
+func _open_dev() -> void:
 	_clear_menu()
 	state = "dev"
 	Audio.stop_bgm()

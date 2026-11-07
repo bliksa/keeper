@@ -891,11 +891,34 @@ func _run() -> void:
 		var path := LevelEditor.AUTOSAVE if i == 1 else LevelEditor.AUTOSAVE_FMT % i
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
+	# The team password: the repo token encrypted with it (no server).
+	var enc := DevAccess.encrypt("github_pat_TEST123", "four random words here")
+	check(DevAccess.decrypt(enc, "four random words here") == "github_pat_TEST123" and DevAccess.decrypt(enc, "wrong password!") == "" and not JSON.stringify(enc).contains("TEST123"), "the team password decrypts the token; a wrong one doesn't")
+	var token0 := GitHubSave.get_token()
+	GitHubSave.forget_token()
+	DevAccess.data_override = enc
 	main._go_boot()
 	await frames(3)
 	await _click((main._menu as BootScreen)._dev.get_global_rect().get_center())
 	await frames(3)
-	check(main.state == "dev" and main._menu is DevMenu, "DEV button on the first screen opens developer mode")
+	var pwd: Control = main._menu.get_child(main._menu.get_child_count() - 1)
+	var pw_edit: LineEdit = pwd.find_children("*", "LineEdit", true, false)[0]
+	check(main.state == "boot" and pw_edit != null, "with a team password, DEV asks for it first")
+	pw_edit.text = "nope nope nope"
+	pw_edit.text_submitted.emit(pw_edit.text)
+	await frames(4)
+	check(main.state == "boot" and not GitHubSave.has_token(), "a wrong password keeps developer mode closed")
+	pw_edit.text = "four random words here"
+	pw_edit.text_submitted.emit(pw_edit.text)
+	await frames(4)
+	check(main.state == "dev" and main._menu is DevMenu and GitHubSave.get_token() == "github_pat_TEST123", "DEV button on the first screen opens developer mode (password unlocks saving too)")
+	var gs_box := GitHubSave.token_dialog(main._menu, func(_ok): pass)
+	check(gs_box.find_children("*", "LineEdit", true, false)[0].placeholder_text == "Team password", "Save to repo asks for the team password, not a token")
+	gs_box.queue_free()
+	DevAccess.data_override = null
+	GitHubSave.forget_token()
+	if token0 != "":
+		GitHubSave.set_token(token0)
 	var dev: DevMenu = main._menu
 	dev._show("level")
 	await frames(3)
