@@ -11,6 +11,9 @@ extends Control
 signal closed
 
 const H := 150.0
+## Dialog text sizes, largest first: a long text steps down until it fits.
+const TEXT_SIZES := [18, 17, 16, 15, 14, 13, 12]
+const BUTTON_SIZES := [16, 15, 14, 13, 12]
 ## One warm white for every dialog panel (story dialogs, hints, game-over choices).
 const PANEL_BG := Color("#f0eee9")
 
@@ -61,7 +64,7 @@ func _ready() -> void:
 	avatar_frame.add_child(_avatar)
 	_speaker = Label.new()
 	_speaker.position = Vector2(H + 8, 18)
-	_speaker.add_theme_font_override("font", Text.font_bold)
+	_speaker.add_theme_font_override("font", Text.font_dialog_bold)
 	_speaker.add_theme_font_size_override("font_size", 14)
 	_speaker.add_theme_color_override("font_color", Color("#4a7d7b"))
 	_bg.add_child(_speaker)
@@ -69,12 +72,12 @@ func _ready() -> void:
 	_text.bbcode_enabled = true
 	_text.fit_content = false
 	_text.scroll_active = false
-	_text.position = Vector2(H + 8, 40)
-	_text.size = Vector2(1066 - H - 8 - 240 - 16, H - 52)
-	_text.add_theme_font_override("normal_font", Text.font_bold)
-	_text.add_theme_font_size_override("normal_font_size", 18)
+	_text.position = Vector2(H + 8, 38)
+	_text.size = Vector2(1066 - H - 8 - 240 - 16, H - 46)
+	_text.add_theme_font_override("normal_font", Text.font_dialog)
+	_text.add_theme_font_size_override("normal_font_size", TEXT_SIZES[0])
 	_text.add_theme_color_override("default_color", Color("#064e3b"))
-	_text.add_theme_constant_override("line_separation", 4)
+	_text.add_theme_constant_override("line_separation", 0)
 	_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bg.add_child(_text)
 	_buttons = VBoxContainer.new()
@@ -171,7 +174,7 @@ func _refresh() -> void:
 		var speaker: String = part.get("speaker", "")
 		_avatar.texture = _portrait(speaker)
 		_speaker.text = Text.speaker_name(speaker).to_upper()
-		_text.text = Text.bb(part.get("text", ""))
+		_set_text(Text.bb(part.get("text", "")))
 		if _is_last():
 			var btns: Array = _node.get("buttons", ["BTN_NEXT"])
 			for i in btns.size():
@@ -182,7 +185,7 @@ func _refresh() -> void:
 		_bg.add_theme_stylebox_override("panel", _style(Color(PANEL_BG, 0.95)))
 		_avatar.texture = load(_panel.get("avatar", "res://assets/images/dia1.png"))
 		_speaker.text = Text.plain(Text.t(_panel.get("title", ""))).to_upper()
-		_text.text = Text.bb(_panel.get("text", ""))
+		_set_text(Text.bb(_panel.get("text", "")))
 		var choices: Array = _panel.get("choices", [])
 		if choices.size() > 0:
 			for i in choices.size():
@@ -191,13 +194,34 @@ func _refresh() -> void:
 			_add_button(Text.plain(Text.t("BTN_UNDERSTOOD")), 0, close, true)
 
 
+## Sets the dialog text at the largest size that fits the box.
+func _set_text(bb: String) -> void:
+	_text.text = bb
+	for size in TEXT_SIZES:
+		_text.add_theme_font_size_override("normal_font_size", size)
+		if _text.get_content_height() <= _text.size.y:
+			break
+
+
+## Size of the text currently shown (for the tests).
+func text_size() -> int:
+	return _text.get_theme_font_size("normal_font_size")
+
+
 func _add_button(label: String, index: int, cb: Callable, enter_icon := false) -> void:
 	var b := Button.new()
 	b.text = label
 	b.custom_minimum_size = Vector2(220, 44)
 	b.focus_mode = Control.FOCUS_NONE
-	b.add_theme_font_override("font", Text.font_bold)
-	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_font_override("font", Text.font_dialog_bold)
+	# Long labels step down so they stay inside the button (next to a pad icon).
+	var room := 220.0 - 24 - (28 if Game.control_mode == "gamepad" else 0)
+	var bsize: int = BUTTON_SIZES.back()
+	for s in BUTTON_SIZES:
+		if Text.font_dialog_bold.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, s).x <= room:
+			bsize = s
+			break
+	b.add_theme_font_size_override("font_size", bsize)
 	for state in ["normal", "hover", "pressed"]:
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color("#334155") if state == "hover" else Color("#1e293b")

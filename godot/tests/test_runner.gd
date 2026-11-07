@@ -13,6 +13,9 @@ var _step := ""
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Headless starts with a 64×64 window; at that scale text metrics are rounded
+	# far off. Use the game's real size so text layout matches the browser.
+	get_tree().root.size = Vector2i(1066, 600)
 	await get_tree().process_frame
 	await _run()
 	print("\n%s (%d failure%s)" % ["PASSED" if failures == 0 else "FAILED", failures, "" if failures == 1 else "s"])
@@ -126,6 +129,28 @@ func _run() -> void:
 	main._menu.started.emit()
 	await frames(5)
 	check(main.state == "title", "title screen")
+
+	step("dialog font")
+	var nb := node_box()
+	check(nb._text.get_theme_font("normal_font") == Text.font_dialog and (Text.font_dialog as FontVariation).base_font.resource_path.ends_with("OpenDyslexic-Regular.otf"), "dialog text uses OpenDyslexic")
+	var too_long := []
+	var smallest := 99
+	var lang0: String = Text.language
+	for lang in ["en", "sk", "pt"]:
+		Text.language = lang
+		for id in Text.dialogs:
+			var parts: Array = Text.dialogs[id].get("parts", [])
+			nb.show_node(id)
+			for i in parts.size():
+				nb._part = i
+				nb._refresh()
+				smallest = mini(smallest, nb.text_size())
+				if nb._text.get_content_height() > nb._text.size.y:
+					too_long.append("%s:%s#%d" % [lang, id, i])
+			nb.close()
+	Text.language = lang0
+	Audio.stop_voice()
+	check(too_long.is_empty(), "every dialog fits its box with OpenDyslexic (smallest size %d) %s" % [smallest, str(too_long)])
 
 	step("forest intro")
 	main._menu.start_pressed.emit()

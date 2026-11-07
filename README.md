@@ -220,5 +220,6 @@ radšej pridávaj v kóde, nie do `.tscn`, aby sa projekt dal ďalej upravovať 
 Nápad: Nataša Juračková · Kód: Michal Kabát & Klaara · Vizuál: Alexandra Pavelová,
 Alexandra Just, Barbora Grellová, Hana Filipovičová, Emma Čičáková · Zvuk: Tomáš
 Farkaš · Hlasy: Aďa Farkašová, Alicka Farkašová. Písmo Comfortaa (SIL OFL,
-`godot/assets/fonts/OFL.txt`). Ikony editora Lucide (ISC,
+`godot/assets/fonts/OFL.txt`), v dialógoch OpenDyslexic (SIL OFL,
+`godot/assets/fonts/OFL-OpenDyslexic.txt`). Ikony editora Lucide (ISC,
 `godot/assets/ui/icons/LICENSE-lucide.txt`).

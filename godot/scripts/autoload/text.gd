@@ -23,6 +23,10 @@ var letter_dialogs := {}
 ## Comfortaa (the web build's font) — regular and bold weights.
 var font: Font
 var font_bold: Font
+## OpenDyslexic for the dialog boxes (easier to read with dyslexia). It covers
+## every character in the SK / EN / PT texts (the pad / arrow glyphs are images).
+var font_dialog: Font
+var font_dialog_bold: Font
 
 const _ICONS := {
 	"🔵": "res://assets/ui/pad_blue.png",
@@ -55,6 +59,18 @@ func _ready() -> void:
 	bold.base_font = base
 	bold.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700}
 	font_bold = bold
+	font_dialog = _dialog_font("res://assets/fonts/OpenDyslexic-Regular.otf")
+	font_dialog_bold = _dialog_font("res://assets/fonts/OpenDyslexic-Bold.otf")
+
+
+## OpenDyslexic has very tall built-in line spacing (≈ 1.9 × size); trimmed to
+## ≈ 1.5 × so three lines fit in the dialog box.
+func _dialog_font(path: String) -> Font:
+	var f := FontVariation.new()
+	f.base_font = load(path)
+	f.spacing_top = -3
+	f.spacing_bottom = -3
+	return f
 
 
 ## Dialog node id for a lowercase level letter (a–z), or "" if none.
