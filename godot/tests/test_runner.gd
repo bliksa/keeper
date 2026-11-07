@@ -444,6 +444,41 @@ func _run() -> void:
 	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
 	check(summit, "the summit (level 3) starts after the forest run")
 
+	step("forest run – an edited map")
+	# Stage 1 has 3 pieces, stage 2 has 5 and a dialog after them, stage 3 has 4.
+	var map_up := ["..+..", "..+..", "..+..", "A....", "..+..", "..+..", "..+..", "..+..", "..+..", "..b..", "A....", "..+..", "..+..", "..+..", "..+.."]
+	map_up.reverse()
+	var er := ForestRunner.new()
+	er.rows = PackedStringArray(map_up)
+	main.add_child(er)
+	await frames(1)
+	var take_next := func():
+		var left: Array = er.objects.filter(func(o): return o.kind == "sun" and not o.taken)
+		var pc: Dictionary = left[0]
+		er.jump_to(pc.z)
+		er.lane = 0
+		er.px = 0
+		er.py = 0
+		er._hits(0.0)
+	for i in 3:
+		take_next.call()
+	er.dist = er.stages[0].end
+	er._stage_end()
+	check(er.sun == 3 and er.stage == 1 and er.loops == 0, "a stage without pieces left goes on (no endless loop)")
+	take_next.call()
+	check(er.waiting and er.sun == 4, "the 4th piece (in stage 2) starts a minigame")
+	er.after_minigame()
+	check(er.stage == 1 and not er.waiting, "after it the run stays in stage 2: its other pieces can still be found")
+	for i in 4:
+		take_next.call()
+	check(er.waiting and er.sun == 8, "8 pieces: the second minigame")
+	var said := []
+	er.show_dialog.connect(func(id): said.append(id))
+	er.after_minigame()
+	er._hits(0.0)
+	check(er.stage == 2 and said.is_empty(), "then stage 3; the dialog it skipped stays unsaid")
+	er.queue_free()
+
 	step("level 3 – the summit")
 	await finish_dialog("3A")
 	pf = main.platformer

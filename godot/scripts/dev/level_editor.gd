@@ -163,7 +163,12 @@ func select_level(id: int) -> void:
 	_scroll.scroll_vertical = 0
 	_load_initial()
 	_refresh_dialog_tools()
-	if bg_panel:
+	if bg_panel and is_runner():
+		# The forest run has no parallax layers.
+		bg_panel.close_browser()
+		bg_panel.queue_free()
+		bg_panel = null
+	elif bg_panel:
 		# A browser opened for the previous level must not add to this one.
 		bg_panel.close_browser()
 		bg_panel.refresh()
@@ -926,7 +931,7 @@ func _open_import() -> void:
 	var load_btn := UiKit.button("Load", Vector2(120, 36), 12, Color("#059669"))
 	load_btn.position = Vector2(460, 344)
 	load_btn.pressed.connect(func():
-		var parsed := LevelData.parse_text(te.text)
+		var parsed := LevelData.parse_text(te.text, Game.level_cols(level_id))
 		if parsed.is_empty():
 			_toast_msg("Nothing to import.")
 			return

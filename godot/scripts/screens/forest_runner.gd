@@ -375,10 +375,11 @@ func _loop_stage() -> void:
 ## After the minigame: on with the next stage (from its start).
 func after_minigame() -> void:
 	waiting = false
-	if stage < stages.size() - 1:
-		stage += 1
-		dist = stages[stage].start
-		_random_traps(stage)
+	# The stage whose quota is next (an edited map may hold more or fewer than
+	# 4 pieces per stage): never back, never past the last one.
+	var target := mini(sun / SUN_PER_GAME, stages.size() - 1)
+	if target > stage:
+		jump_to(stages[target].start)
 	py = 0
 	vy = 0
 	jumps = 2
@@ -508,8 +509,11 @@ func stage_progress() -> float:
 
 ## Puts her at `z` (developer shortcuts, tests): the stage follows.
 func jump_to(z: float) -> void:
+	var was := stage
 	stage = stage_of(z)
 	dist = z
+	if stage != was:
+		_random_traps(stage)
 	# Dialogs she skipped over stay unsaid.
 	for o in objects:
 		if o.kind == "dialog" and o.z <= z:
