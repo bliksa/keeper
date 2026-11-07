@@ -913,9 +913,24 @@ func _run() -> void:
 	pw_edit.text_submitted.emit(pw_edit.text)
 	await frames(4)
 	check(main.state == "dev" and main._menu is DevMenu and GitHubSave.get_token() == "github_pat_TEST123", "DEV button on the first screen opens developer mode (password unlocks saving too)")
+	var lock_btn: Array = (main._menu as DevMenu).header_tools.get_children().filter(func(b): return b is Button and b.text == "Lock")
+	check(lock_btn.size() == 1, "developer mode has a Lock button once the team password exists")
 	var gs_box := GitHubSave.token_dialog(main._menu, func(_ok): pass)
 	check(gs_box.find_children("*", "LineEdit", true, false)[0].placeholder_text == "Team password", "Save to repo asks for the team password, not a token")
 	gs_box.queue_free()
+	(main._menu as DevMenu).lock()
+	await frames(3)
+	check(not GitHubSave.has_token() and main.state == "title", "Lock forgets the unlock (DEV asks again)")
+	main._go_boot()
+	await frames(3)
+	await _click((main._menu as BootScreen)._dev.get_global_rect().get_center())
+	await frames(3)
+	var pwd2: Control = main._menu.get_child(main._menu.get_child_count() - 1)
+	var pw2: LineEdit = pwd2.find_children("*", "LineEdit", true, false)[0]
+	pw2.text = "four random words here"
+	pw2.text_submitted.emit(pw2.text)
+	await frames(4)
+	check(main.state == "dev", "… and the password opens it again")
 	# Setting up the password commits with the pasted token before any is saved.
 	GitHubSave.forget_token()
 	var api0 := GitHubSave.api_base

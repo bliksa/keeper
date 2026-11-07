@@ -99,6 +99,17 @@ static func level_cols(id: int) -> int:
 	return ForestRunner.COLS if id == ForestRunner.LEVEL_ID else LevelData.COLS
 
 
+## "v2.0.0 · build 069a5d1 · 2026-11-07 19:20" (data/build.json, written by
+## tools/export_web.sh; just the version when running from the editor / tests).
+static func build_label() -> String:
+	var v := "v" + str(ProjectSettings.get_setting("application/config/version"))
+	if FileAccess.file_exists("res://data/build.json"):
+		var d: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://data/build.json"))
+		if d is Dictionary:
+			return "%s · build %s · %s" % [v, d.get("sha", "?"), d.get("date", "")]
+	return v
+
+
 static func is_horizontal(id: int) -> bool:
 	return LEVEL_DIRS.get(id, "down") in ["right", "left"]
 

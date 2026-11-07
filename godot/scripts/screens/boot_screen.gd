@@ -12,6 +12,7 @@ const FONT := UiKit.MENU_FONT
 
 var _start: Button
 var _dev: Button
+var _version: Label
 var _subs: Label
 var _full: Button
 var _flags := {}
@@ -55,6 +56,12 @@ func _ready() -> void:
 		add_child(tb)
 		_flags[lang] = tb
 		x += 36
+	var ver := UiKit.label(Game.build_label(), 12, Color("#6b7280"))
+	ver.position = Vector2(1066 - 14 - 360, 600 - 26)
+	ver.size = Vector2(360, 18)
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	add_child(ver)
+	_version = ver
 	Text.language_changed.connect(_refresh)
 	_refresh()
 

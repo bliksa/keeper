@@ -90,7 +90,7 @@ func _refresh() -> void:
 	_mute_btn.tooltip_text = "Unmute" if Audio.muted else "Mute"
 	_mode_btn.text = "KEYBOARD" if Game.control_mode == "keyboard" else "GAMEPAD"
 	_mode_btn.tooltip_text = "Switch to Gamepad" if Game.control_mode == "keyboard" else "Switch to Keyboard"
-	get_node("Version").text = Text.t("UI_WORK_IN_PROGRESS") + " v" + str(ProjectSettings.get_setting("application/config/version"))
+	get_node("Version").text = Text.t("UI_WORK_IN_PROGRESS") + " " + Game.build_label()
 
 
 func _open_credits() -> void:

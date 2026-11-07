@@ -3,3 +3,4 @@ godot/.godot/
 build/
 *.tmp
 .DS_Store
+godot/data/build.json

@@ -118,6 +118,12 @@ func _show(tab: String) -> void:
 		_build_shortcuts()
 
 
+## Forgets this browser's unlock: DEV asks for the team password next time.
+func lock() -> void:
+	GitHubSave.forget_token()
+	back.emit()
+
+
 ## Sets up / changes the team password (DevAccess).
 func open_team_password() -> void:
 	if _gh == null:
@@ -129,7 +135,14 @@ func open_team_password() -> void:
 
 
 func _build_shortcuts() -> void:
-	var tp := UiKit.button("Team password", Vector2(130, ICON), 12, Color("#1e293b"), Color("#cbd5e1"))
+	if DevAccess.is_set_up():
+		var lk := UiKit.button("Lock", Vector2(80, ICON), 12, Color("#1e293b"), Color("#cbd5e1"))
+		lk.icon = load("res://assets/ui/icons/lock.svg")
+		lk.add_theme_constant_override("icon_max_width", 16)
+		lk.tooltip_text = "Lock developer mode in this browser: DEV asks for the team password again"
+		lk.pressed.connect(lock)
+		header_tools.add_child(lk)
+	var tp := UiKit.button("Change password" if DevAccess.is_set_up() else "Team password", Vector2(150, ICON), 12, Color("#1e293b"), Color("#cbd5e1"))
 	tp.icon = load("res://assets/ui/icons/key-round.svg")
 	tp.add_theme_constant_override("icon_max_width", 16)
 	tp.tooltip_text = "One password for developer mode and every “Save to repo” (no token for the team)"
