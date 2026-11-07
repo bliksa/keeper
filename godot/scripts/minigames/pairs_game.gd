@@ -122,8 +122,6 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, 1066, 600), Color(0, 0, 0, 0.6))
 	var a := 0.5 if dialog_active else 1.0
 	var fb: Font = Text.font_bold
-	Draw.text_center(self, fb, Vector2(317, CARDS_Y - 12), Text.plain(Text.t("MG10_SIGNALS")), 14, Color("#a7f3d0", a))
-	Draw.text_center(self, fb, Vector2(749, CARDS_Y - 12), Text.plain(Text.t("MG10_MEANINGS")), 14, Color("#a7f3d0", a))
 	for c in 2:
 		for i in PAIRS.size():
 			var r := _card_rect(c, i)
