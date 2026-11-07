@@ -3,7 +3,7 @@ extends Control
 ## Dialog panel along the top or bottom edge (25 % of the screen).
 ##
 ## Two modes, like the web build:
-##  * node dialog  – show_node("cave_start", cb): multi-part conversation from
+##  * node dialog  – show_node("1A", cb): multi-part conversation from
 ##    data/dialogs.json with voice-over; cb(button_text) when finished.
 ##  * simple panel – show_panel({title, text, choices:[{text, action}], hide_button}):
 ##    hints from minigames / game-over choices.

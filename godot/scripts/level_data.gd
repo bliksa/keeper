@@ -11,7 +11,7 @@ extends RefCounted
 ##   P      player spawn
 ##   2 3 4  minigame trigger (2 chocolate puzzle, 3 pipes, 4 prices) — spans the whole row
 ##   5 B    boss fight trigger — spans the whole row
-##   a…z    dialog trigger (letters mapped in data/dialogs.json → "letter_dialogs")
+##   a…z    dialog trigger: the level's dialog with that letter (c in the cave = 1C)
 ##   X      "first cramp" dialog trigger (uppercase)
 ##   T      teleport to the top of the level
 ##   I      on-screen hint text (double jump)

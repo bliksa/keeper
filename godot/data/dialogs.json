@@ -1,142 +1,474 @@
 {
- "_comment": "Dialog nodes. 'text' and 'buttons' are string keys from data/i18n/<lang>.json. Voice file = voice_overrides[key] or <key>.wav if it exists in assets/audio. 'letter_dialogs' maps lowercase level letters (a-z) to dialog nodes; unmapped letters use node 'DIA_<LETTER>' if it exists.",
- "letter_dialogs": {
-  "a": "cave_start",
-  "x": "first_cramp",
-  "g": "garden_start",
-  "h": "garden_bubbles",
-  "k": "garden_updraft",
-  "m": "garden_distraction",
-  "n": "garden_wave_hint",
-  "b": "meadow_start",
-  "c": "meadow_seeds",
-  "d": "meadow_river",
-  "e": "meadow_shadows",
-  "f": "meadow_gate_hint",
-  "o": "runner_crows",
-  "p": "runner_traps"
- },
+ "_comment": "Dialogs. Story dialogs are named <level><letter> (0 = the prologue in the forest, 1 cave, 2 forest run, 3 summit, M the old meadow) and their lines <level><letter><n>, e.g. 2C3 = level 2, dialog C, line 3; the line's text key in data/i18n/<lang>.json is the same name. A lowercase letter in a level map starts the dialog of that level with that letter (c in level 2 = 2C); A is said when the level starts. Minigame talk (mg*_start / _after / ...) is not a story dialog and keeps its own names. Edit in Developer mode > Dialogs. Voice file = voice_overrides[key] or <key>.wav in assets/audio.",
  "voice_overrides": {
-  "DIA_001": "Kyra-001.wav",
-  "DIA_002": "Kyra-002.wav",
-  "DIA_003": "Kyra-003.wav",
-  "DIA_004": "Kyra-004.wav",
-  "DIA_009_FINAL": "breath_after.wav"
+  "0A1": "Kyra-001.wav",
+  "0A2": "Kyra-002.wav",
+  "0B1": "Kyra-003.wav",
+  "0B2": "Kyra-004.wav",
+  "0B3": "DIA_005.wav",
+  "0B4": "DIA_006.wav",
+  "0B5": "DIA_007.wav",
+  "0C1": "DIA_008.wav",
+  "0C2": "DIA_009.wav",
+  "0D1": "breath_after.wav",
+  "1A1": "DIA_010.wav",
+  "1A2": "DIA_011.wav",
+  "1A3": "DIA_012.wav",
+  "1B1": "DIA_013.wav",
+  "1B2": "DIA_014.wav",
+  "1C1": "DIA_044.wav",
+  "1C2": "DIA_045.wav",
+  "1C3": "DIA_046.wav",
+  "1D1": "DIA_047.wav",
+  "1D2": "DIA_048.wav",
+  "1D3": "DIA_049.wav",
+  "1D5": "DIA_051.wav",
+  "1D6": "DIA_052.wav",
+  "1E1": "DIA_053.wav",
+  "1E2": "DIA_054.wav",
+  "1E3": "DIA_055.wav",
+  "1E4": "DIA_056.wav"
  },
  "nodes": {
-  "DIA_A": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_A_01"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_A_02"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_A_03"
-    }
-   ]
-  },
-  "intro_forest": {
+  "0A": {
    "parts": [
     {
      "speaker": "Kyra",
-     "text": "DIA_001"
+     "text": "0A1"
     },
     {
      "speaker": "Kyra",
-     "text": "DIA_002"
+     "text": "0A2"
     }
    ],
    "buttons": [
     "BTN_WALK"
    ]
   },
-  "intro_fairy": {
+  "0B": {
    "parts": [
     {
      "speaker": "Kyra",
-     "text": "DIA_003"
+     "text": "0B1"
     },
     {
      "speaker": "Kyra",
-     "text": "DIA_004"
+     "text": "0B2"
     },
     {
      "speaker": "Estrogenka",
-     "text": "DIA_005"
+     "text": "0B3"
     },
     {
      "speaker": "Estrogenka",
-     "text": "DIA_006"
+     "text": "0B4"
     },
     {
      "speaker": "Estrogenka",
-     "text": "DIA_007"
+     "text": "0B5"
     }
    ],
    "buttons": [
     "BTN_BREATHE"
    ]
   },
-  "intro_breathing": {
+  "0C": {
    "parts": [
     {
      "speaker": "Estrogenka",
-     "text": "DIA_008"
+     "text": "0C1"
     },
     {
      "speaker": "Estrogenka",
-     "text": "DIA_009"
+     "text": "0C2"
     }
    ],
    "buttons": [
     "BTN_START_BREATHING"
    ]
   },
-  "intro_breathing_done": {
+  "0D": {
    "parts": [
     {
      "speaker": "Estrogenka",
-     "text": "DIA_009_FINAL"
+     "text": "0D1"
     }
    ]
   },
-  "cave_start": {
+  "1A": {
    "parts": [
     {
      "speaker": "Estrogenka",
-     "text": "DIA_010"
+     "text": "1A1"
     },
     {
      "speaker": "Estrogenka",
-     "text": "DIA_011"
+     "text": "1A2"
     },
     {
      "speaker": "Estrogenka",
-     "text": "DIA_012"
+     "text": "1A3"
     }
    ],
    "buttons": [
     "BTN_GOT_IT"
    ]
   },
-  "first_cramp": {
+  "1B": {
    "parts": [
     {
      "speaker": "Estrogenka",
-     "text": "DIA_013"
+     "text": "1B1"
     },
     {
      "speaker": "Estrogenka",
-     "text": "DIA_014"
+     "text": "1B2"
     }
    ],
    "buttons": [
     "BTN_YES_MAAM"
+   ]
+  },
+  "1C": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "1C1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1C2"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1C3"
+    }
+   ],
+   "buttons": [
+    "BTN_BATTLE"
+   ]
+  },
+  "1D": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "1D1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1D2"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1D3"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1D4"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1D5"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1D6"
+    }
+   ],
+   "buttons": [
+    "BTN_NEXT_PHASE"
+   ]
+  },
+  "1E": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "1E1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1E2"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1E3"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "1E4"
+    }
+   ],
+   "buttons": [
+    "BTN_RESTART"
+   ]
+  },
+  "2A": {
+   "parts": [
+    {
+     "speaker": "Kyra",
+     "text": "2A1"
+    },
+    {
+     "speaker": "Iskra",
+     "text": "2A2"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "2A3"
+    },
+    {
+     "speaker": "Iskra",
+     "text": "2A4"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_GO"
+   ]
+  },
+  "2B": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "2B1"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "2C": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "2C1"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "2D": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "2D1"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "2E": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "2E1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "2E2"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "3A": {
+   "parts": [
+    {
+     "speaker": "Kyra",
+     "text": "3A1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "3A2"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "3A3"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "3A4"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_CLIMB"
+   ]
+  },
+  "3B": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "3B1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "3C": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "3C1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "3D": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "3D1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "3E": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "3E1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "3F": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "3F1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "3F2"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_CLIMB"
+   ]
+  },
+  "3G": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "3G1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "3G2"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "3G3"
+    }
+   ],
+   "buttons": [
+    "BTN_BACK_MENU"
+   ]
+  },
+  "MA": {
+   "parts": [
+    {
+     "speaker": "Kyra",
+     "text": "MA1"
+    },
+    {
+     "speaker": "Iskra",
+     "text": "MA2"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "MA3"
+    },
+    {
+     "speaker": "Iskra",
+     "text": "MA4"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_GO"
+   ]
+  },
+  "MB": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "MB1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "MC": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "MC1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "MD": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "MD1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "ME": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "ME1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "MF": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "MF1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
+  "MG": {
+   "parts": [
+    {
+     "speaker": "Kyra",
+     "text": "MG1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "MG2"
+    },
+    {
+     "speaker": "Iskra",
+     "text": "MG3"
+    }
+   ],
+   "buttons": [
+    "BTN_NEXT_PHASE"
    ]
   },
   "mg1_start": {
@@ -326,146 +658,6 @@
     "BTN_EXACTLY"
    ]
   },
-  "boss_start": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_044"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_045"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_046"
-    }
-   ],
-   "buttons": [
-    "BTN_BATTLE"
-   ]
-  },
-  "boss_win": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_047"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_048"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_049"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_050"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_051"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_052"
-    }
-   ],
-   "buttons": [
-    "BTN_NEXT_PHASE"
-   ]
-  },
-  "boss_loss": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_053"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_054"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_055"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_056"
-    }
-   ],
-   "buttons": [
-    "BTN_RESTART"
-   ]
-  },
-  "garden_start": {
-   "parts": [
-    {
-     "speaker": "Kyra",
-     "text": "DIA_G01"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G02"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G03"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G04"
-    }
-   ],
-   "buttons": [
-    "BTN_LETS_CLIMB"
-   ]
-  },
-  "garden_bubbles": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G05"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
-  "garden_updraft": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G06"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
-  "garden_distraction": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G07"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
-  "garden_wave_hint": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G08"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
   "mg5_start": {
    "parts": [
     {
@@ -560,118 +752,6 @@
     "BTN_CONTINUE"
    ]
   },
-  "wave_start": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G23"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G24"
-    }
-   ],
-   "buttons": [
-    "BTN_LETS_CLIMB"
-   ]
-  },
-  "garden_end": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G25"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G26"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_G27"
-    }
-   ],
-   "buttons": [
-    "BTN_BACK_MENU"
-   ]
-  },
-  "meadow_start": {
-   "parts": [
-    {
-     "speaker": "Kyra",
-     "text": "DIA_M01"
-    },
-    {
-     "speaker": "Iskra",
-     "text": "DIA_M02"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_M03"
-    },
-    {
-     "speaker": "Iskra",
-     "text": "DIA_M04"
-    }
-   ],
-   "buttons": [
-    "BTN_LETS_GO"
-   ]
-  },
-  "meadow_seeds": {
-   "parts": [
-    {
-     "speaker": "Iskra",
-     "text": "DIA_M05"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
-  "meadow_river": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_M06"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
-  "meadow_shadows": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_M07"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
-  "meadow_gate_hint": {
-   "parts": [
-    {
-     "speaker": "Iskra",
-     "text": "DIA_M08"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
-  "gate_locked": {
-   "parts": [
-    {
-     "speaker": "Iskra",
-     "text": "DIA_M09"
-    }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
-   ]
-  },
   "mg8_start": {
    "parts": [
     {
@@ -752,96 +832,6 @@
     {
      "speaker": "Estrogenka",
      "text": "DIA_M20"
-    }
-   ],
-   "buttons": [
-    "BTN_CONTINUE"
-   ]
-  },
-  "meadow_end": {
-   "parts": [
-    {
-     "speaker": "Kyra",
-     "text": "DIA_M21"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_M22"
-    },
-    {
-     "speaker": "Iskra",
-     "text": "DIA_M23"
-    }
-   ],
-   "buttons": [
-    "BTN_NEXT_PHASE"
-   ]
-  },
-  "runner_start": {
-   "parts": [
-    {
-     "speaker": "Kyra",
-     "text": "DIA_R01"
-    },
-    {
-     "speaker": "Iskra",
-     "text": "DIA_R02"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_R03"
-    },
-    {
-     "speaker": "Iskra",
-     "text": "DIA_R04"
-    }
-   ],
-   "buttons": [
-    "BTN_LETS_GO"
-   ]
-  },
-  "runner_end": {
-   "parts": [
-    {
-     "speaker": "Iskra",
-     "text": "DIA_R05"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_R06"
-    }
-   ],
-   "buttons": [
-    "BTN_CONTINUE"
-   ]
-  },
-  "runner_loop": {
-   "parts": [
-    {
-     "speaker": "Iskra",
-     "text": "DIA_R07"
-    }
-   ],
-   "buttons": [
-    "BTN_CONTINUE"
-   ]
-  },
-  "runner_crows": {
-   "parts": [
-    {
-     "speaker": "Estrogenka",
-     "text": "DIA_R08"
-    }
-   ],
-   "buttons": [
-    "BTN_CONTINUE"
-   ]
-  },
-  "runner_traps": {
-   "parts": [
-    {
-     "speaker": "Iskra",
-     "text": "DIA_R09"
     }
    ],
    "buttons": [

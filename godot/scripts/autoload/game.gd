@@ -16,6 +16,9 @@ const CUSTOM_LEVEL_PATH := "user://custom_level.txt"
 const LEVELS := {1: "res://data/levels/cave.txt", 4: "res://data/levels/forest_run.txt", 2: "res://data/levels/meadow.txt", 3: "res://data/levels/garden.txt"}
 const LEVEL_NAMES := {1: "Cave", 4: "Forest run", 2: "Meadow (old)", 3: "Summit"}
 const LEVEL_DIRS := {1: "down", 4: "forward", 2: "right", 3: "up"}
+## Prefix of the dialogs of each level (data/dialogs.json): 2C = level 2, dialog C.
+## "0" is the prologue in the forest (no level map).
+const DIALOG_LEVEL := {1: "1", 4: "2", 3: "3", 2: "M"}
 
 ## "keyboard" or "gamepad" — decides which <KB>/<GP> hint text is shown.
 var control_mode := "keyboard":

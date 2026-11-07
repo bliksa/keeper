@@ -35,7 +35,7 @@ const DEFS := {
 		"where": "Cave (^ in the level)"},
 	"boss": {"cat": "enemies", "label": "Big Cramp (boss)", "size": 170.0, "fps": 10.0, "frames": [],
 		"where": "Boss arena"},
-	"bird": {"cat": "enemies", "label": "Crow", "size": 60.0, "fps": 10.0, "frames": [],
+	"bird": {"cat": "enemies", "label": "Flying notification", "size": 60.0, "fps": 10.0, "frames": [],
 		"where": "Forest run (grabs her mid-jump)"},
 	"vine": {"cat": "enemies", "label": "Side trap (vine)", "size": 50.0, "fps": 8.0, "frames": [],
 		"where": "Forest run (lashes in from the side)"},
@@ -308,12 +308,26 @@ static func draw_shadow(ci: CanvasItem, c: Vector2, t: float, a: float, seed_x: 
 	ci.draw_circle(c + Vector2(5, -3), 2.5, Color(1, 0.3, 0.3, a))
 
 
-## s = size (half the wing span ≈ 1.2 s), flap −1…1.
-static func draw_bird(ci: CanvasItem, c: Vector2, s: float, flap: float, col := Color("#3b3b4f")) -> void:
-	ci.draw_circle(c, s * 0.35, col)
-	ci.draw_colored_polygon(PackedVector2Array([Vector2(c.x - s * 0.2, c.y), Vector2(c.x - s * 1.2, c.y - s * flap), Vector2(c.x - s * 0.5, c.y + s * 0.15)]), col)
-	ci.draw_colored_polygon(PackedVector2Array([Vector2(c.x + s * 0.2, c.y), Vector2(c.x + s * 1.2, c.y - s * flap), Vector2(c.x + s * 0.5, c.y + s * 0.15)]), col)
-	ci.draw_circle(Vector2(c.x, c.y + s * 0.1), s * 0.07, Color("#fbbf24"))
+## A flying notification: an envelope with flapping wings and a red "!".
+## s = size (the wings span ≈ 2.4 s), flap −1…1, col = the envelope (fog tint).
+static func draw_bird(ci: CanvasItem, c: Vector2, s: float, flap: float, col := Color("#f1f5f9")) -> void:
+	var wing := col.darkened(0.08)
+	for side: float in [-1.0, 1.0]:
+		# Feathered wing: three fingers fanning out from the envelope's side.
+		var root := c + Vector2(side * s * 0.5, -s * 0.05)
+		for f in 3:
+			var tip := root + Vector2(side * s * (0.75 - f * 0.12), -s * flap * (1.0 - f * 0.18) - s * (0.12 - f * 0.12))
+			Draw.polygon_safe(ci, PackedVector2Array([root + Vector2(0, -s * 0.12), tip, root + Vector2(0, s * 0.14)]), wing.darkened(f * 0.05))
+	var r := Rect2(c.x - s * 0.55, c.y - s * 0.36, s * 1.1, s * 0.72)
+	ci.draw_rect(r, col)
+	ci.draw_rect(r, col.darkened(0.35), false, maxf(1, s * 0.05))
+	# The flap of the envelope.
+	ci.draw_polyline(PackedVector2Array([r.position, Vector2(c.x, c.y + s * 0.05), Vector2(r.end.x, r.position.y)]), col.darkened(0.35), maxf(1, s * 0.05), true)
+	# Red badge with "!".
+	var bc := Vector2(r.end.x - s * 0.04, r.position.y + s * 0.02)
+	ci.draw_circle(bc, s * 0.24, Color("#ef4444"))
+	ci.draw_line(bc + Vector2(0, -s * 0.13), bc + Vector2(0, s * 0.04), Color.WHITE, maxf(1, s * 0.07))
+	ci.draw_circle(bc + Vector2(0, s * 0.12), maxf(0.5, s * 0.04), Color.WHITE)
 
 
 ## A sun slice: a triangle pointing down (its tip is the sun's centre).

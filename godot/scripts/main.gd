@@ -293,11 +293,11 @@ func _breathing_done() -> void:
 	_clear_minigame()
 	if Game.intro_done:
 		_start_cave(1, Game.iron)
-		_dialog("intro_breathing_done")
+		_dialog("0D")
 	else:
 		_set_state("intro")
 		forest.has_breathing = true
-		_dialog("intro_breathing_done")
+		_dialog("0D")
 
 
 func _enter_cave() -> void:
@@ -379,13 +379,13 @@ func _open_minigame(m: Minigame, on_done: Callable) -> void:
 
 func _on_trigger(name: String) -> void:
 	if name.begins_with("dialog_"):
-		var id := Text.dialog_for_letter(name.substr(7))
+		var id := Text.dialog_for_letter(name.substr(7), Game.level)
 		if id != "" and _node_box.node_id() != id:
 			_dialog(id)
 		return
 	match name:
 		"first_cramp":
-			_dialog("first_cramp")
+			_dialog("1B")
 		"mg2":
 			_set_state("mg2")
 			_open_minigame(ChocoPuzzle.new(), _mg2_done)
@@ -423,8 +423,8 @@ func _on_trigger(name: String) -> void:
 			_open_minigame(PairsGame.new(), _mg10_done)
 			_dialog("mg10_start")
 		"gate_locked":
-			if _node_box.node_id() != "gate_locked":
-				_dialog("gate_locked")
+			if _node_box.node_id() != "MF":
+				_dialog("MF")
 		"gate":
 			Game.checkpoint = 5
 		"meadow_done":
@@ -432,14 +432,14 @@ func _on_trigger(name: String) -> void:
 			await _fade_to(1.0, 1.5, Color.WHITE)
 			if run4 != _run_id:
 				return
-			_dialog("meadow_end", func():
+			_dialog("MG", func():
 				_start_summit(1, maxi(Game.iron, 8), false)
 				_fade_to(0.0, 1.0, Color.WHITE))
 		"wave":
 			# The chase starts when the dialog closes (a retry skips the dialog).
 			if Game.checkpoint < 5:
 				Game.checkpoint = 5
-				_dialog("wave_start")
+				_dialog("3F")
 		"wave_lost":
 			_set_dim(true)
 			var run2 := _run_id
@@ -455,13 +455,13 @@ func _on_trigger(name: String) -> void:
 			await get_tree().create_timer(2.5).timeout
 			if run3 != _run_id:
 				return
-			_dialog("garden_end", func():
+			_dialog("3G", func():
 				Game.reset_run()
 				_go_title())
 		"end":
 			Game.checkpoint = 5
 			Game.boss_iron = Game.iron
-			_dialog("boss_start")
+			_dialog("1C")
 		"game_over", "game_over_boss":
 			_set_dim(true)
 			var run := _run_id
@@ -569,7 +569,7 @@ func _mg7_done() -> void:
 func _on_boss_defeated() -> void:
 	# The cycle goes on: a corridor opens in the middle of the arena and Kyra
 	# runs into the forest (follicular phase).
-	_dialog("boss_win", _into_corridor)
+	_dialog("1D", _into_corridor)
 
 
 func _into_corridor() -> void:
@@ -620,7 +620,7 @@ func _start_runner(fade := true, stage := 0) -> void:
 	_set_state("runner")
 	if fade:
 		_fade_to(0.0)
-	_dialog("runner_start")
+	_dialog("2A")
 
 
 func _runner_dialog(id: String) -> void:
@@ -640,7 +640,7 @@ func _runner_done() -> void:
 	if runner:
 		Game.seeds = runner.seeds
 		Game.water = int(runner.water)
-	_dialog("runner_end", func():
+	_dialog("2E", func():
 		Game.upgrades = {}
 		_start_summit(1, maxi(Game.iron, 8)))
 

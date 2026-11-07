@@ -89,7 +89,7 @@ func _update(dt: float) -> void:
 	if not _monologue_sent and not has_breathing:
 		_monologue_sent = true
 		p.is_crouched = true
-		show_dialog.emit("intro_forest", func(_b):
+		show_dialog.emit("0A", func(_b):
 			_monologue_done = true
 			p.is_crouched = false)
 	if not _monologue_done and not has_breathing:
@@ -147,8 +147,8 @@ func _update(dt: float) -> void:
 	if not _dialog_triggered and p.x > ghost_x - 100:
 		_dialog_triggered = true
 		p.vx = 0
-		show_dialog.emit("intro_fairy", func(_b):
-			show_dialog.emit("intro_breathing", func(_b2):
+		show_dialog.emit("0B", func(_b):
+			show_dialog.emit("0C", func(_b2):
 				_minigame_triggered = true
 				start_breathing.emit()))
 	if has_breathing and p.x > cave_entry and not _cave_entered:

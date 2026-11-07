@@ -162,6 +162,7 @@ func select_level(id: int) -> void:
 		_level_pick.select(Game.LEVELS.keys().find(id))
 	_scroll.scroll_vertical = 0
 	_load_initial()
+	_refresh_dialog_tools()
 	if bg_panel:
 		# A browser opened for the previous level must not add to this one.
 		bg_panel.close_browser()
@@ -223,7 +224,7 @@ const GROUPS := [
 		["+", "sun", "Sun piece (+): 12 = the sun, every 4 a minigame"],
 		["R", "sprout", "Root (R): jump over it"],
 		["H", "rectangle-horizontal", "Branch (H): high, change path or double jump"],
-		["V", "bird", "Crow (V): grabs her in the air"],
+		["V", "bird", "Flying notification (V): grabs her in the air"],
 		["D", "droplets", "Water drop (D)"],
 		["U", "arrow-up", "Water drop up high (U)"],
 		["Y", "sparkles", "Light seed (Y)"],
@@ -258,6 +259,8 @@ const ICONS := "res://assets/ui/icons/%s.svg"
 ## Optional header (the developer menu's top bar) for the level actions.
 var header: HBoxContainer
 var _test_button: Button
+## The event group's tool list (its dialog letters change with the level).
+var _events_items: Array = []
 ## group id -> {button, menu, current: [char, icon, name]}
 var _groups := {}
 ## level char -> [char, icon, name, group id] for every tool
@@ -277,33 +280,17 @@ func _build_sidebar() -> void:
 	for g in GROUPS:
 		var items: Array = g.items.duplicate()
 		if g.id == "events":
-			for i in 24:
-				var ch := char(97 + i)
-				var target := Text.dialog_for_letter(ch)
-				items.append([ch, "message-square", "Dialog %s%s" % [ch.to_upper(), (" → " + target) if target != "" else ""]])
+			items.append_array(_letter_items())
 		for it in items:
 			_tool_info[it[0]] = [it[0], it[1], it[2], g.id]
 		var b := UiKit.icon_button(ICONS % items[0][1], "", ICON)
 		b.draw.connect(_draw_group_corner.bind(b, items.size() > 1))
 		var menu := PopupMenu.new()
-		var dialogs: PopupMenu = null
-		for i in items.size():
-			var it: Array = items[i]
-			var is_letter: bool = it[0] >= "a" and it[0] <= "z"
-			if is_letter and Text.dialog_for_letter(it[0]) == "":
-				# Unmapped letters go to a submenu so the main list stays short.
-				if dialogs == null:
-					dialogs = PopupMenu.new()
-					dialogs.id_pressed.connect(func(id): _select_tool(items[id][0]))
-				dialogs.add_icon_item(load(ICONS % it[1]), it[2], i)
-				continue
-			if is_letter and menu.get_item_count() > 0 and not menu.is_item_separator(menu.get_item_count() - 1) and not (items[i - 1][0] >= "a" and items[i - 1][0] <= "z"):
-				menu.add_separator()
-			menu.add_icon_item(load(ICONS % it[1]), it[2], i)
-		if dialogs:
-			menu.add_submenu_node_item("Other dialog letters", dialogs)
+		_fill_menu(menu, items)
 		menu.id_pressed.connect(func(id): _select_tool(items[id][0]))
 		b.add_child(menu)
+		if g.id == "events":
+			_events_items = items
 		b.gui_input.connect(_group_input.bind(g.id))
 		b.pressed.connect(_group_pressed.bind(g.id))
 		col.add_child(b)
@@ -312,6 +299,59 @@ func _build_sidebar() -> void:
 		_groups[g.id] = {"button": b, "menu": menu, "current": items[0], "name": g.name, "multi": items.size() > 1}
 	_build_header()
 	_select_tool("=")
+
+
+## Dialog letters a–x: in this level, letter c starts its dialog "<level>C".
+func _letter_items() -> Array:
+	var out := []
+	var prefix: String = Game.DIALOG_LEVEL.get(level_id, "?")
+	for i in 24:
+		var ch := char(97 + i)
+		var target := Text.dialog_for_letter(ch, level_id)
+		var preview := ""
+		if target != "":
+			var parts: Array = Text.dialogs[target].get("parts", [])
+			if not parts.is_empty():
+				preview = Text.plain(Text.t(parts[0].get("text", "")))
+				if preview.length() > 34:
+					preview = preview.substr(0, 32) + "…"
+		out.append([ch, "message-square", "Dialog %s%s%s" % [prefix, ch.to_upper(), ("  " + preview) if preview != "" else "  (none yet)"]])
+	return out
+
+
+## Fills a group's menu; dialog letters without a dialog in this level go to a submenu.
+func _fill_menu(menu: PopupMenu, items: Array) -> void:
+	for c in menu.get_children():
+		menu.remove_child(c)
+		c.queue_free()
+	menu.clear()
+	var dialogs: PopupMenu = null
+	for i in items.size():
+		var it: Array = items[i]
+		var is_letter: bool = it[0] >= "a" and it[0] <= "z"
+		if is_letter and Text.dialog_for_letter(it[0], level_id) == "":
+			if dialogs == null:
+				dialogs = PopupMenu.new()
+				dialogs.id_pressed.connect(func(id): _select_tool(items[id][0]))
+			dialogs.add_icon_item(load(ICONS % it[1]), it[2], i)
+			continue
+		if is_letter and menu.get_item_count() > 0 and not menu.is_item_separator(menu.get_item_count() - 1) and not (items[i - 1][0] >= "a" and items[i - 1][0] <= "z"):
+			menu.add_separator()
+		menu.add_icon_item(load(ICONS % it[1]), it[2], i)
+	if dialogs:
+		menu.add_submenu_node_item("Other dialog letters", dialogs)
+
+
+## The dialog letters name this level's dialogs (after a level switch).
+func _refresh_dialog_tools() -> void:
+	if _events_items.is_empty() or not _groups.has("events"):
+		return
+	var letters := _letter_items()
+	var n := _events_items.size() - letters.size()
+	for i in letters.size():
+		_events_items[n + i] = letters[i]
+		_tool_info[letters[i][0]] = [letters[i][0], letters[i][1], letters[i][2], "events"]
+	_fill_menu(_groups.events.menu, _events_items)
 
 
 ## Small triangle in the corner of groups that hold more than one tool.
@@ -511,7 +551,7 @@ func _draw_grid() -> void:
 				_:
 					ci.draw_rect(cell.grow(-1), Color("#1e3a8a", 0.8))
 					ci.draw_rect(cell.grow(-1), Color("#60a5fa"), false, 1.0)
-					Draw.text_center(ci, font, mid, ch.to_upper(), 12, Color.WHITE)
+					Draw.text_center(ci, font, mid, (str(Game.DIALOG_LEVEL.get(level_id, "")) + ch.to_upper()) if ch >= "a" and ch <= "z" else ch.to_upper(), 11, Color.WHITE)
 	for c in range(first_c, last_c + 1):
 		ci.draw_line(Vector2(c * CW, first * CELL_H), Vector2(c * CW, last * CELL_H), Color(1, 1, 1, 0.12 if (horizontal() and c % 10 == 0) else 0.05))
 	# Level boundary: a bright frame, and a hatched "end of level" band after the last row / column.
@@ -572,7 +612,7 @@ func _draw_runner_cell(ci: CanvasItem, ch: String, cell: Rect2) -> bool:
 			ci.draw_line(Vector2(cell.position.x + 8, mid.y - 2), Vector2(cell.end.x - 8, mid.y + 2), Color("#a16207"), 6.0)
 			Draw.text_center(ci, font, mid + Vector2(0, -1), "H", 10, Color.WHITE)
 		"V":
-			SpriteArt.draw_bird(ci, mid, 14, 0.5, Color("#111827"))
+			SpriteArt.draw_bird(ci, mid, 16, 0.5)
 		"D", "U":
 			SpriteArt.draw_drop(ci, mid + Vector2(0, 2), 0.7)
 			if ch == "U":

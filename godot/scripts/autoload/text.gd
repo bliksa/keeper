@@ -18,7 +18,6 @@ var _strings := {}
 var dialogs := {}
 var voice_overrides := {}
 var breathing_hints := {}
-var letter_dialogs := {}
 
 ## Comfortaa (the web build's font) — regular and bold weights.
 var font: Font
@@ -49,7 +48,6 @@ func _ready() -> void:
 	dialogs = d.get("nodes", {})
 	voice_overrides = d.get("voice_overrides", {})
 	breathing_hints = d.get("breathing_hints", {})
-	letter_dialogs = d.get("letter_dialogs", {})
 	var base: Font = load("res://assets/fonts/Comfortaa.ttf")
 	var reg := FontVariation.new()
 	reg.base_font = base
@@ -75,12 +73,16 @@ func _dialog_font(path: String) -> Font:
 	return f
 
 
-## Dialog node id for a lowercase level letter (a–z), or "" if none.
-func dialog_for_letter(letter: String) -> String:
-	if letter_dialogs.has(letter):
-		return letter_dialogs[letter]
-	var id := "DIA_" + letter.to_upper()
+## Dialog of a level letter: `c` in level 2 (the forest run) = node "2C".
+## level_id is a Game.LEVELS id (Game.DIALOG_LEVEL gives its dialog prefix).
+func dialog_for_letter(letter: String, level_id: int) -> String:
+	var id: String = Game.DIALOG_LEVEL.get(level_id, "") + letter.to_upper()
 	return id if dialogs.has(id) else ""
+
+
+## Name of a dialog's line n (1-based): "2C" + 3 = "2C3".
+static func line_id(dialog_id: String, n: int) -> String:
+	return "%s%d" % [dialog_id, n]
 
 
 func _load_json(path: String) -> Variant:

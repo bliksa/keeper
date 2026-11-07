@@ -16,8 +16,8 @@ extends Node2D
 ##  * Three lanes; ← → change lane, jump / double jump over roots (low, all lanes)
 ##    and branches (higher, one or two lanes). Hitting one bounces her back and
 ##    the path rolls back a bit.
-##  * Birds (placeholders) fly at her at jump height: one that meets her in the
-##    air carries her back along the path.
+##  * Flying notifications (envelopes with wings, kind "bird") fly at her at jump
+##    height: one that meets her in the air carries her back along the path.
 ##  * Water drops fill the focus bar; holding Slow (Shift / E / LB) slows time
 ##    while it drains, so a tight cluster of obstacles can be read and jumped.
 ##  * Light seeds are counted for the end of the level (to be designed).
@@ -35,10 +35,10 @@ const LEVEL_ID := 4
 ## Kept at the top of the map file (the level editor writes it back).
 const MAP_HEADER := """# Forest run (level 2), a top-down map: the bottom row is the start, she runs up the file.
 # Columns: left side | left path | middle path | right path | right side. One row = 2 m.
-# R root (jump)  H branch (high: change path or double jump)  V crow  D water drop  U drop up high
+# R root (jump)  H branch (high: change path or double jump)  V flying notification  D water drop  U drop up high
 # Y light seed  + sun piece (12 = the sun; every 4 a minigame, the 12th leads to the summit)
 # < > side trap from the left / right side   A next stage starts here (faster; stage 3: random side traps)
-# a-z dialog (data/dialogs.json letter_dialogs)
+# a-z dialog of level 2 (c = dialog 2C, Developer mode > Dialogs)
 """
 const COLS := 5
 const ROW_M := 2.0
@@ -145,9 +145,9 @@ func _ready() -> void:
 
 ## The course from the top-down map. Per cell:
 ##   R root (jump; RRR across the paths = one long root)   H branch (high)
-##   V crow (flies at her)   D water drop   U water drop up high   Y light seed
+##   V flying notification (flies at her)   D water drop   U water drop up high   Y light seed
 ##   + sun piece   < > side trap from the left / right side (any column)
-##   A a new stage starts at this row   a–z dialog (letter_dialogs)
+##   A a new stage starts at this row   a–z dialog (c = 2C)
 func build_course() -> void:
 	objects.clear()
 	if rows.is_empty():
@@ -192,7 +192,7 @@ func build_course() -> void:
 						starts.append(z)
 				_:
 					if ch >= "a" and ch <= "z":
-						var id := Text.dialog_for_letter(ch)
+						var id := Text.dialog_for_letter(ch, LEVEL_ID)
 						if id != "":
 							_add("dialog", z, 0)
 							objects[objects.size() - 1]["id"] = id
@@ -369,7 +369,7 @@ func _loop_stage() -> void:
 	sun_flash = 0.0
 	if not _loop_told:
 		_loop_told = true
-		show_dialog.emit("runner_loop")
+		show_dialog.emit("2D")
 
 
 ## After the minigame: on with the next stage (from its start).
@@ -660,8 +660,8 @@ func _draw_bird(o: Dictionary) -> void:
 		return
 	var s := 0.45 * c.z
 	var flap := sin(time * 14 + o.z) * 0.6
-	var col := _fog(Color("#3b3b4f"), z)
-	# The lab's frames, or the placeholder bird: body and two flapping wings.
+	var col := _fog(Color("#f1f5f9"), z)
+	# The lab's frames, or the placeholder: an envelope with wings and a red "!".
 	if not SpriteArt.draw(self, "bird", Vector2(c.x, c.y), s * 1.5, time * 1000.0 + o.z * 37.0, _fog(Color.WHITE, z)):
 		SpriteArt.draw_bird(self, Vector2(c.x, c.y), s, flap, col)
 	# Its shadow on the path.
@@ -784,14 +784,12 @@ func _draw_player() -> void:
 	draw_circle(Vector2(0, -118 * k), 5 * k, Color("#d97706"))
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	if carry_t > 0:
-		# The bird holding her.
+		# The flying notification holding her.
 		var bp := Vector2(c.x, c.y - 165 * k)
 		var flap := sin(time * 16) * 0.8
 		var s := 40 * k
-		var col := Color("#3b3b4f")
-		draw_circle(bp, s * 0.35, col)
-		draw_colored_polygon(PackedVector2Array([bp + Vector2(-s * 0.2, 0), bp + Vector2(-s * 1.4, -s * flap), bp + Vector2(-s * 0.5, s * 0.15)]), col)
-		draw_colored_polygon(PackedVector2Array([bp + Vector2(s * 0.2, 0), bp + Vector2(s * 1.4, -s * flap), bp + Vector2(s * 0.5, s * 0.15)]), col)
+		if not SpriteArt.draw(self, "bird", bp, s * 1.5, time * 1000.0):
+			SpriteArt.draw_bird(self, bp, s, flap)
 
 
 func _draw_hud() -> void:

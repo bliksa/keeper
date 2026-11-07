@@ -156,11 +156,11 @@ func _run() -> void:
 	main._menu.start_pressed.emit()
 	await frames(5)
 	check(main.state == "intro", "intro state")
-	await finish_dialog("intro_forest")
+	await finish_dialog("0A")
 	Input.action_press("move_right")
-	await finish_dialog("intro_fairy")
+	await finish_dialog("0B")
 	Input.action_release("move_right")
-	await finish_dialog("intro_breathing")
+	await finish_dialog("0C")
 	await frames(3)
 	check(main.state == "mg1", "breathing minigame started")
 	check(main.minigame is BreathingGame, "BreathingGame shown")
@@ -180,14 +180,14 @@ func _run() -> void:
 			break
 	await until(func(): return main.minigame == null, 3)
 	check(Game.has_breathing, "breathing unlocked after 6 cycles")
-	await finish_dialog("intro_breathing_done")
+	await finish_dialog("0D")
 
 	step("walk into the cave")
 	Input.action_press("move_right")
 	var in_cave := await until(func(): return main.state == "platformer", 30)
 	Input.action_release("move_right")
 	check(in_cave, "entered the cave")
-	await finish_dialog("cave_start")
+	await finish_dialog("1A")
 	var pf: Platformer = main.platformer
 	check(pf != null and pf.active, "platformer active")
 
@@ -256,7 +256,7 @@ func _run() -> void:
 	await _go_trigger(pf, "end")
 	check(pf.boss.active, "boss arena active")
 	check(pf.hexes.size() == 30, "iron floor built from 30 iron")
-	await finish_dialog("boss_start")
+	await finish_dialog("1C")
 	pf.boss.hp = 1
 	pf.boss.x = pf.p.x + 100
 	pf.boss.y = pf.p.y
@@ -265,16 +265,16 @@ func _run() -> void:
 	Input.action_press("breathe")
 	await frames(2)
 	Input.action_release("breathe")
-	var won := await until(func(): return node_box().node_id() == "boss_win", 5)
+	var won := await until(func(): return node_box().node_id() == "1D", 5)
 	check(won, "boss defeated")
-	await finish_dialog("boss_win")
+	await finish_dialog("1D")
 	await frames(5)
 	check(main.platformer != null and main.platformer.corridor_t > 0 and main.platformer.walk_to_x > 0, "a corridor opens in the middle of the arena")
 	var run_ok := await until(func(): return main.state == "runner" and main.runner != null, 8)
 	check(run_ok and Game.level == 2, "the forest run (level 2) starts after the boss")
 
 	step("level 2 – the forest run")
-	await finish_dialog("runner_start")
+	await finish_dialog("2A")
 	var rn: ForestRunner = main.runner
 	await frames(3)
 	check(rn.active and not rn.dialog_open, "the run is active")
@@ -413,9 +413,9 @@ func _run() -> void:
 	rn.jump_to(rn.stages[0].end - 0.2)
 	await frames(3)
 	check(rn.loops == 1 and rn.stage == 0 and rn.dist < rn.stages[0].start + 2, "the stage repeats from its start while its sun pieces are missing")
-	var looped := await until(func(): return node_box().node_id() == "runner_loop", 3)
+	var looped := await until(func(): return node_box().node_id() == "2D", 3)
 	check(looped, "Iskra says the path goes round again")
-	await finish_dialog("runner_loop")
+	await finish_dialog("2D")
 	for n in ForestRunner.SUN_TOTAL:
 		var pieces: Array = rn.objects.filter(func(o): return o.kind == "sun" and not o.taken)
 		var pc: Dictionary = pieces[0]
@@ -438,14 +438,14 @@ func _run() -> void:
 			await frames(3)
 			check(main.state == "runner" and not rn.waiting and rn.stage == (n + 1) / 4 and rn.visible, "after the minigame the run goes on with stage %d" % ((n + 1) / 4 + 1))
 	check(rn.objects.any(func(o): return o.get("random", false) and o.stage == 2), "the last stage has random side traps")
-	var fin := await until(func(): return node_box().node_id() == "runner_end", 5)
+	var fin := await until(func(): return node_box().node_id() == "2E", 5)
 	check(fin and rn.sun == ForestRunner.SUN_TOTAL and Game.seeds == rn.seeds, "the 12th piece completes the sun and ends the level; the seeds are kept")
-	await finish_dialog("runner_end")
+	await finish_dialog("2E")
 	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
 	check(summit, "the summit (level 3) starts after the forest run")
 
 	step("level 3 – the summit")
-	await finish_dialog("garden_start")
+	await finish_dialog("3A")
 	pf = main.platformer
 	check(pf.is_summit() and pf.p.y > pf.level_h - 500, "starts at the bottom of the summit")
 	check(pf.wave.active and pf.wave.y > pf.p.y + 300, "the LH wave rises from the start, well below the player")
@@ -594,7 +594,7 @@ func _run() -> void:
 
 	step("LH wave and the summit")
 	await _go_trigger(pf, "wave")
-	await finish_dialog("wave_start")
+	await finish_dialog("3F")
 	await frames(2)
 	check(pf.wave.active and Game.checkpoint == 5, "the LH wave rises")
 	var wy: float = pf.wave.y
@@ -610,7 +610,7 @@ func _run() -> void:
 	await _go_trigger(pf, "summit")
 	await frames(3)
 	check(pf.wave.won and pf.summit_timer > 0, "reaching the summit stops the wave")
-	await finish_dialog("garden_end")
+	await finish_dialog("3G")
 	await frames(5)
 	check(main.state == "title" and Game.level == 1, "back to the title after the summit")
 
@@ -620,7 +620,7 @@ func _run() -> void:
 	check(meadow, "the old meadow still starts from the developer menu")
 
 	step("level 2 – the meadow")
-	await finish_dialog("meadow_start")
+	await finish_dialog("MA")
 	pf = main.platformer
 	check(pf.is_meadow() and pf.level.horizontal and pf.level_w > 5000, "a horizontal level with the camera following")
 	await seconds(0.5)
@@ -718,7 +718,7 @@ func _run() -> void:
 	await frames(2)
 	check(absf(gate.x - (gate.base_x + 3 * LevelData.CELL_W)) < 1, "the gate stands 3 cells further")
 	await _go_trigger(pf, "gate")
-	await finish_dialog("gate_locked")
+	await finish_dialog("MF")
 	check(Game.checkpoint < 5 and pf.meadow_end == 0, "the gate stays shut without a full vessel and ten seeds")
 
 	step("minigame 8 – memory")
@@ -789,7 +789,7 @@ func _run() -> void:
 	await _go_trigger(pf, "gate")
 	await frames(3)
 	check(pf.meadow_end > 0 and Game.checkpoint == 5, "the gate opens with a full vessel and ten seeds")
-	await finish_dialog("meadow_end")
+	await finish_dialog("MG")
 	summit = await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
 	check(summit, "the summit (level 3) starts after the meadow")
 	main._quit_to_title()
@@ -806,7 +806,7 @@ func _run() -> void:
 	main._dev_action("checkpoint", 1)
 	await until(func(): return main.platformer != null and main.state == "platformer", 5)
 	pf = main.platformer
-	await finish_dialog("cave_start")
+	await finish_dialog("1A")
 	Game.iron = 1
 	var en := _teleport_to_entity(pf, "enemy")
 	var over := await until(func(): return panel_box().is_open(), 5)
@@ -817,7 +817,7 @@ func _run() -> void:
 	check(restarted, "try again restarts the cave")
 
 	step("pause menu")
-	await finish_dialog("cave_start")
+	await finish_dialog("1A")
 	_key(KEY_ESCAPE, true)
 	await frames(2)
 	_key(KEY_ESCAPE, false)
@@ -837,7 +837,7 @@ func _run() -> void:
 	main._pause._buttons[1].pressed.emit()
 	await frames(5)
 	check(not get_tree().paused and main.state == "intro" and Game.iron == 0, "Restart game starts a new run")
-	await finish_dialog("intro_forest")
+	await finish_dialog("0A")
 	_key(KEY_ESCAPE, true)
 	await frames(2)
 	_key(KEY_ESCAPE, false)

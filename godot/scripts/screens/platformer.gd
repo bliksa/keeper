@@ -357,7 +357,8 @@ func _process(delta: float) -> void:
 
 
 func _send_initial_dialog() -> void:
-	trigger.emit({1: "dialog_a", 2: "dialog_b", 3: "dialog_g"}[level_id])
+	# Every level starts with its dialog A (1A, 3A, MA).
+	trigger.emit("dialog_a")
 
 
 func _clear_breath_failed() -> void:
@@ -432,7 +433,7 @@ func _stand_at_trigger(e: LevelData.Ent) -> void:
 
 
 func _can_jump_in_dialog() -> bool:
-	return not dialog_open or active_dialog_id in ["cave_start", "first_cramp", "garden_start", "meadow_start"]
+	return not dialog_open or active_dialog_id in ["1A", "1B", "3A", "MA"]
 
 
 ## Jump impulse with the level-2 power-ups (jump: +15 %, double: second jump +20 %).
