@@ -432,6 +432,7 @@ func _run() -> void:
 	await frames(3)
 	check(rn.bump_t > 0 and rn._roll_to < vine.z - 5, "a side trap knocks her back in the outer path")
 	await seconds(0.5)
+	rn.build_course()
 	rn.objects = rn.objects.filter(func(o): return o.kind in ["sun", "dialog"])
 	# The sun: a stage repeats while its pieces are missing.
 	rn.jump_to(rn.stages[0].start + 1)
@@ -468,6 +469,49 @@ func _run() -> void:
 	await finish_dialog("2E")
 	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
 	check(summit, "the summit (level 3) starts after the forest run")
+
+	step("forest run – a repeat is laid out behind what she sees")
+	var lmap: Array = []
+	for i in 130:
+		var row := "......"
+		if i == 5 or i == 100:
+			row = "..+..."
+		elif i in [10, 20, 40, 55, 62, 70, 80, 110]:
+			row = ".R...."
+		elif i == 60:
+			row = "A....."
+		lmap.append(row)
+	lmap.reverse()
+	var lr := ForestRunner.new()
+	lr.rows = PackedStringArray(lmap)
+	main.add_child(lr)
+	await frames(1)
+	lr.jump_to(lr.stages[0].end - ForestRunner.VIEW + 4.0)
+	var in_view := func() -> Array:
+		var zs: Array = []
+		for o in lr.objects:
+			if o.kind != "dialog" and o.z > lr.dist and o.z < lr.dist + ForestRunner.VIEW:
+				zs.append(o.z)
+		zs.sort()
+		return zs
+	var seen: Array = in_view.call()
+	var old_end: float = lr.stages[0].end
+	lr._check_loop()
+	var after: Array = in_view.call()
+	check(lr.loops == 1 and seen.size() >= 2 and seen.all(func(z): return after.has(z)), "a missed piece queues the repeat: nothing she can see moves or vanishes")
+	check(lr.objects.any(func(o): return o.kind == "root" and o.stage == 0 and o.z > lr.dist + ForestRunner.VIEW) and lr.stages[1].start > lr.dist + ForestRunner.VIEW, "the repeat (and the next stage after it) lie beyond the view")
+	lr.dist = old_end + 0.5
+	lr._enter_loop()
+	var missed: Array = lr.objects.filter(func(o): return o.kind == "sun" and o.stage == 0)
+	check(lr.stage == 0 and absf(lr.stages[0].start - old_end) < 0.01 and missed[0].z > lr.dist + 10 and not missed[0].taken, "past the old end the stage runs on, the missed piece lies ahead in the repeat")
+	lr.sun = 1
+	lr.objects.filter(func(o): return o.kind == "sun")[0].taken = true
+	lr.objects.filter(func(o): return o.kind == "sun")[0].stage = lr.stage
+	lr.bump()
+	check(lr.sun == 0 and lr.lost_flyers.size() == 1 and lr.sun_lost > 1.0, "a lost slice tumbles out of her and blinks in the sun")
+	await seconds(ForestRunner.LOST_FLY + 0.1)
+	check(lr.lost_flyers.is_empty(), "then it is gone")
+	lr.queue_free()
 
 	step("forest run – an edited map")
 	# Stage 1 has 2 pieces, stage 2 has 4 and a dialog after them, stage 3 has 3.

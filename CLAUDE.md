@@ -219,9 +219,8 @@ from its start); the 12th piece → `finished` → `runner_end` → `_start_summ
 `stages` (cut by `A` rows; the map has 4 of 3 pieces each: jumping + water, faster,
 flying notifications, fastest + random side traps): speed `STAGE_SPEED[stage]` + `STAGE_RAMP` within the
 stage; from `RANDOM_TRAPS_FROM` random side traps (`_random_traps`, new on every
-repeat). Reaching a stage's end with its pieces still missing repeats it
-(`_loop_stage`: seamless, no message: this stage's objects and everything after
-move one stage length ahead, obstacles + drops re-armed, found pieces stay). Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`, costs `JUMP_WATER` / `DOUBLE_WATER`; not possible without that much water, `water_short`), hits:
+repeat). A stage whose pieces can no longer all be found repeats
+(`_check_loop` → `_loop_stage`, queued as soon as its end comes into view: a copy is laid out beyond `dist + VIEW`, nothing in view moves; what already shows of the next stage is run through first and copied after the repeat; `_enter_loop` at the old end moves the missed pieces into the repeat). A hit's lost slice tumbles out of her (`lost_flyers`) and blinks red in the sun (`sun_lost`). Web shortcut `?run=hit` shows it. Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`, costs `JUMP_WATER` / `DOUBLE_WATER`; not possible without that much water, `water_short`), hits:
 `bump()` (roll back `BUMP_BACK`, not before the stage start; −`HIT_WATER` and `_lose_slice()`: the stage's last found piece goes back onto the track, never below the last minigame's count), a flying notification in the air =
 `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass again,
 except within `GRACE`. Slow time: action `slow_time` (Shift / E / LB / Y) while

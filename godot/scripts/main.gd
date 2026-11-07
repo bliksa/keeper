@@ -73,6 +73,10 @@ func _ready() -> void:
 		var bq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('boss') || ''")
 		if bq is String and bq == "win":
 			_dev_boss_win.call_deferred()
+		# ?run=hit: the forest run, a slice found, then a hit every few seconds.
+		var rq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('run') || ''")
+		if rq is String and rq == "hit":
+			_dev_runner_hits.call_deferred()
 
 
 func _dev_boss_win() -> void:
@@ -81,6 +85,27 @@ func _dev_boss_win() -> void:
 	await get_tree().create_timer(1.0).timeout
 	if platformer:
 		platformer.dev_defeat_boss()
+
+
+func _dev_runner_hits() -> void:
+	await _start_runner(false, 1)
+	_node_box.close()
+	var run := _run_id
+	while runner != null and run == _run_id:
+		await get_tree().create_timer(1.5).timeout
+		if runner == null or run != _run_id:
+			return
+		for o in runner.objects:
+			if o.kind == "sun" and not o.taken and o.stage == runner.stage:
+				o.taken = true
+				runner.sun += 1
+				runner.sun_shown = runner.sun
+				break
+		await get_tree().create_timer(1.0).timeout
+		if runner == null or run != _run_id:
+			return
+		runner.bump()
+		await get_tree().create_timer(2.0).timeout
 
 
 ## Opens a minigame on its own (developer shortcut ?mg=, tests).

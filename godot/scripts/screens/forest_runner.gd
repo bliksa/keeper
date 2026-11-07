@@ -149,8 +149,16 @@ var sun_pulse := 0.0
 var water_flash := 0.0
 ## Too little water for a jump: the pill shakes red for a moment.
 var water_short := 0.0
-## A slice lost in a hit: the sun flashes red.
+## A slice lost in a hit: its place in the sun blinks red (s left).
 var sun_lost := 0.0
+const LOST_TIME := 1.4
+const LOST_FLY := 0.9
+## Lost slices tumbling out of her: [{from: Vector2, t}].
+var lost_flyers: Array = []
+## A repeat of the stage queued behind what she can see: where it begins (the
+## old stage end; -1 = none) and how far its copy lies ahead.
+var _loop_cross := -1.0
+var _loop_shift := 0.0
 ## Pickups flying to their indicator: [{kind: "sun" / "drop", from: Vector2, t}].
 var flyers: Array = []
 ## Seconds left of the level-start sequence (0 = playing).
@@ -218,6 +226,8 @@ func _extend_trees() -> void:
 ##   A a new stage starts at this row   a–z dialog (c = 2C)
 func build_course() -> void:
 	objects.clear()
+	loops = 0
+	_loop_cross = -1.0
 	if rows.is_empty():
 		rows = Game.current_level_rows(LEVEL_ID)
 	var n := rows.size()
@@ -284,13 +294,13 @@ func stage_of(z: float) -> int:
 
 
 ## Late stages get side traps at random places (new ones on every repeat).
-func _random_traps(k: int) -> void:
-	objects = objects.filter(func(o): return not (o.get("random", false) and o.stage == k))
+func _random_traps(k: int, from_z := -INF) -> void:
+	objects = objects.filter(func(o): return not (o.get("random", false) and o.stage == k and o.z >= from_z))
 	if k < RANDOM_TRAPS_FROM or k >= stages.size():
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 31 + k * 7 + loops * 101
-	var z: float = stages[k].start + 10.0
+	var z: float = maxf(stages[k].start, from_z) + 10.0
 	while z < stages[k].end - 6.0:
 		var clear := true
 		for o in objects:
@@ -368,6 +378,10 @@ func _process(delta: float) -> void:
 	water_flash = maxf(0, water_flash - dt)
 	water_short = maxf(0, water_short - dt)
 	sun_lost = maxf(0, sun_lost - dt)
+	for f in lost_flyers.duplicate():
+		f.t += dt / LOST_FLY
+		if f.t >= 1.0:
+			lost_flyers.erase(f)
 	if not dialog_open and intro <= 0:
 		loop_note = maxf(0, loop_note - dt)
 	_update_flyers(dt)
@@ -429,6 +443,9 @@ func _update(dt: float) -> void:
 	_hits(wdt)
 	if done or waiting or stages.is_empty():
 		return
+	_check_loop()
+	if _loop_cross >= 0 and dist >= _loop_cross:
+		_enter_loop()
 	if dist >= stages[stage].end:
 		_stage_end()
 
@@ -438,7 +455,8 @@ func _stage_end() -> void:
 	var need := mini(SUN_TOTAL, (stage + 1) * SUN_PER_GAME)
 	var left := objects.any(func(o): return o.kind == "sun" and not o.taken and o.stage == stage)
 	if sun < need and left:
-		_loop_stage()
+		if _loop_cross < 0:
+			_loop_stage()
 	elif stage >= stages.size() - 1:
 		_finish()
 	else:
@@ -446,33 +464,87 @@ func _stage_end() -> void:
 		_random_traps(stage)
 
 
-## Back to the start of the stage: the forest goes round again. Obstacles and
-## water come back; found sun pieces stay found.
+## Whether this stage must come round again: even with every piece still
+## ahead of her taken, its quota would not be met.
+func _loop_needed() -> bool:
+	var need := mini(SUN_TOTAL, (stage + 1) * SUN_PER_GAME)
+	var ahead := 0
+	var missing := false
+	for o in objects:
+		if o.kind == "sun" and o.stage == stage and not o.taken:
+			missing = true
+			if o.z > dist:
+				ahead += 1
+	return missing and sun + ahead < need
+
+
+## As the stage's end comes into view, a repeat it will need is queued at once,
+## so it lies behind what she can see (see _loop_stage).
+func _check_loop() -> void:
+	if _loop_cross >= 0 or dist < stages[stage].end - VIEW - 1.0:
+		return
+	if _loop_needed():
+		_loop_stage()
+
+
+## The stage comes round again, seamless and with no message: a copy of it is
+## laid out right behind what she can see in the distance, nothing in view moves
+## or vanishes. What already shows of the next stage (`bridge`) she runs through
+## first; it goes on again (copied) after the repeat, with everything later.
+## Obstacles and water come back; found sun pieces stay found, missing ones move
+## into the copy once she is past them (_enter_loop).
 func _loop_stage() -> void:
-	# Seamless: she runs on and the same stage lies ahead again. Its obstacles,
-	# drops and missing pieces (and everything after it) move one stage length
-	# forward; the forest grows with it. No message.
 	loops += 1
 	var s: Dictionary = stages[stage]
+	var old_end: float = s.end
 	var span: float = s.end - s.start
+	var at := maxf(old_end, dist + VIEW)
+	var shift := span + (at - old_end)
+	var copies: Array = []
 	for o in objects:
-		if o.z >= s.start:
-			o.z += span
-		if o.stage != stage:
-			continue
-		if o.kind in ["root", "branch", "bird", "vine"]:
-			o.hit = false
-			o.dz = 0.0
-		elif o.kind == "drop":
-			o.taken = false
+		var z: float = o.z
+		if z < old_end:
+			if o.stage == stage and z >= s.start and o.kind in ["root", "branch", "bird", "vine", "drop"] and not o.get("random", false):
+				var c: Dictionary = o.duplicate()
+				c.z = z + shift
+				c.hit = false
+				c.dz = 0.0
+				c.taken = false
+				copies.append(c)
+		elif z < at and o.kind != "dialog":
+			# In view already: it stays where it is (part of the run-up to the
+			# repeat); the next stage gets its own copy further on.
+			if o.kind != "sun":
+				var c2: Dictionary = o.duplicate()
+				c2.z = z + shift
+				copies.append(c2)
+				o.stage = stage
+		else:
+			o.z = z + shift
+	objects.append_array(copies)
 	for k in range(stage + 1, stages.size()):
-		stages[k].start += span
-		stages[k].end += span
-	s.start += span
-	s.end += span
-	length += span
+		stages[k].start += shift
+		stages[k].end += shift
+	s.end = old_end + shift
+	length += shift
+	_loop_cross = old_end
+	_loop_shift = shift
 	_extend_trees()
-	_random_traps(stage)
+	_random_traps(stage, at)
+
+
+## She has passed the old end: the stage now runs from here (the run-up, then
+## the repeat). The pieces she missed move into the repeat; what lies behind is
+## dropped (a roll-back never goes before the stage start).
+func _enter_loop() -> void:
+	var s: Dictionary = stages[stage]
+	for o in objects:
+		if o.kind == "sun" and o.stage == stage and not o.taken and o.z < _loop_cross:
+			o.z += _loop_shift
+	s.start = _loop_cross
+	_loop_cross = -1.0
+	var keep_from: float = s.start - CAM_BACK - 2.0
+	objects = objects.filter(func(o): return o.kind in ["sun", "dialog"] or o.z >= keep_from)
 
 
 ## After the minigame: on with the next stage (from its start).
@@ -677,7 +749,10 @@ func _lose_slice() -> void:
 	last.taken = false
 	sun -= 1
 	sun_shown = mini(sun_shown, sun)
-	sun_lost = 0.6
+	sun_lost = LOST_TIME
+	var c := project(px, py + 0.9, dist)
+	var from := Vector2(c.x, c.y) if c.z > 0 else Vector2(W / 2, H * 0.7)
+	lost_flyers.append({"from": from, "t": 0.0})
 
 
 ## Ran into a root or a branch: bounce back, the path rolls back a bit.
@@ -744,6 +819,10 @@ func recover_k() -> float:
 
 ## Puts her at `z` (developer shortcuts, tests): the stage follows.
 func jump_to(z: float) -> void:
+	# A repeat already queued stays (the stage runs on into it) unless she
+	# leaves the stage.
+	if _loop_cross >= 0 and stage_of(z) != stage:
+		_enter_loop()
 	var was := stage
 	stage = stage_of(z)
 	dist = z
@@ -1057,6 +1136,18 @@ func _draw_player() -> void:
 
 
 func _draw_flyers() -> void:
+	# A lost slice: it pops out of her, spins up and falls away behind, fading.
+	for f in lost_flyers:
+		var t: float = f.t
+		var p: Vector2 = f.from + Vector2(-90 * t, -230 * t + 420 * t * t)
+		var a := 1.0 - clampf((t - 0.6) / 0.4, 0, 1)
+		var s := lerpf(30.0, 18.0, t) * a
+		if s < 0.5:
+			continue
+		Draw.radial_glow(self, p, s * 2.4, Color(0.94, 0.27, 0.27, 0.55 * a), Color(1, 0.9, 0.7, 0.8 * a))
+		draw_set_transform(p, t * 9.0, Vector2.ONE)
+		SpriteArt.draw_sun_piece(self, Vector2.ZERO, s, cos(time * 12))
+		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	for f in flyers:
 		var k: float = f.t * f.t * (3 - 2 * f.t)
 		var to := fly_target(f.kind)
@@ -1126,9 +1217,20 @@ func _draw_hud() -> void:
 	if sun_pulse > 0:
 		Draw.radial_glow(self, sc, 90 * grow, Color(1, 0.9, 0.5, 0.5 * sun_pulse / 0.45))
 	draw_arc(sc, 56 * grow, -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)
-	SpriteArt.draw_sun(self, sc, 46 * grow, sun_shown, sun_flash, time)
 	if sun_lost > 0:
-		draw_arc(sc, 50, 0, TAU, 48, Color(0.94, 0.27, 0.27, sun_lost / 0.6), 4.0, true)
+		# The lost slice blinks red in its place a few times, the sun shakes.
+		var k := sun_lost / LOST_TIME
+		sc += Vector2(sin(time * 70.0), cos(time * 55.0)) * 4.0 * k * k
+		Draw.radial_glow(self, sc, 80, Color(0.94, 0.27, 0.27, 0.45 * k))
+	SpriteArt.draw_sun(self, sc, 46 * grow, sun_shown, sun_flash, time)
+	if sun_lost > 0 and fmod(LOST_TIME - sun_lost, 0.24) < 0.14:
+		var i := sun_shown
+		var r := 46 * grow
+		var a0 := -PI / 2 + i * TAU / 12 + 0.035
+		var a1 := -PI / 2 + (i + 1) * TAU / 12 - 0.035
+		var tri := PackedVector2Array([sc, sc + Vector2(cos(a0), sin(a0)) * r, sc + Vector2(cos(a1), sin(a1)) * r])
+		Draw.polygon_safe(self, tri, Color(0.94, 0.27, 0.27, 0.95))
+		draw_polyline(tri + PackedVector2Array([tri[0]]), Color(1, 1, 1, 0.9), 2.0, true)
 	# Hydration at the top-right (where the breath is in the cave): the water
 	# that feeds slowed time.
 	var wr := WATER_HUD
