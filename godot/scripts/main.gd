@@ -149,8 +149,8 @@ func _process(_delta: float) -> void:
 		platformer.active = state == "platformer"
 		platformer.dialog_open = any_dialog
 		platformer.active_dialog_id = _node_box.node_id()
-		# The boss is beaten: on the last line of 1D Kyra drops away behind the box.
-		if _node_box.node_id() == "1D" and _node_box._is_last() and not platformer.exit_fall:
+		# The boss is beaten: as soon as the 1D box appears, Kyra drops behind it.
+		if _node_box.node_id() == "1D" and not platformer.exit_fall:
 			platformer.start_exit_fall()
 		platformer.hide_platforms = state in ["mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
 		platformer.hud.visible = state == "platformer"

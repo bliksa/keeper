@@ -394,9 +394,9 @@ static func draw_vine(ci: CanvasItem, pts: PackedVector2Array, w: float, col := 
 
 
 ## The sun of the forest run: 12 triangular slices around `c`, the first `found`
-## of them golden; flash (1 → 0) makes the newest one glow.
+## of them golden (flash 1 → 0 lights up the newest), a dot in the middle and a
+## dot on each quarter (a minigame every 3 slices; the 12th ends the level).
 static func draw_sun(ci: CanvasItem, c: Vector2, r: float, found: int, flash := 0.0, time := 0.0) -> void:
-	Draw.radial_glow(ci, c, r * (1.7 + 0.08 * sin(time * 2)), Color(1, 0.86, 0.45, 0.35 + 0.25 * minf(1, found / 12.0)), Color(1, 0.95, 0.75, 0.6))
 	for i in 12:
 		var a0 := -PI / 2 + i * TAU / 12 + 0.035
 		var a1 := -PI / 2 + (i + 1) * TAU / 12 - 0.035
@@ -406,17 +406,14 @@ static func draw_sun(ci: CanvasItem, c: Vector2, r: float, found: int, flash := 
 			if i == found - 1 and flash > 0:
 				col = col.lerp(Color("#fffbeb"), flash)
 			Draw.polygon_safe(ci, tri, col)
-			# A ray beyond each found slice.
-			var am := (a0 + a1) / 2
-			ci.draw_line(c + Vector2(cos(am), sin(am)) * (r + 6), c + Vector2(cos(am), sin(am)) * (r + 14 + 3 * sin(time * 4 + i)), Color(1, 0.85, 0.35, 0.9), 3.0, true)
 		else:
 			Draw.polygon_safe(ci, tri, Color(1, 1, 1, 0.16))
 			ci.draw_polyline(tri + PackedVector2Array([tri[0]]), Color(1, 1, 1, 0.45), 1.5, true)
-	# Every 3 slices: a minigame (a dot on the rim); the last one leads to the summit.
-	for k: int in [3, 6, 9]:
+	for k: int in [0, 3, 6, 9]:
 		var a := -PI / 2 + k * TAU / 12
-		ci.draw_circle(c + Vector2(cos(a), sin(a)) * (r + 3), 4.0, Color("#fef3c7") if found >= k else Color(1, 1, 1, 0.6))
-	ci.draw_circle(c, r * 0.16, Color("#fff7d6"))
+		var done := found >= (12 if k == 0 else k)
+		ci.draw_circle(c + Vector2(cos(a), sin(a)) * (r + 4), 4.0, Color("#fef3c7") if done else Color(1, 1, 1, 0.75))
+	ci.draw_circle(c, maxf(2.0, r * 0.12), Color("#fff7d6"))
 
 
 ## The placeholder of `id` at its game size (the lab's preview of "original").

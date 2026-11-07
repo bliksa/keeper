@@ -341,6 +341,12 @@ func _run() -> void:
 	check(rn.bump_t > 0, "running into a root bounces her off")
 	await seconds(0.45)
 	check(rn.dist < root0.z - 4 and not root0.hit, "the path rolls back and the root waits for her again")
+	await frames(2)
+	var d_stand := rn.dist
+	await seconds(0.25)
+	check(rn.recover_t > 0 and absf(rn.dist - d_stand) < 0.01, "after the roll-back she stands a moment")
+	await seconds(1.0)
+	check(rn.recover_t <= 0 and rn.dist > d_stand + 2, "then she runs again")
 	rn.jump_to(root0.z - 3.0)
 	rn.jump()
 	var cleared := await until(func(): return rn.dist > root0.z + 1.5, 3)

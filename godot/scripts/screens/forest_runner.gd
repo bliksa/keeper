@@ -146,6 +146,7 @@ var intro := 0.0
 var land_t := 0.0
 var _landed := false
 var _jumped := false
+var _told := false
 ## The last frame of the cave (crossfaded away), or null.
 var _from_cave: Texture2D
 ## A minigame (n) or the end waiting for the flying piece to land.
@@ -155,6 +156,8 @@ const FLY_TIME := 0.65
 ## Waiting for a minigame (after every SUN_PER_GAME pieces).
 var waiting := false
 var loops := 0
+## Seconds left of standing / speeding up again after a hit (see RECOVER_*).
+var recover_t := 0.0
 ## Seconds left of the "stress can lengthen this phase" note.
 var loop_note := 0.0
 var _loop_told := false
@@ -168,6 +171,9 @@ var _pending_lane := 0
 var _pending_jump := false
 ## Obstacles closer than this to where a roll-back lands stay disarmed.
 const GRACE := 5.0
+## After a hit or a carry: standing still, then speeding up again (s).
+const RECOVER_STAND := 0.5
+const RECOVER_RAMP := 0.7
 
 
 func _ready() -> void:
@@ -365,6 +371,7 @@ func _update(dt: float) -> void:
 		if carry_t <= 0:
 			vy = 0
 			jumps = 1
+			recover_t = RECOVER_STAND + RECOVER_RAMP
 		return
 	# Jumps follow the world's clock, so a jump clears the same obstacles with or
 	# without slowed time.
@@ -377,9 +384,15 @@ func _update(dt: float) -> void:
 	if bump_t > 0:
 		bump_t -= dt
 		dist = move_toward(dist, _roll_to, BUMP_BACK / 0.45 * dt)
+		if bump_t <= 0:
+			recover_t = RECOVER_STAND + RECOVER_RAMP
 		return
 	var base: float = STAGE_SPEED[mini(stage, STAGE_SPEED.size() - 1)]
 	speed = base + STAGE_RAMP * stage_progress()
+	if recover_t > 0:
+		# After a hit: she stands a moment, then picks up speed again.
+		recover_t = maxf(0, recover_t - dt)
+		speed *= recover_k()
 	dist += speed * wdt
 	_hits(wdt)
 	if done or waiting or stages.is_empty():
@@ -438,6 +451,7 @@ func after_minigame() -> void:
 	jumps = 2
 	bump_t = 0
 	carry_t = 0
+	recover_t = 0
 
 
 func _finish() -> void:
@@ -521,6 +535,7 @@ func start_intro(from_cave: Texture2D = null) -> void:
 	vy = 0.0
 	_landed = false
 	_jumped = false
+	_told = false
 
 
 func intro_elapsed() -> float:
@@ -529,6 +544,10 @@ func intro_elapsed() -> float:
 
 func _update_intro(dt: float) -> void:
 	intro = maxf(0, intro - dt)
+	# Iskra's box (2A) comes first; Kyra then jumps up from behind it.
+	if intro_elapsed() >= INTRO_FALL_AT - 0.4 and not _told:
+		_told = true
+		intro_done.emit()
 	if intro_elapsed() >= INTRO_FALL_AT and not _landed:
 		if not _jumped:
 			# Up from below the screen, over the path, and down onto it.
@@ -548,7 +567,9 @@ func _update_intro(dt: float) -> void:
 		py = 0
 		vy = 0
 		_landed = true
-		intro_done.emit()
+		if not _told:
+			_told = true
+			intro_done.emit()
 
 
 ## Growth of a tree during the intro (0 in the middle of the screen, 1 in place):
@@ -653,6 +674,16 @@ func stage_progress() -> float:
 	return clampf((dist - s.start) / maxf(1.0, s.end - s.start), 0, 1)
 
 
+## Speed factor while recovering: 0 while she stands, then up to 1.
+func recover_k() -> float:
+	if recover_t <= 0:
+		return 1.0
+	if recover_t > RECOVER_RAMP:
+		return 0.0
+	var k := 1.0 - recover_t / RECOVER_RAMP
+	return k * k
+
+
 ## Puts her at `z` (developer shortcuts, tests): the stage follows.
 func jump_to(z: float) -> void:
 	var was := stage
@@ -666,6 +697,7 @@ func jump_to(z: float) -> void:
 			o.taken = true
 	bump_t = 0
 	carry_t = 0
+	recover_t = 0
 
 
 func _stage_start() -> float:
@@ -921,9 +953,11 @@ func _draw_player() -> void:
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	var run := sin(time * (16.0 if not slow else 9.0))
 	var air := absf(py) > 0.05 or carry_t > 0
-	if intro > 0 and _landed:
-		# She stands still (back to us) until the run starts.
+	if (intro > 0 and _landed) or (recover_t > RECOVER_RAMP and not air):
+		# She stands still (back to us): before the run, or after a hit.
 		run = 0.0
+	elif recover_t > 0:
+		run = sin(time * 16.0 * maxf(0.3, recover_k()))
 	var bob := 0.0 if air else absf(run) * 4 * k
 	var feet := Vector2(c.x, c.y - bob)
 	var lean := -0.25 if bump_t > 0 else 0.0

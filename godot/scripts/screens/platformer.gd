@@ -142,6 +142,7 @@ var _shake := Vector2.ZERO
 var _bg: Node2D
 var _world: Node2D
 var _player_layer: Node2D
+var _player_canvas: CanvasLayer
 var hud: PlatformerHud
 ## CanvasLayer index of the HUD (the level editor raises it above its own UI).
 var hud_layer := 6
@@ -231,6 +232,7 @@ func _ready() -> void:
 	add_child(_bg)
 	add_child(_world)
 	var pl := CanvasLayer.new()
+	_player_canvas = pl
 	pl.layer = player_layer
 	add_child(pl)
 	pl.add_child(_player_layer)
@@ -584,6 +586,9 @@ func start_exit_fall() -> void:
 	if exit_fall:
 		return
 	exit_fall = true
+	# Behind the dialog box (its layer is 8), not in front of it.
+	if _player_canvas:
+		_player_canvas.layer = 4
 	p.vy = -5.0
 	p.is_grounded = false
 
