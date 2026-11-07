@@ -50,6 +50,10 @@ var deleted := {}
 ## Who speaks (data/characters.json): id -> {name: {lang: s}, portrait: sprite id}.
 var characters := {}
 var _chars_bundled := {}
+## Texts of the dialog buttons (BTN_* keys, shared by every dialog): key -> {lang: s}.
+var button_texts := {}
+var _btn_bundled := {}
+var _buttons_box: VBoxContainer
 ## Saved to the repo from here, not in this build yet: id -> model (null = deleted).
 var _saved := {}
 var group := "1"
@@ -118,6 +122,14 @@ func load_data() -> void:
 	var c: Variant = _read(CHARACTERS)
 	characters = c.get("characters", {}).duplicate(true) if c is Dictionary else {}
 	_chars_bundled = characters.duplicate(true)
+	button_texts = {}
+	for k in strings.en:
+		if str(k).begins_with("BTN_"):
+			var t := {}
+			for l in LANGS:
+				t[l] = str(strings[l].get(k, ""))
+			button_texts[k] = t
+	_btn_bundled = button_texts.duplicate(true)
 	var vo: Dictionary = d.get("voice_overrides", {})
 	for id in d.get("nodes", {}):
 		nodes[id] = _model(d.nodes[id], strings, vo)
@@ -153,6 +165,10 @@ func load_data() -> void:
 			deleted[id] = true
 			nodes.erase(id)
 			order.erase(id)
+		var lb: Variant = e.get("buttons", {})
+		if lb is Dictionary:
+			for k in lb:
+				button_texts[k] = lb[k]
 		var lc: Variant = e.get("characters", {})
 		if lc is Dictionary:
 			for cid in lc:
@@ -219,7 +235,59 @@ func changed_ids() -> Array:
 
 
 func has_unsaved() -> bool:
-	return not deleted.is_empty() or not changed_ids().is_empty() or not changed_characters().is_empty()
+	return not deleted.is_empty() or not changed_ids().is_empty() or not changed_characters().is_empty() or not changed_buttons().is_empty()
+
+
+## Button texts changed or added here: key -> {lang: s}.
+func changed_buttons() -> Dictionary:
+	var out := {}
+	for k in button_texts:
+		if not _btn_bundled.has(k) or JSON.stringify(button_texts[k]) != JSON.stringify(_btn_bundled[k]):
+			out[k] = button_texts[k]
+	return out
+
+
+## Dialogs that show a button (its text change shows there too).
+func dialogs_with_button(key: String) -> Array:
+	return order.filter(func(id): return (nodes[id].buttons as Array).has(key))
+
+
+func set_button_text(key: String, lang: String, text: String) -> void:
+	button_texts.get_or_add(key, {"sk": "", "en": "", "pt": ""})[lang] = text
+	_changed("")
+
+
+## A new button key from its English text (BTN_LETS_RUN); "" if empty.
+func new_button(en: String) -> String:
+	var base := "BTN_" + en.strip_edges().to_upper().validate_filename().replace(" ", "_").replace("-", "_")
+	base = RegEx.create_from_string("[^A-Z0-9_]").sub(base, "", true)
+	if base == "BTN_":
+		return ""
+	var key := base
+	var n := 2
+	while button_texts.has(key):
+		key = "%s_%d" % [base, n]
+		n += 1
+	button_texts[key] = {"sk": en.strip_edges(), "en": en.strip_edges(), "pt": en.strip_edges()}
+	_changed("New button %s." % key)
+	return key
+
+
+## Adds a button to the current dialog (a choice; the first one is the default).
+func add_button(key := "BTN_CONTINUE") -> void:
+	var n: Dictionary = nodes[current]
+	(n.buttons as Array).append(key)
+	n.has_buttons = true
+	_changed("Button added.")
+	_refresh_buttons()
+
+
+func remove_button(k: int) -> void:
+	var b: Array = nodes[current].buttons
+	if k < b.size():
+		b.remove_at(k)
+	_changed("Button removed." + (" The dialog box shows Next." if b.is_empty() else ""))
+	_refresh_buttons()
 
 
 ## Characters added (or changed) here: id -> entry.
@@ -254,7 +322,7 @@ func add_character(id: String, names: Dictionary) -> String:
 
 
 func _save_local() -> void:
-	var out := {"nodes": {}, "deleted": deleted, "saved": _saved, "characters": changed_characters()}
+	var out := {"nodes": {}, "deleted": deleted, "saved": _saved, "characters": changed_characters(), "buttons": changed_buttons()}
 	for id in changed_ids():
 		out.nodes[id] = _normalized(id)
 	var f := FileAccess.open(EDIT_PATH, FileAccess.WRITE)
@@ -391,6 +459,7 @@ func set_speaker(i: int, s: String) -> void:
 func set_button(k: int, key: String) -> void:
 	nodes[current].buttons[k] = key
 	_changed("")
+	_refresh_buttons()
 
 
 func _changed(msg: String) -> void:
@@ -433,6 +502,9 @@ func use_in_game() -> void:
 			else:
 				Text.voice_overrides.erase(key)
 		Text.dialogs[id] = node_json(id)
+	for k in button_texts:
+		for l in LANGS:
+			Text._strings.get_or_add(l, {})[k] = button_texts[k][l]
 	_used = true
 	_say("The game uses these dialogs now (until reload).")
 
@@ -470,6 +542,9 @@ func build_commit(remote: Dictionary) -> Dictionary:
 				vo[key] = n.lines[i].voice
 			else:
 				vo.erase(key)
+	for k in changed_buttons():
+		for l in LANGS:
+			strings[l][k] = button_texts[k][l]
 	# Story dialogs in level order (0, 1, 2, 3, M; A–Z), then the minigame talk.
 	var sorted := {}
 	for g in GROUPS:
@@ -525,7 +600,7 @@ func save_to_repo() -> void:
 	var files := {}
 	for k in texts:
 		files[k] = (texts[k] as String).to_utf8_buffer()
-	var names: Array = changed_ids() + deleted.keys() + changed_characters().keys()
+	var names: Array = changed_ids() + deleted.keys() + changed_characters().keys() + changed_buttons().keys()
 	var res := await _gh.commit(files, "Dialog editor: update %s\n\nSaved from Developer mode > Dialogs in the browser." % ", ".join(names))
 	if not res.ok:
 		_say("Save failed: " + res.error)
@@ -541,6 +616,7 @@ func save_to_repo() -> void:
 		_bundled[id] = JSON.stringify(_saved[id])
 	deleted = {}
 	_chars_bundled = characters.duplicate(true)
+	_btn_bundled = button_texts.duplicate(true)
 	_save_local()
 	use_in_game()
 	_refresh_list()
@@ -567,6 +643,9 @@ func play(lang: String) -> void:
 		for l in LANGS:
 			Text._strings.get_or_add(l, {})[key] = n.lines[i].text[l]
 		parts.append({"speaker": n.lines[i].speaker, "text": key})
+	for k in button_texts:
+		for l in LANGS:
+			Text._strings.get_or_add(l, {})[k] = button_texts[k][l]
 	Text.dialogs[pid] = {"parts": parts, "buttons": n.buttons.duplicate() if not (n.buttons as Array).is_empty() else ["BTN_CONTINUE"]}
 	if _lang_before == "":
 		_lang_before = Text.language
@@ -652,13 +731,23 @@ func _build_left() -> void:
 	row.add_child(db)
 	box.add_child(row)
 	var sc := ScrollContainer.new()
-	sc.custom_minimum_size = Vector2(LIST_W - 24, 600 - top - 20 - 100)
+	sc.custom_minimum_size = Vector2(LIST_W - 24, 170)
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	box.add_child(sc)
 	_list = VBoxContainer.new()
 	_list.custom_minimum_size = Vector2(LIST_W - 36, 0)
 	_list.add_theme_constant_override("separation", 4)
 	sc.add_child(_list)
+	# The dialog's buttons (they close it; several = a choice).
+	box.add_child(UiKit.label("BUTTONS OF THIS DIALOG", 11, Color("#94a3b8"), true))
+	var bsc := ScrollContainer.new()
+	bsc.custom_minimum_size = Vector2(LIST_W - 24, 600 - top - 20 - 100 - 170 - 26)
+	bsc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	box.add_child(bsc)
+	_buttons_box = VBoxContainer.new()
+	_buttons_box.custom_minimum_size = Vector2(LIST_W - 36, 0)
+	_buttons_box.add_theme_constant_override("separation", 4)
+	bsc.add_child(_buttons_box)
 
 
 func _build_right() -> void:
@@ -713,6 +802,82 @@ func select(id: String) -> void:
 	current = id
 	_refresh_list()
 	_refresh_lines()
+	_refresh_buttons()
+
+
+## Left: each button of the dialog (which one, its text in SK / EN / PT), add / new.
+func _refresh_buttons() -> void:
+	for c in _buttons_box.get_children():
+		_buttons_box.remove_child(c)
+		c.queue_free()
+	if current == "" or not nodes.has(current):
+		return
+	var b: Array = nodes[current].buttons
+	if b.is_empty():
+		_buttons_box.add_child(UiKit.label("None: the box shows “Next”.", 11, Color("#64748b")))
+	var keys: Array = button_texts.keys()
+	keys.sort()
+	for k in b.size():
+		var card := PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color("#1e293b")
+		sb.set_corner_radius_all(6)
+		sb.set_content_margin_all(6)
+		card.add_theme_stylebox_override("panel", sb)
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 3)
+		card.add_child(v)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		var o := OptionButton.new()
+		o.add_theme_font_size_override("font_size", 11)
+		o.focus_mode = Control.FOCUS_NONE
+		o.clip_text = true
+		o.custom_minimum_size = Vector2(LIST_W - 36 - 12 - 30, 0)
+		for j in keys.size():
+			o.add_item("%s  ·  %s" % [Text.plain(str(button_texts[keys[j]].get(Text.language, keys[j]))), keys[j]])
+			o.set_item_metadata(j, keys[j])
+			if keys[j] == b[k]:
+				o.select(j)
+		o.add_separator()
+		o.add_item("New button…")
+		o.set_item_metadata(o.item_count - 1, "")
+		o.item_selected.connect(func(j):
+			var key: String = o.get_item_metadata(j)
+			if key == "":
+				key = new_button("New button")
+			set_button(k, key))
+		row.add_child(o)
+		var x := UiKit.icon_button(ICONS % "x", "Remove this button", 24)
+		x.pressed.connect(remove_button.bind(k))
+		row.add_child(x)
+		v.add_child(row)
+		var key: String = b[k]
+		var shared := dialogs_with_button(key).size()
+		for l in LANGS:
+			var e := LineEdit.new()
+			e.text = str(button_texts.get(key, {}).get(l, ""))
+			e.placeholder_text = "%s text" % LANG_NAMES[l]
+			e.add_theme_font_size_override("font_size", 11)
+			e.tooltip_text = "%s in %s%s" % [key, LANG_NAMES[l], ("  ·  shown in %d dialogs" % shared) if shared > 1 else ""]
+			e.text_changed.connect(func(t): set_button_text(key, l, t))
+			e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var lr := HBoxContainer.new()
+			lr.add_theme_constant_override("separation", 4)
+			var tag := UiKit.label(LANG_NAMES[l], 10, Color("#94a3b8"), true)
+			tag.custom_minimum_size = Vector2(20, 0)
+			lr.add_child(tag)
+			lr.add_child(e)
+			v.add_child(lr)
+		if shared > 1:
+			v.add_child(UiKit.label("Also in %d other dialog(s)" % (shared - 1), 10, Color("#64748b")))
+		_buttons_box.add_child(card)
+	var add := UiKit.button("Add button", Vector2(LIST_W - 36, 28), 11, Color("#0f172a"), Color("#cbd5e1"))
+	add.icon = load(ICONS % "plus")
+	add.add_theme_constant_override("icon_max_width", 14)
+	add.tooltip_text = "Another button: several buttons make a choice"
+	add.pressed.connect(add_button)
+	_buttons_box.add_child(add)
 
 
 func _refresh_list() -> void:
@@ -777,24 +942,6 @@ func _refresh_lines() -> void:
 	add.add_theme_constant_override("icon_max_width", 16)
 	add.pressed.connect(add_line.bind(-1))
 	_lines.add_child(add)
-	# The buttons that close the dialog.
-	if not (n.buttons as Array).is_empty():
-		var brow := HBoxContainer.new()
-		brow.add_theme_constant_override("separation", 8)
-		brow.add_child(UiKit.label("BUTTONS", 11, Color("#94a3b8"), true))
-		var keys: Array = Text._strings.get("en", {}).keys().filter(func(k): return str(k).begins_with("BTN_"))
-		for k in n.buttons.size():
-			var o := OptionButton.new()
-			o.add_theme_font_size_override("font_size", 12)
-			o.focus_mode = Control.FOCUS_NONE
-			for j in keys.size():
-				o.add_item("%s  (%s)" % [Text.plain(Text._strings.get(Text.language, {}).get(keys[j], keys[j])), keys[j]])
-				o.set_item_metadata(j, keys[j])
-				if keys[j] == n.buttons[k]:
-					o.select(j)
-			o.item_selected.connect(func(j): set_button(k, o.get_item_metadata(j)))
-			brow.add_child(o)
-		_lines.add_child(brow)
 
 
 func _line_card(i: int) -> Control:
