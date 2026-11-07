@@ -474,7 +474,7 @@ func _run() -> void:
 	var lmap: Array = []
 	for i in 130:
 		var row := "......"
-		if i == 5 or i == 100:
+		if i == 5 or i == 8 or i == 100:
 			row = "..+..."
 		elif i in [10, 20, 40, 55, 62, 70, 80, 110]:
 			row = ".R...."
@@ -486,6 +486,10 @@ func _run() -> void:
 	lr.rows = PackedStringArray(lmap)
 	main.add_child(lr)
 	await frames(1)
+	# She found the first piece and missed the second.
+	lr.objects.filter(func(o): return o.kind == "sun")[0].taken = true
+	lr.sun = 1
+	lr.sun_shown = 1
 	lr.jump_to(lr.stages[0].end - ForestRunner.VIEW + 4.0)
 	var in_view := func() -> Array:
 		var zs: Array = []
@@ -502,13 +506,13 @@ func _run() -> void:
 	check(lr.objects.any(func(o): return o.kind == "root" and o.stage == 0 and o.z > lr.dist + ForestRunner.VIEW) and lr.stages[1].start > lr.dist + ForestRunner.VIEW, "the repeat (and the next stage after it) lie beyond the view")
 	lr.dist = old_end + 0.5
 	lr._enter_loop()
-	var missed: Array = lr.objects.filter(func(o): return o.kind == "sun" and o.stage == 0)
-	check(lr.stage == 0 and absf(lr.stages[0].start - old_end) < 0.01 and missed[0].z > lr.dist + 10 and not missed[0].taken, "past the old end the stage runs on, the missed piece lies ahead in the repeat")
-	lr.sun = 1
-	lr.objects.filter(func(o): return o.kind == "sun")[0].taken = true
-	lr.objects.filter(func(o): return o.kind == "sun")[0].stage = lr.stage
+	var missed: Array = lr.objects.filter(func(o): return o.kind == "sun" and o.stage == 0 and not o.taken)
+	check(lr.stage == 0 and absf(lr.stages[0].start - old_end) < 0.01 and missed.size() == 1 and missed[0].z > lr.dist + 10, "past the old end the stage runs on, the missed piece lies ahead in the repeat")
+	check(absf(lr.stage_progress()) < 0.05, "the stage ring starts again only here")
 	lr.bump()
-	check(lr.sun == 0 and lr.lost_flyers.size() == 1 and lr.sun_lost > 1.0, "a lost slice tumbles out of her and blinks in the sun")
+	var back: Array = lr.objects.filter(func(o): return o.kind == "sun" and o.stage == 0 and not o.taken)
+	check(lr.sun == 0 and back.size() == 2 and back.all(func(o): return o.z >= lr.stages[0].start), "a slice lost in the repeat goes back into the repeat (never behind the stage start)")
+	check(lr.lost_flyers.size() == 1 and lr.sun_lost > 1.0, "a lost slice tumbles out of her and blinks in the sun")
 	await seconds(ForestRunner.LOST_FLY + 0.1)
 	check(lr.lost_flyers.is_empty(), "then it is gone")
 	lr.queue_free()

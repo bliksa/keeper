@@ -504,21 +504,25 @@ func _loop_stage() -> void:
 	for o in objects:
 		var z: float = o.z
 		if z < old_end:
-			if o.stage == stage and z >= s.start and o.kind in ["root", "branch", "bird", "vine", "drop"] and not o.get("random", false):
+			if o.stage == stage and z >= s.start and o.kind in ["root", "branch", "bird", "vine", "drop"] and not o.get("random", false) and not o.get("bridge", false):
 				var c: Dictionary = o.duplicate()
 				c.z = z + shift
 				c.hit = false
 				c.dz = 0.0
 				c.taken = false
 				copies.append(c)
-		elif z < at and o.kind != "dialog":
+		elif z < at and o.kind in ["root", "branch", "bird", "vine", "drop"]:
 			# In view already: it stays where it is (part of the run-up to the
-			# repeat); the next stage gets its own copy further on.
-			if o.kind != "sun":
-				var c2: Dictionary = o.duplicate()
-				c2.z = z + shift
-				copies.append(c2)
-				o.stage = stage
+			# repeat, never copied into a later repeat); the next stage gets its
+			# own copy further on. (Sun pieces and dialogs go on with their stage.)
+			var c2: Dictionary = o.duplicate()
+			c2.z = z + shift
+			c2.hit = false
+			c2.dz = 0.0
+			c2.taken = false
+			copies.append(c2)
+			o.stage = stage
+			o["bridge"] = true
 		else:
 			o.z = z + shift
 	objects.append_array(copies)
@@ -538,8 +542,9 @@ func _loop_stage() -> void:
 ## dropped (a roll-back never goes before the stage start).
 func _enter_loop() -> void:
 	var s: Dictionary = stages[stage]
+	# Found ones too: a slice lost later puts its piece back into the repeat.
 	for o in objects:
-		if o.kind == "sun" and o.stage == stage and not o.taken and o.z < _loop_cross:
+		if o.kind == "sun" and o.stage == stage and o.z < _loop_cross:
 			o.z += _loop_shift
 	s.start = _loop_cross
 	_loop_cross = -1.0
@@ -747,6 +752,11 @@ func _lose_slice() -> void:
 	if last.is_empty():
 		return
 	last.taken = false
+	# A piece still flying up never lands: it is the one that falls out.
+	for i in range(flyers.size() - 1, -1, -1):
+		if flyers[i].kind == "sun":
+			flyers.remove_at(i)
+			break
 	sun -= 1
 	sun_shown = mini(sun_shown, sun)
 	sun_lost = LOST_TIME
@@ -804,7 +814,10 @@ func stage_progress() -> float:
 	if stages.is_empty():
 		return 0.0
 	var s: Dictionary = stages[stage]
-	return clampf((dist - s.start) / maxf(1.0, s.end - s.start), 0, 1)
+	# A queued repeat doesn't count until she reaches it (no jump in the ring
+	# or the speed).
+	var end: float = s.end - (_loop_shift if _loop_cross >= 0 else 0.0)
+	return clampf((dist - s.start) / maxf(1.0, end - s.start), 0, 1)
 
 
 ## Speed factor while recovering: 0 while she stands, then up to 1.
