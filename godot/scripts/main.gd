@@ -64,6 +64,22 @@ func _ready() -> void:
 	_fade = _rect(Color.BLACK)
 	fade_layer.add_child(_fade)
 	_go_boot()
+	# Developer shortcut: ?mg=mg1 … mg10 opens that minigame right away.
+	if OS.has_feature("web"):
+		var q: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('mg') || ''")
+		if q is String and q != "":
+			open_minigame_for_dev.call_deferred(q)
+
+
+## Opens a minigame on its own (developer shortcut ?mg=, tests).
+func open_minigame_for_dev(id: String) -> void:
+	_clear_menu()
+	Game.has_breathing = true
+	Game.intro_done = true
+	if id == "mg1":
+		_start_breathing()
+	else:
+		_on_trigger(id)
 
 
 func _layer(n: int) -> CanvasLayer:
