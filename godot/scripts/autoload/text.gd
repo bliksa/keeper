@@ -71,7 +71,7 @@ func _dialog_font(path: String) -> Font:
 	f.spacing_top = -3
 	f.spacing_bottom = -3
 	# OpenDyslexic is wide-set; pull the letters a little closer together.
-	f.spacing_glyph = -2
+	f.spacing_glyph = -3
 	return f
 
 
