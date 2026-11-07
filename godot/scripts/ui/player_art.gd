@@ -91,7 +91,7 @@ static func draw(ci: CanvasItem, p: PlayerBody, time_ms: float, big_ring := fals
 	var speed: float = absf(p.vx)
 	var moving := speed > 0.5
 	var running := moving and speed > 3.5
-	var k_scale := scale
+	var k_scale: float = scale * float(o.get("grow", 1.0))
 
 	var off_y := 0.0
 	if sitting: off_y = 22 * k_scale

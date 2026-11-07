@@ -103,6 +103,13 @@ var corridor_t := 0.0
 var hide_egg := false
 ## After the boss: Kyra drops out of the arena, down behind the dialog box.
 var exit_fall := false
+var _exit_x0 := 0.0
+var _exit_t := 0.0
+## The hop off the vanished floor (px per frame, up) and how long she takes to the middle (s).
+const EXIT_HOP := -10.0
+const EXIT_TO_MID := 0.7
+## How much bigger Kyra gets as she falls out of the arena (towards us).
+const EXIT_GROW := 0.8
 var walk_to_x := -1.0
 ## 1 = the cave (down, cramps, boss), 2 = the garden (up, bubbles, LH wave).
 var level_id := 1
@@ -345,9 +352,13 @@ func _process(delta: float) -> void:
 	if exit_fall:
 		# Falling out of the arena; the camera goes down with her.
 		var f60 := dt * 60.0
+		_exit_t += dt
 		p.vy = minf(p.vy + 0.55 * f60, 18.0)
 		p.y += p.vy * f60
-		camera_y = lerpf(camera_y, p.y - H * 0.4, 1.0 - pow(0.85, f60))
+		var mk := clampf(_exit_t / EXIT_TO_MID, 0, 1)
+		p.x = lerpf(_exit_x0, W / 2 - p.width / 2, mk * mk * (3 - 2 * mk))
+		if p.vy > 0:
+			camera_y = lerpf(camera_y, p.y - H * 0.4, 1.0 - pow(0.88, f60))
 	if active:
 		_update(dt)
 		if active and not _initial_dialog_sent and _start_checkpoint <= 1:
@@ -595,12 +606,28 @@ func start_exit_fall() -> void:
 	if exit_fall:
 		return
 	exit_fall = true
+	_exit_x0 = p.x
+	_exit_t = 0.0
 	p.held_by_cramp = -1
 	p.is_recharging = false
-	# The nuts are gone from under her: she just drops.
-	p.vy = 0.0
+	# The nuts are gone from under her: she hops up and over to the middle of
+	# the screen, then drops (towards us, growing), right where the forest run
+	# catches her.
+	p.vy = EXIT_HOP
 	p.vx = 0
 	p.is_grounded = false
+
+
+func _exit_grow() -> float:
+	return 1.0 + EXIT_GROW * clampf((_exit_t - 0.3) / 1.0, 0, 1)
+
+
+## Where Kyra is on screen while she falls out (her feet) and how tall she is
+## drawn (px): the forest run goes on from there (ForestRunner.handoff).
+func exit_visual() -> Array:
+	var k := PlayerArt.scale * _exit_grow()
+	var f := Vector2(p.x + p.width / 2, p.y + p.height / 2 + 30.0 * k)
+	return [Vector2(f.x - camera_x, f.y - camera_y), PlayerArt.SPRITE_H * k]
 
 
 ## She is out of sight (below the screen).
@@ -1672,6 +1699,8 @@ func _draw_player() -> void:
 		"sitting": p.is_sitting or meadow_end > 0,
 		"airborne": false if (p.is_recharging or in_water) else not p.is_grounded,
 		"squash": p.squash,
+		# Falling out of the arena she comes towards us: she grows.
+		"grow": _exit_grow() if exit_fall else 1.0,
 	})
 	if in_water:
 		# Swimming: the river covers everything below the surface.

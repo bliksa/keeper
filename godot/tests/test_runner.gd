@@ -282,6 +282,10 @@ func _run() -> void:
 	await finish_dialog("1D")
 	var falls := await until(func(): return main.platformer != null and main.platformer.exit_fall, 7)
 	check(falls, "after the dialog the floor is gone and Kyra falls")
+	var hop_y: float = main.platformer.p.y
+	var hop_dx: float = absf(main.platformer.p.x + main.platformer.p.width / 2 - 533)
+	await frames(6)
+	check(main.platformer != null and main.platformer.p.y < hop_y and absf(main.platformer.p.x + main.platformer.p.width / 2 - 533) <= hop_dx, "she hops up and over towards the middle first")
 	var under := await until(func(): return main.runner != null, 4)
 	check(under and main.runner._over_cave and main.runner.modulate.a < 1.0, "the forest fades in over the arena below her")
 	await frames(5)
@@ -292,7 +296,7 @@ func _run() -> void:
 	var rn0: ForestRunner = main.runner
 	check(rn0.intro > 0 and not rn0._landed and node_box().node_id() == "", "level start: she is still falling in, no dialog")
 	var rn_landed := await until(func(): return rn0._landed, 6)
-	check(rn_landed and rn0.py == 0, "Kyra drops in from above and lands (back to us)")
+	check(rn_landed and rn0.py == 0 and rn0._handoff_at >= ForestRunner.INTRO_FADE - 0.1 and rn0._handoff_h > 0, "Kyra falls on from where she was in the arena and lands (back to us)")
 	var played := await until(func(): return rn0.intro <= 0, 4)
 	await frames(3)
 	check(played and node_box().node_id() == "" and rn0.loop_note > 0, "then the run starts right away (no further dialog), the controls shown briefly")

@@ -42,7 +42,12 @@ const INTRO_TREES := 1.0
 ## She keeps falling from the cave: in from above, onto the path.
 const INTRO_FALL_AT := 0.45
 const INTRO_FROM_Y := 10.0
+## Her size at the top of that fall (she grows to 1 as she comes down).
+const INTRO_FALL_SCALE := 0.5
 const INTRO_FALL_V := -4.0
+## Over the arena: when the arena goes she is taken over where she was on
+## screen (handoff) and goes on falling onto the path in this time (s).
+const HANDOFF_FALL := 0.55
 ## Where the grain is in the arena (Platformer._draw_egg) and its size there.
 const GRAIN_FROM := Vector2(533, 250)
 const GRAIN_R := 45.0
@@ -172,6 +177,10 @@ var _told := false
 var _from_cave: Texture2D
 ## Drawn over the arena (Main fades this screen in): the grain starts where it is there.
 var _over_cave := false
+## The handoff from the arena: when (intro time), her feet on screen, her height (px).
+var _handoff_at := -1.0
+var _handoff_from := Vector2.ZERO
+var _handoff_h := 0.0
 ## A minigame (n) or the end waiting for the flying piece to land.
 var _pending_game := 0
 var _pending_end := false
@@ -649,6 +658,7 @@ func show_controls() -> void:
 func start_intro(from_cave: Texture2D = null, over_cave := false) -> void:
 	_from_cave = from_cave
 	_over_cave = over_cave
+	_handoff_at = -1.0
 	intro = INTRO_TIME
 	py = INTRO_FROM_Y
 	vy = 0.0
@@ -661,9 +671,35 @@ func intro_elapsed() -> float:
 	return INTRO_TIME - intro if intro > 0 else INTRO_TIME
 
 
+## The arena is gone: she goes on from where she was on its screen.
+func handoff(feet: Vector2, height: float) -> void:
+	if _handoff_at >= 0:
+		return
+	_handoff_at = intro_elapsed()
+	_handoff_from = feet
+	_handoff_h = height
+
+
+func _land() -> void:
+	py = 0
+	vy = 0
+	_landed = true
+	land_t = 0.35
+	flash = 0.0
+	Audio.footstep(0.9)
+
+
 func _update_intro(dt: float) -> void:
 	intro = maxf(0, intro - dt)
-	if intro_elapsed() >= INTRO_FALL_AT and not _landed:
+	if _over_cave and not _landed:
+		# Falling on from the arena (see handoff): onto the path, growing.
+		py = 0
+		vy = 0
+		if _handoff_at < 0 and intro_elapsed() >= INTRO_FADE + 0.1:
+			handoff(Vector2(W / 2, H * 0.5), 90.0)
+		if _handoff_at >= 0 and intro_elapsed() - _handoff_at >= HANDOFF_FALL:
+			_land()
+	elif intro_elapsed() >= INTRO_FALL_AT and not _landed:
 		if not _jumped:
 			_jumped = true
 			vy = INTRO_FALL_V
@@ -1098,13 +1134,16 @@ func _draw_player() -> void:
 	if c.z <= 0:
 		return
 	var k := c.z / 100.0
+	var handing := _over_cave and intro > 0 and not _landed
+	if handing and _handoff_at < 0:
+		return
 	# Shadow on the path, smaller the higher she is.
-	if py > -0.05:
+	if py > -0.05 and not handing:
 		draw_set_transform(Vector2(g.x, g.y), 0, Vector2(1, 0.3))
 		draw_circle(Vector2.ZERO, 34 * k * (1.0 - clampf(py / 3.0, 0, 0.6)), Color(0, 0, 0, 0.25))
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	var run := sin(time * (16.0 if not slow else 9.0))
-	var air := absf(py) > 0.05 or carry_t > 0
+	var air := absf(py) > 0.05 or carry_t > 0 or handing
 	if (intro > 0 and _landed) or (recover_t > RECOVER_RAMP and not air):
 		# She stands still (back to us): before the run, or after a hit.
 		run = 0.0
@@ -1112,10 +1151,21 @@ func _draw_player() -> void:
 		run = sin(time * 16.0 * maxf(0.3, recover_k()))
 	var bob := 0.0 if air else absf(run) * 4 * k
 	var feet := Vector2(c.x, c.y - bob)
+	var hand_k := 1.0
+	if handing:
+		# The arena's Kyra (drawn by the arena) until the handoff, then from
+		# there onto the path, growing to her size here.
+		var ht := clampf((intro_elapsed() - _handoff_at) / HANDOFF_FALL, 0, 1)
+		feet = _handoff_from.lerp(feet, ht * ht)
+		hand_k = lerpf(_handoff_h / maxf(1.0, 145.0 * k), 1.0, ht * ht)
 	var lean := -0.25 if bump_t > 0 else 0.0
 	# Landing after the drop: squashed, then back up.
 	var sq := sin(clampf(land_t / 0.35, 0, 1) * PI) * 0.22
-	draw_set_transform(feet, lean, Vector2(1.0 + sq, 1.0 - sq))
+	# Falling in at the start she comes closer: she grows as she drops.
+	var grow := 1.0
+	if intro > 0 and not _landed:
+		grow = lerpf(INTRO_FALL_SCALE, 1.0, 1.0 - clampf(py / INTRO_FROM_Y, 0, 1))
+	draw_set_transform(feet, lean, Vector2(1.0 + sq, 1.0 - sq) * grow * hand_k)
 	var boot := Color("#8a4b1f")
 	var leg := Color("#9aa3ad")
 	# Legs (alternating while running, tucked in the air).

@@ -655,7 +655,8 @@ func _into_forest() -> void:
 	# Kyra falls; the camera goes down with her a moment, then the forest fades
 	# in below and she drops into it from above.
 	platformer.start_exit_fall()
-	for i in 40:
+	# She hops up and over to the middle, then drops; the forest comes as she falls.
+	for i in 55:
 		await get_tree().process_frame
 		if run != _run_id or platformer == null:
 			return
@@ -711,6 +712,10 @@ func _start_runner(fade := true, stage := 0, from_cave: Texture2D = null, over_c
 		tw.tween_property(runner, "modulate:a", 1.0, ForestRunner.INTRO_FADE)
 		tw.finished.connect(func():
 			if is_instance_valid(old_world):
+				# She goes on falling in the forest from where she was.
+				if is_instance_valid(runner) and old_world is Platformer:
+					var v: Array = (old_world as Platformer).exit_visual()
+					runner.handoff(v[0], v[1])
 				old_world.queue_free())
 		runner.intro_done.connect(runner.show_controls)
 	elif stage == 0:
