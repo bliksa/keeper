@@ -13,7 +13,7 @@ godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
   scripts/main.gd          game flow / state machine (boot → title → forest → cave → boss → forest run → summit)
   scripts/autoload/        Game (state + input actions), Text (strings, dialogs, fonts), Audio
   scripts/screens/         boot, title, forest_intro, platformer (cave + boss; meadow; summit + LH wave),
-                           forest_runner (level 2: the forest run)
+                           forest_runner (level 2: the forest run, map data/levels/forest_run.txt)
   scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4),
                            iron_plate (mg5), rhythm (mg6), signals (mg7) — level 2
   scripts/ui/              dialog_box, platformer_hud, player_art (sprite anim), draw helpers
@@ -167,25 +167,34 @@ by signature and scaled to 4096 px), `thumb()`, `bytes_of()` / `file_name()` for
 downloads, `store()`; Upload (JS file input / FileDialog / drop), per-tile
 download, delete only for `user://uploads/` and not while `in_use` says so.
 
-## Level 2: the forest run (demo, the current level 2)
+## Level 2: the forest run
 
 `scripts/screens/forest_runner.gd` (`ForestRunner`, a Node2D screen, not a
 Platformer): a pseudo-3D endless runner seen from behind (`project()`: x sideways,
-y up, z along the path; `dist` = progress, `LENGTH`). Three lanes (`lane`, `px`),
-jump / double jump (`jump()`), `objects` from `build_course()` (patterns, harder
-towards the end): `root` (all lanes, `ROOT_H`), `branch` (one lane, `BRANCH_H`),
-`bird` (flies at her when near, `BIRD_REACH`), `drop` (+`DROP_WATER`), `seed`.
-Hitting a root / branch = `bump()` (rolls `dist` back `BUMP_BACK`), a bird in the
-air = `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass
-again, except within `GRACE` of where she lands; birds go back to their start.
-Lanes / jumps are read with `is_action_just_pressed` in `_read_input()` (a stick
-tilt = one lane) and buffered during a bump / carry. Slow time: action
-`slow_time` (Shift / E / LB / Y) while `water` lasts (`SLOW_SCALE`, `SLOW_DRAIN`);
-the world and her jump arc use the slowed clock, steering stays real-time. Kyra from behind is drawn in `_draw_player()`
-(placeholder art). Flow: `boss_win` → `Platformer.open_corridor()` (corridor drawn
-in the arena, `walk_to_x`) → `main._start_runner()` (state "runner", dialog
-`runner_start`) → `finished` → `runner_end` → `_start_summit`. Dev menu: "Forest
-run" (`_dev_action("runner", iron)`). Strings `DIA_R*`, `RUNNER_SLOW_HINT`.
+y up, z along the path; `dist` = progress). The course is a **top-down map**,
+`data/levels/forest_run.txt` (level editor id 4 = `ForestRunner.LEVEL_ID`, 5 columns:
+left side | three paths | right side, one row = `ROW_M` m, the bottom row is the
+start; `MAP_HEADER` keeps the legend): `R` root, `H` branch, `V` crow, `D`/`U` water
+drop low/high, `Y` light seed, `+` sun piece, `<` `>` side trap (thorny vine),
+`A` next stage, `a–z` dialog. `build_course()` reads it (`rows`, or
+`Game.current_level_rows(4)`).
+
+The sun (HUD top centre, `SpriteArt.draw_sun`) has 12 triangular slices; each
+`+` fills one (`sun`). Every `SUN_PER_GAME` = 4 pieces `sun_game(n)` → Main opens
+mg8 (memory) / mg9 (catch) and `_back_to_cave` calls `after_minigame()` (next stage
+from its start); the 12th piece → `finished` → `runner_end` → `_start_summit`.
+`stages` (cut by `A` rows): speed `STAGE_SPEED[stage]` + `STAGE_RAMP` within the
+stage; from `RANDOM_TRAPS_FROM` random side traps (`_random_traps`, new on every
+repeat). Reaching a stage's end with its pieces still missing repeats it
+(`_loop_stage`: obstacles + drops re-armed, found pieces / seeds stay; dialog
+`runner_loop` once). Three lanes (`lane`, `px`), jump / double jump (`jump()`), hits:
+`bump()` (roll back `BUMP_BACK`, not before the stage start), a crow in the air =
+`carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass again,
+except within `GRACE`. Slow time: action `slow_time` (Shift / E / LB / Y) while
+`water` lasts. `jump_to(z)` moves her (and the stage) for tests / the dev menu
+("Forest run", "Stage 2", "Stage 3"). Level editor: tool group "Forest run",
+`_draw_runner_row/_cell`, test play `_start_runner_test` (minigames skipped).
+Strings `DIA_R*`, letters `o` (crows), `p` (side traps).
 
 ## Old level 2: the meadow (follicular phase, horizontal; dev menu only)
 

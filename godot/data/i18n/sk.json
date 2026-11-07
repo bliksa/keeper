@@ -339,9 +339,12 @@
  "HUD_FLOOR": "Poschodie",
  "DIA_R01": "Cestička cez les! Ťažoba je preč. Nohy chcú bežať.",
  "DIA_R02": "Tak bež! Ja som Iskra, ja veci prebúdzam. <KB>← →</KB><GP>D-pad</GP> mení cestičku, <KB>medzerník</KB><GP>🟡</GP> skáče, dvakrát je dvojskok.",
- "DIA_R03": "Korene a konáre ťa odhodia späť. Vtáky ťa chytia vo vzduchu a odnesú kus naspäť. Zbieraj kvapky vody a svetelné semienka.",
+ "DIA_R03": "Korene, konáre a vtáky ťa vrátia späť. Hľadaj kúsky slnka: každý vyplní jeden diel slnka hore. Kvapky vody živia tvoje sústredenie.",
  "DIA_R04": "Voda živí tvoje sústredenie: podrž <KB>Shift alebo E</KB><GP>LB</GP> a čas sa spomalí, aby si prečítala ťažké miesto. Míňa to vodu.",
- "DIA_R05": "Prebehla si! Semienka si dobre schovaj, na konci levelu sa zídu.",
- "DIA_R06": "Toto bola ukážka nového levelu. Zatiaľ cestička vedie hore na vrchol.",
- "RUNNER_SLOW_HINT": "<KB>Podrž Shift / E</KB><GP>Podrž LB</GP>: spomalenie času"
+ "DIA_R05": "Slnko je celé! Svetlo pribúda: ovulácia je blízko.",
+ "DIA_R06": "Tak hor sa na vrchol. Semienka si dobre schovaj, ešte sa zídu.",
+ "RUNNER_SLOW_HINT": "<KB>Podrž Shift / E</KB><GP>Podrž LB</GP>: spomalenie času",
+ "DIA_R07": "Kúsok slnka ti ušiel. Lesná cestička ide dookola: hľadaj zlatý dielik.",
+ "DIA_R08": "Vrany! Letia priamo na teba a vo vzduchu ťa chytia. Drž sa pri zemi alebo zmeň cestičku.",
+ "DIA_R09": "Teraz rýchlejšie! Z bokov šľahajú tŕnisté úponky. Sleduj okraje cestičky."
 }

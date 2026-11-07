@@ -37,6 +37,8 @@ var _toast: Label
 var _toast_t := 0.0
 var _painting := 0 # 0 none, 1 paint, 2 erase
 var _test: Platformer
+## Test play of the forest run map.
+var _test_run: ForestRunner
 var _test_info: Label
 var _import: Control
 var _saved_state := {}
@@ -102,22 +104,48 @@ func horizontal() -> bool:
 
 ## Columns of the level being edited (horizontal levels are as long as their rows).
 func cols() -> int:
-	return rows[0].length() if horizontal() and rows.size() > 0 else LevelData.COLS
+	return rows[0].length() if horizontal() and rows.size() > 0 else Game.level_cols(level_id)
+
+
+## The forest run's top-down map (few, wide cells; the start is at the bottom).
+func is_runner() -> bool:
+	return level_id == ForestRunner.LEVEL_ID
+
+
+## Cell width on screen.
+func cw() -> float:
+	return 96.0 if is_runner() else CELL_W
+
+
+## The level as text (the forest run keeps its legend as a header).
+func _level_text() -> String:
+	return (ForestRunner.MAP_HEADER if is_runner() else "") + LevelData.to_text(rows)
 
 
 func _load_initial() -> void:
 	rows = PackedStringArray()
 	if FileAccess.file_exists(_autosave_path()):
 		var f := FileAccess.open(_autosave_path(), FileAccess.READ)
-		rows = LevelData.parse_text(f.get_as_text(), -1 if horizontal() else LevelData.COLS)
+		rows = LevelData.parse_text(f.get_as_text(), Game.level_cols(level_id))
 		# An autosave of the wrong shape (e.g. from before the level changed orientation) is ignored.
-		if horizontal() != (rows.size() <= 16 and rows.size() > 0 and rows[0].length() > LevelData.COLS):
+		if not is_runner() and horizontal() != (rows.size() <= 16 and rows.size() > 0 and rows[0].length() > LevelData.COLS):
 			rows = PackedStringArray()
 	if rows.is_empty():
 		rows = Game.level_rows(level_id)
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if horizontal() else ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.scroll_horizontal = 0
 	_resize_grid()
+	if is_runner():
+		# The run starts at the bottom of the map.
+		_scroll_to_start.call_deferred()
+
+
+func _scroll_to_start() -> void:
+	# The scroll range follows the grid's new size a frame later.
+	for i in 2:
+		await get_tree().process_frame
+	if is_runner():
+		_scroll.scroll_vertical = int(_scroll.get_v_scroll_bar().max_value)
 
 
 func _level_file() -> String:
@@ -132,8 +160,8 @@ func select_level(id: int) -> void:
 	level_id = id
 	if _level_pick:
 		_level_pick.select(Game.LEVELS.keys().find(id))
-	_load_initial()
 	_scroll.scroll_vertical = 0
+	_load_initial()
 	if bg_panel:
 		# A browser opened for the previous level must not add to this one.
 		bg_panel.close_browser()
@@ -145,14 +173,14 @@ func _resize_grid() -> void:
 	if horizontal():
 		_grid.custom_minimum_size = Vector2(cols() * CELL_W + END_PAD, rows.size() * CELL_H)
 	else:
-		_grid.custom_minimum_size = Vector2(LevelData.COLS * CELL_W, rows.size() * CELL_H + END_PAD)
+		_grid.custom_minimum_size = Vector2(cols() * cw(), rows.size() * CELL_H + END_PAD)
 	_grid.queue_redraw()
 
 
 func _autosave() -> void:
 	var f := FileAccess.open(_autosave_path(), FileAccess.WRITE)
 	if f:
-		f.store_string(LevelData.to_text(rows))
+		f.store_string(_level_text())
 
 
 func _toast_msg(s: String) -> void:
@@ -191,9 +219,20 @@ const GROUPS := [
 		["P", "map-pin", "Spawn point (P)"],
 		["T", "arrow-up-to-line", "Teleport to top (T)"],
 	]},
-	{"id": "meadow", "name": "Meadow (level 2)", "items": [
-		["#", "droplets", "River (#)"],
+	{"id": "forest", "name": "Forest run (level 2)", "items": [
+		["+", "sun", "Sun piece (+): 12 = the sun, every 4 a minigame"],
+		["R", "sprout", "Root (R): jump over it"],
+		["H", "rectangle-horizontal", "Branch (H): high, change path or double jump"],
+		["V", "bird", "Crow (V): grabs her in the air"],
+		["D", "droplets", "Water drop (D)"],
+		["U", "arrow-up", "Water drop up high (U)"],
 		["Y", "sparkles", "Light seed (Y)"],
+		["<", "chevron-right", "Side trap from the left (<)"],
+		[">", "chevron-left", "Side trap from the right (>)"],
+		["A", "flag-triangle-right", "Next stage starts here (A): faster"],
+	]},
+	{"id": "meadow", "name": "Meadow (old level 2)", "items": [
+		["#", "droplets", "River (#)"],
 		["K", "brain", "Minigame: memory (K)"],
 		["M", "cloud-lightning", "Minigame: catch (M)"],
 		["Q", "link", "Minigame: pairs (Q)"],
@@ -386,7 +425,7 @@ func _grid_input(event: InputEvent) -> void:
 
 
 func _paint_at(pos: Vector2) -> void:
-	var c := int(pos.x / CELL_W)
+	var c := int(pos.x / cw())
 	var r := int(pos.y / CELL_H)
 	if r < 0 or r >= rows.size() or c < 0 or c >= cols():
 		return
@@ -402,26 +441,31 @@ func _paint_at(pos: Vector2) -> void:
 
 
 func _draw_grid() -> void:
+	var CW := cw()
 	var ci := _grid
 	var font: Font = Text.font_bold
 	var scroll_top := _scroll.scroll_vertical
 	var first := maxi(0, int(scroll_top / CELL_H) - 1)
 	var last := mini(rows.size(), first + int(600 / CELL_H) + 3)
 	var ncols := cols()
-	var w := ncols * CELL_W
+	var w := ncols * CW
 	var level_h := rows.size() * CELL_H
 	var scroll_left := _scroll.scroll_horizontal
-	var first_c := maxi(0, int(scroll_left / CELL_W) - 1) if horizontal() else 0
-	var last_c := mini(ncols, first_c + int(1066 / CELL_W) + 3) if horizontal() else ncols
-	ci.draw_rect(Rect2(first_c * CELL_W, first * CELL_H, (last_c - first_c) * CELL_W, (last - first) * CELL_H), Color("#111827"))
+	var first_c := maxi(0, int(scroll_left / CW) - 1) if horizontal() else 0
+	var last_c := mini(ncols, first_c + int(1066 / CW) + 3) if horizontal() else ncols
+	ci.draw_rect(Rect2(first_c * CW, first * CELL_H, (last_c - first_c) * CW, (last - first) * CELL_H), Color("#111827"))
 	for r in range(first, last):
 		var y := r * CELL_H
-		ci.draw_line(Vector2(first_c * CELL_W, y), Vector2(last_c * CELL_W, y), Color(1, 1, 1, 0.12 if r % 4 == 0 else 0.05))
+		ci.draw_line(Vector2(first_c * CW, y), Vector2(last_c * CW, y), Color(1, 1, 1, 0.12 if r % 4 == 0 else 0.05))
 		var row := rows[r]
+		if is_runner():
+			_draw_runner_row(ci, r, y)
 		for c in range(first_c, last_c):
 			var ch := row[c]
-			var cell := Rect2(c * CELL_W, y, CELL_W, CELL_H)
+			var cell := Rect2(c * CW, y, CW, CELL_H)
 			var mid := cell.get_center()
+			if is_runner() and _draw_runner_cell(ci, ch, cell):
+				continue
 			match ch:
 				" ":
 					pass
@@ -469,14 +513,14 @@ func _draw_grid() -> void:
 					ci.draw_rect(cell.grow(-1), Color("#60a5fa"), false, 1.0)
 					Draw.text_center(ci, font, mid, ch.to_upper(), 12, Color.WHITE)
 	for c in range(first_c, last_c + 1):
-		ci.draw_line(Vector2(c * CELL_W, first * CELL_H), Vector2(c * CELL_W, last * CELL_H), Color(1, 1, 1, 0.12 if (horizontal() and c % 10 == 0) else 0.05))
+		ci.draw_line(Vector2(c * CW, first * CELL_H), Vector2(c * CW, last * CELL_H), Color(1, 1, 1, 0.12 if (horizontal() and c % 10 == 0) else 0.05))
 	# Level boundary: a bright frame, and a hatched "end of level" band after the last row / column.
 	var frame_col := Color("#10b981")
 	ci.draw_line(Vector2(1, 0), Vector2(1, level_h), frame_col, 2.0)
 	ci.draw_line(Vector2(w - 1, 0), Vector2(w - 1, level_h), frame_col, 2.0)
-	ci.draw_line(Vector2(first_c * CELL_W, 1), Vector2(last_c * CELL_W, 1), frame_col, 2.0)
+	ci.draw_line(Vector2(first_c * CW, 1), Vector2(last_c * CW, 1), frame_col, 2.0)
 	if horizontal():
-		ci.draw_line(Vector2(first_c * CELL_W, level_h - 1), Vector2(last_c * CELL_W, level_h - 1), frame_col, 2.0)
+		ci.draw_line(Vector2(first_c * CW, level_h - 1), Vector2(last_c * CW, level_h - 1), frame_col, 2.0)
 		if w + END_PAD >= scroll_left and w <= scroll_left + 1066:
 			ci.draw_rect(Rect2(w, 0, END_PAD, level_h), Color("#020617"))
 			ci.draw_line(Vector2(w, 0), Vector2(w, level_h), frame_col, 3.0)
@@ -492,8 +536,65 @@ func _draw_grid() -> void:
 			ci.draw_line(Vector2(maxf(x, 0), level_h + (maxf(x, 0) - x)), Vector2(minf(x + END_PAD, w), level_h + END_PAD - (x + END_PAD - minf(x + END_PAD, w))), Color(1, 1, 1, 0.04), 2.0)
 			x += 18
 		ci.draw_line(Vector2(0, level_h), Vector2(w, level_h), frame_col, 3.0)
+		if is_runner():
+			Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "START  ·  she runs upwards  ·  %d rows" % rows.size(), 13, Color(frame_col, 0.9))
+			Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "“Add 20 rows” adds them at the top (the end)", 11, Color("#64748b"))
+			return
 		Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "END OF LEVEL  ·  %d rows" % rows.size(), 13, Color(frame_col, 0.9))
 		Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "add more with “Add 20 rows” in the header", 11, Color("#64748b"))
+
+
+## The forest run's map: green sides, a brown path of three lanes, stage lines.
+func _draw_runner_row(ci: CanvasItem, r: int, y: float) -> void:
+	var w := cw()
+	ci.draw_rect(Rect2(0, y, w, CELL_H), Color("#14532d", 0.55))
+	ci.draw_rect(Rect2(w, y, w * 3, CELL_H), Color("#78350f", 0.35))
+	ci.draw_rect(Rect2(w * 4, y, w, CELL_H), Color("#14532d", 0.55))
+	if rows[r].contains("A"):
+		ci.draw_line(Vector2(0, y + CELL_H - 1), Vector2(w * 5, y + CELL_H - 1), Color("#facc15"), 3.0)
+	# Distance from the start every 10 rows (20 m).
+	var from_start := rows.size() - 1 - r
+	if from_start % 10 == 0:
+		ci.draw_string(Text.font, Vector2(w * 5 + 8, y + CELL_H - 8), "%d m" % int(ForestRunner.START_Z + from_start * ForestRunner.ROW_M), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
+
+
+## Cells of the forest run; false = drawn the usual way (dialog letters).
+func _draw_runner_cell(ci: CanvasItem, ch: String, cell: Rect2) -> bool:
+	var mid := cell.get_center()
+	var font: Font = Text.font_bold
+	match ch:
+		" ":
+			return true
+		"R":
+			ci.draw_rect(Rect2(cell.position.x + 6, mid.y - 6, cell.size.x - 12, 12), Color("#6b4423"))
+			ci.draw_rect(Rect2(cell.position.x + 6, mid.y - 6, cell.size.x - 12, 12), Color("#a16207"), false, 1.0)
+		"H":
+			ci.draw_line(Vector2(cell.position.x + 8, mid.y - 2), Vector2(cell.end.x - 8, mid.y + 2), Color("#a16207"), 6.0)
+			Draw.text_center(ci, font, mid + Vector2(0, -1), "H", 10, Color.WHITE)
+		"V":
+			SpriteArt.draw_bird(ci, mid, 14, 0.5, Color("#111827"))
+		"D", "U":
+			SpriteArt.draw_drop(ci, mid + Vector2(0, 2), 0.7)
+			if ch == "U":
+				ci.draw_line(mid + Vector2(12, 6), mid + Vector2(12, -8), Color("#93c5fd"), 2.0)
+				ci.draw_colored_polygon(PackedVector2Array([mid + Vector2(8, -6), mid + Vector2(16, -6), mid + Vector2(12, -11)]), Color("#93c5fd"))
+		"Y":
+			ci.draw_circle(mid, 10, Color("#fde68a", 0.5))
+			ci.draw_circle(mid, 5, Color("#fff4c2"))
+		"+":
+			ci.draw_circle(mid, 13, Color("#fbbf24", 0.35))
+			SpriteArt.draw_sun_piece(ci, mid, 18)
+		"<", ">":
+			var d := 1.0 if ch == "<" else -1.0
+			var x0: float = cell.position.x + (4.0 if ch == "<" else cell.size.x - 4)
+			ci.draw_line(Vector2(x0, mid.y), Vector2(x0 + d * (cell.size.x - 14), mid.y), Color("#2f6b2f"), 5.0)
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + d * (cell.size.x - 8), mid.y), Vector2(x0 + d * (cell.size.x - 18), mid.y - 7), Vector2(x0 + d * (cell.size.x - 18), mid.y + 7)]), Color("#b91c1c"))
+		"A":
+			ci.draw_rect(cell.grow(-2), Color("#facc15", 0.25))
+			Draw.text_center(ci, font, mid, "STAGE", 10, Color("#fef08a"))
+		_:
+			return false
+	return true
 
 
 # --- level actions -------------------------------------------------------------
@@ -599,6 +700,9 @@ func bg_in_use(path: String) -> bool:
 
 
 func toggle_bg_panel() -> void:
+	if is_runner() and not bg_panel:
+		_toast_msg("The forest run draws its own sky (no parallax layers).")
+		return
 	if bg_panel:
 		bg_panel.queue_free()
 		bg_panel = null
@@ -666,6 +770,9 @@ func _new_level() -> void:
 		rows[7] = "=".repeat(24) + " ".repeat(96)
 		rows[8] = "#".repeat(120)
 		rows[9] = "#".repeat(120)
+	elif is_runner():
+		for i in 120:
+			rows.append(" ".repeat(cols()))
 	else:
 		for i in 100:
 			rows.append(" ".repeat(LevelData.COLS))
@@ -680,6 +787,10 @@ func _add_rows() -> void:
 		for i in rows.size():
 			var tail := "#" if rows[i].ends_with("#") else " "
 			rows[i] = rows[i] + tail.repeat(20)
+	elif is_runner():
+		# The end of the run is at the top.
+		for i in 20:
+			rows.insert(0, " ".repeat(cols()))
 	else:
 		for i in 20:
 			rows.append(" ".repeat(LevelData.COLS))
@@ -688,7 +799,7 @@ func _add_rows() -> void:
 
 
 func _export() -> void:
-	var txt := LevelData.to_text(rows)
+	var txt := _level_text()
 	DisplayServer.clipboard_set(txt)
 	if OS.has_feature("web"):
 		JavaScriptBridge.download_buffer(txt.to_utf8_buffer(), _level_file(), "text/plain")
@@ -703,7 +814,7 @@ func save_to_repo() -> void:
 	var gh := GitHubSave.new()
 	add_child(gh)
 	gh.progress.connect(_toast_msg)
-	var files := {"godot/data/levels/" + _level_file(): LevelData.to_text(rows).to_utf8_buffer()}
+	var files := {"godot/data/levels/" + _level_file(): _level_text().to_utf8_buffer()}
 	var what := "level"
 	var bg_files := {}
 	if bg_dirty():
@@ -791,7 +902,10 @@ func _open_import() -> void:
 # --- test play ----------------------------------------------------------------
 
 func start_test() -> void:
-	if _test:
+	if _test or _test_run:
+		return
+	if is_runner():
+		_start_runner_test()
 		return
 	_saved_state = {"iron": Game.iron, "breath": Game.has_breathing, "cp": Game.checkpoint}
 	Game.iron = 0
@@ -841,7 +955,42 @@ func start_test() -> void:
 	hud_layer.add_child(back)
 
 
+## Plays the forest run map; minigames are skipped (a message instead).
+func _start_runner_test() -> void:
+	_saved_state = {"iron": Game.iron, "breath": Game.has_breathing, "cp": Game.checkpoint}
+	_test_run = ForestRunner.new()
+	_test_run.rows = rows.duplicate()
+	_test_run.active = true
+	_test_run.sun_game.connect(func(n):
+		_toast_msg("%d sun pieces: minigame %d (skipped in the test)" % [n * ForestRunner.SUN_PER_GAME, n])
+		_test_run.after_minigame.call_deferred())
+	_test_run.show_dialog.connect(func(id): _toast_msg("Dialog: " + id))
+	_test_run.finished.connect(func():
+		_toast_msg("The sun is whole: on to the summit!")
+		stop_test.call_deferred())
+	var layer := CanvasLayer.new()
+	layer.layer = 30
+	layer.name = "TestLayer"
+	add_child(layer)
+	layer.add_child(_test_run)
+	for c in [self, _scroll, _grid]:
+		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hud_layer := CanvasLayer.new()
+	hud_layer.layer = 33
+	layer.add_child(hud_layer)
+	var back := UiKit.button("BACK TO EDITOR", Vector2(170, 32), 12, Color("#059669"))
+	back.position = Vector2(12, 600 - 100)
+	back.pressed.connect(stop_test)
+	hud_layer.add_child(back)
+
+
 func stop_test() -> void:
+	if _test_run:
+		get_node("TestLayer").queue_free()
+		_test_run = null
+		for c in [self, _scroll, _grid]:
+			c.mouse_filter = Control.MOUSE_FILTER_STOP
+		return
 	if not _test:
 		return
 	Audio.stop_all_loops()
@@ -878,11 +1027,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode in [KEY_ENTER, KEY_KP_ENTER]:
 		get_viewport().set_input_as_handled()
-		if _test:
+		if _test or _test_run:
 			stop_test()
 		else:
 			start_test()
-	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE and _test:
+	elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE and (_test or _test_run):
 		stop_test()
 
 

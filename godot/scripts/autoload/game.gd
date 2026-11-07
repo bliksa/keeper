@@ -11,9 +11,11 @@ const LEVEL_PATH := "res://data/levels/cave.txt"
 const CUSTOM_LEVEL_PATH := "user://custom_level.txt"
 ## Levels: 1 the cave (menstruation, down), 2 the meadow (follicular phase, left → right,
 ## horizontal), 3 the summit (ovulation, up). dir: "down" | "right" | "up" | "left".
-const LEVELS := {1: "res://data/levels/cave.txt", 2: "res://data/levels/meadow.txt", 3: "res://data/levels/garden.txt"}
-const LEVEL_NAMES := {1: "Cave", 2: "Meadow", 3: "Summit"}
-const LEVEL_DIRS := {1: "down", 2: "right", 3: "up"}
+## 4 = the forest run (level 2 of the game, a top-down map for ForestRunner);
+## 2 = the old meadow (developer menu only).
+const LEVELS := {1: "res://data/levels/cave.txt", 4: "res://data/levels/forest_run.txt", 2: "res://data/levels/meadow.txt", 3: "res://data/levels/garden.txt"}
+const LEVEL_NAMES := {1: "Cave", 4: "Forest run", 2: "Meadow (old)", 3: "Summit"}
+const LEVEL_DIRS := {1: "down", 4: "forward", 2: "right", 3: "up"}
 
 ## "keyboard" or "gamepad" — decides which <KB>/<GP> hint text is shown.
 var control_mode := "keyboard":
@@ -84,7 +86,14 @@ func load_level_rows(path: String = LEVEL_PATH, cols := LevelData.COLS) -> Packe
 
 
 func level_rows(id: int) -> PackedStringArray:
-	return load_level_rows(LEVELS.get(id, LEVEL_PATH), -1 if is_horizontal(id) else LevelData.COLS)
+	return load_level_rows(LEVELS.get(id, LEVEL_PATH), level_cols(id))
+
+
+## Columns of a level's text (-1 = as long as its rows, for horizontal levels).
+static func level_cols(id: int) -> int:
+	if is_horizontal(id):
+		return -1
+	return ForestRunner.COLS if id == ForestRunner.LEVEL_ID else LevelData.COLS
 
 
 static func is_horizontal(id: int) -> bool:

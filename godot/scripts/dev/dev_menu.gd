@@ -156,10 +156,16 @@ func _build_shortcuts() -> void:
 	var h4 := UiKit.label("LEVEL 2", 13, Color("#94a3b8"), true)
 	h4.position = Vector2(32, 230)
 	card.add_child(h4)
-	var rb := UiKit.button("Forest run (new level 2 demo)", Vector2(400, 40), 13, Color("#059669"))
+	var rb := UiKit.button("Forest run", Vector2(208, 40), 13, Color("#059669"))
 	rb.position = Vector2(32, 256)
-	rb.pressed.connect(func(): action.emit("runner", _iron))
+	rb.pressed.connect(func(): action.emit("runner", 0))
 	card.add_child(rb)
+	for k: int in [1, 2]:
+		var stb := UiKit.button("Stage %d" % (k + 1), Vector2(92, 40), 12, Color("#047857"))
+		stb.position = Vector2(248 + (k - 1) * 100, 256)
+		stb.tooltip_text = "The forest run from stage %d (%d sun pieces found)" % [k + 1, k * ForestRunner.SUN_PER_GAME]
+		stb.pressed.connect(func(): action.emit("runner", k))
+		card.add_child(stb)
 	var cps2 := [[1, "Old meadow: start"], [4, "Old meadow: after its minigames"], [5, "Old meadow: the gate"]]
 	for i in cps2.size():
 		var b := UiKit.button(cps2[i][1], Vector2(400, 34), 12, Color("#1e3a5f"))

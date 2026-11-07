@@ -143,6 +143,7 @@ func _process(_delta: float) -> void:
 	var any_dialog := _node_box.is_open() or _panel_box.is_open()
 	if runner:
 		runner.active = state == "runner"
+		runner.visible = not state.begins_with("mg")
 		runner.dialog_open = any_dialog
 	if platformer:
 		platformer.active = state == "platformer"
@@ -211,12 +212,12 @@ func _dev_action(name: String, value: int) -> void:
 		"boss":
 			_skip_to_boss(value)
 		"runner":
-			# Level 2 demo: the forest run.
+			# Level 2: the forest run (value = the stage to start at, 0–2).
 			Game.reset_run()
 			Game.has_breathing = true
 			Game.intro_done = true
-			Game.iron = value
-			_start_runner()
+			Game.iron = 20
+			_start_runner(true, value)
 		"checkpoint2":
 			# Old meadow checkpoints: 1 start, 2..4 after its minigames, 5 the gate (ready to open).
 			Game.reset_run()
@@ -516,6 +517,11 @@ func _mg4_done() -> void:
 
 func _back_to_cave() -> void:
 	_clear_minigame()
+	if runner:
+		# The forest run goes on with its next stage.
+		_set_state("runner")
+		runner.after_minigame()
+		return
 	_set_state("platformer")
 
 
@@ -583,7 +589,9 @@ func _into_corridor() -> void:
 
 
 ## Level 2 (demo): the forest run, seen from behind.
-func _start_runner(fade := true) -> void:
+## Level 2: the forest run. stage > 0 (developer menu): from that stage, with
+## the sun pieces of the stages before it found.
+func _start_runner(fade := true, stage := 0) -> void:
 	var run := _run_id
 	if fade:
 		await _fade_to(1.0)
@@ -598,11 +606,34 @@ func _start_runner(fade := true) -> void:
 	Game.seeds = 0
 	runner = ForestRunner.new()
 	runner.finished.connect(_runner_done)
+	runner.sun_game.connect(_runner_minigame)
+	runner.show_dialog.connect(_runner_dialog)
 	_world_layer.add_child(runner)
+	if stage > 0 and stage < runner.stages.size():
+		runner.sun = stage * ForestRunner.SUN_PER_GAME
+		var n := 0
+		for o in runner.objects:
+			if o.kind == "sun" and n < runner.sun:
+				o.taken = true
+				n += 1
+		runner.jump_to(runner.stages[stage].start)
 	_set_state("runner")
 	if fade:
 		_fade_to(0.0)
 	_dialog("runner_start")
+
+
+func _runner_dialog(id: String) -> void:
+	if _node_box.node_id() != id:
+		_dialog(id)
+
+
+## Every 4 sun pieces: a minigame (memory, then catch), then the next stage.
+func _runner_minigame(n: int) -> void:
+	if n == 1:
+		_on_trigger("mg8")
+	else:
+		_on_trigger("mg9")
 
 
 func _runner_done() -> void:

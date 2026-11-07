@@ -12,7 +12,9 @@
   "c": "meadow_seeds",
   "d": "meadow_river",
   "e": "meadow_shadows",
-  "f": "meadow_gate_hint"
+  "f": "meadow_gate_hint",
+  "o": "runner_crows",
+  "p": "runner_traps"
  },
  "voice_overrides": {
   "DIA_001": "Kyra-001.wav",
@@ -807,6 +809,39 @@
     {
      "speaker": "Estrogenka",
      "text": "DIA_R06"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "runner_loop": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "DIA_R07"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "runner_crows": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_R08"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
+  },
+  "runner_traps": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "DIA_R09"
     }
    ],
    "buttons": [

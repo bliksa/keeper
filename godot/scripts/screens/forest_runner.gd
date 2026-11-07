@@ -1,7 +1,17 @@
 class_name ForestRunner
 extends Node2D
-## Level 2 (demo): after the Big Cramp a corridor opens and Kyra, seen from
-## behind (a 2D sprite), runs forward through the forest like an endless runner.
+## Level 2: after the Big Cramp a corridor opens and Kyra, seen from behind
+## (a 2D sprite), runs forward through the forest like an endless runner.
+##
+##  * The course is a top-down map (data/levels/forest_run.txt, level editor id
+##    4, LEVEL_ID): 5 columns (left side, three paths, right side), one row =
+##    ROW_M metres, the bottom row is the start. Legend in build_course().
+##  * The sun at the top is 12 triangular slices: each sun piece fills one. Every
+##    SUN_PER_GAME pieces a minigame starts (signal sun_game); the 12th leads
+##    straight to level 3 (finished).
+##  * The map is cut into stages by "A" rows. Each is faster than the one before
+##    (STAGE_SPEED); from RANDOM_TRAPS_FROM on, side traps also appear at random.
+##    A stage repeats from its start until its pieces are found (endless forest).
 ##
 ##  * Three lanes; ← → change lane, jump / double jump over roots (low, all lanes)
 ##    and branches (higher, one or two lanes). Hitting one bounces her back and
@@ -16,6 +26,33 @@ extends Node2D
 
 signal finished
 signal show_dialog(id: String)
+## n-th group of sun pieces is complete (1, 2): Main runs a minigame, then
+## after_minigame() continues with the next stage.
+signal sun_game(n: int)
+
+## The level editor's id of the map (Game.LEVELS).
+const LEVEL_ID := 4
+## Kept at the top of the map file (the level editor writes it back).
+const MAP_HEADER := """# Forest run (level 2), a top-down map: the bottom row is the start, she runs up the file.
+# Columns: left side | left path | middle path | right path | right side. One row = 2 m.
+# R root (jump)  H branch (high: change path or double jump)  V crow  D water drop  U drop up high
+# Y light seed  + sun piece (12 = the sun; every 4 a minigame, the 12th leads to the summit)
+# < > side trap from the left / right side   A next stage starts here (faster; stage 3: random side traps)
+# a-z dialog (data/dialogs.json letter_dialogs)
+"""
+const COLS := 5
+const ROW_M := 2.0
+## The first row lies this far ahead of the start.
+const START_Z := 8.0
+## Base speed per stage (m/s); within a stage it grows by STAGE_RAMP.
+const STAGE_SPEED := [9.0, 11.5, 14.0]
+const STAGE_RAMP := 1.5
+const RANDOM_TRAPS_FROM := 2
+const SUN_TOTAL := 12
+const SUN_PER_GAME := 4
+## Side traps (thorny vines): they lash into the outer path when she is this near.
+const VINE_REACH := 12.0
+const VINE_H := 0.7
 
 const W := 1066.0
 const H := 600.0
@@ -36,7 +73,6 @@ const SLOW_MIN := 6.0
 const DROP_WATER := 8.0
 const BUMP_BACK := 6.0
 const CARRY_BACK := 14.0
-const LENGTH := 640.0
 const VIEW := 70.0
 const ROOT_H := 0.5
 const BRANCH_H := 1.05
@@ -67,8 +103,22 @@ var _roll_to := 0.0
 var done := false
 var flash := 0.0
 
-## Course: [{kind, z, lane (or -9 = all), y, hit / taken}]
+## Course: [{kind, z, lane (or -9 = all), y, hit / taken, stage}]
 var objects: Array = []
+## The map (rows of COLS chars, the last row = the start); empty = the game's.
+var rows := PackedStringArray()
+## Length of the course (m), from the map.
+var length := 0.0
+## [{start, end}] in metres, in order.
+var stages: Array = []
+var stage := 0
+## Sun pieces found (0–12).
+var sun := 0
+var sun_flash := 0.0
+## Waiting for a minigame (after every SUN_PER_GAME pieces).
+var waiting := false
+var loops := 0
+var _loop_told := false
 var trees: Array = []
 var _font: Font
 var _prev_slow := false
@@ -87,69 +137,109 @@ func _ready() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var z := 0.0
-	while z < LENGTH + VIEW:
+	while z < length + VIEW:
 		for side: float in [-1.0, 1.0]:
 			trees.append({"x": side * rng.randf_range(4.2, 9.0), "z": z + rng.randf_range(0, 3), "h": rng.randf_range(4.5, 8.0), "r": rng.randf_range(1.2, 2.2), "tone": rng.randf()})
 		z += rng.randf_range(2.5, 4.0)
 
 
-## The obstacle course: hand-made patterns, harder towards the end. Clusters
-## marked "focus" are meant to be read with slowed time.
+## The course from the top-down map. Per cell:
+##   R root (jump; RRR across the paths = one long root)   H branch (high)
+##   V crow (flies at her)   D water drop   U water drop up high   Y light seed
+##   + sun piece   < > side trap from the left / right side (any column)
+##   A a new stage starts at this row   a–z dialog (letter_dialogs)
 func build_course() -> void:
 	objects.clear()
-	var z := 24.0
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 2
-	var step := 0
-	while z < LENGTH - 30:
-		var k := z / LENGTH
-		var pat := step % 7
-		step += 1
-		match pat:
-			0:
-				_add("root", z, -9)
-				_add_drops(z + 4, rng.randi_range(-1, 1), 3)
-				z += 16
-			1:
-				var l := rng.randi_range(-1, 1)
-				_add("branch", z, l)
-				_add("drop", z, l, BRANCH_H + 0.5)
-				_add_drops(z + 5, (l + 2) % 3 - 1, 3)
-				z += 14
-			2:
-				_add("bird", z, rng.randi_range(-1, 1), 1.1)
-				_add("root", z + 8, -9)
-				z += 18
-			3:
-				# Two branches leave one free lane.
-				var free := rng.randi_range(-1, 1)
-				for l in [-1, 0, 1]:
-					if l != free:
+	if rows.is_empty():
+		rows = Game.current_level_rows(LEVEL_ID)
+	var n := rows.size()
+	var starts := [0.0]
+	for i in n:
+		var row: String = rows[n - 1 - i]
+		var z := START_Z + i * ROW_M
+		var full_root := row.length() >= 4 and row[1] == "R" and row[2] == "R" and row[3] == "R"
+		if full_root:
+			_add("root", z, -9)
+		for c in mini(row.length(), COLS):
+			var ch := row[c]
+			var l := c - 2
+			var on_path := absi(l) <= 1
+			var pl := clampi(l, -1, 1)
+			match ch:
+				"R":
+					if on_path and not full_root:
+						_add("root", z, l)
+				"H":
+					if on_path:
 						_add("branch", z, l)
-				_add("seed", z, free, 0.4)
-				z += 15
-			4:
-				_add_drops(z, rng.randi_range(-1, 1), 5)
-				_add("seed", z + 6, rng.randi_range(-1, 1), 1.3)
-				z += 14
-			5:
-				# A focus cluster: root, bird above the jump, then a branch.
-				_add("root", z, -9)
-				_add("bird", z + 4, 0, 1.2)
-				_add("branch", z + 7, -1)
-				_add("branch", z + 7, 1)
-				_add("seed", z + 7, 0, 0.4)
-				z += 20 if k < 0.5 else 16
-			6:
-				_add("root", z, -9)
-				_add("root", z + 5.5, -9)
-				_add("drop", z + 2.8, 0, 1.2)
-				z += 16
-		z += maxf(2.0, 8.0 - k * 6.0)
+				"V":
+					if on_path:
+						_add("bird", z, l, 1.1)
+				"D":
+					_add("drop", z, pl, 0.45)
+				"U":
+					_add("drop", z, pl, BRANCH_H + 0.5)
+				"Y":
+					_add("seed", z, pl, 0.4)
+				"+":
+					_add("sun", z, pl, 0.5)
+				"<":
+					_add("vine", z, -1)
+				">":
+					_add("vine", z, 1)
+				"A":
+					if z > START_Z and not starts.has(z):
+						starts.append(z)
+				_:
+					if ch >= "a" and ch <= "z":
+						var id := Text.dialog_for_letter(ch)
+						if id != "":
+							_add("dialog", z, 0)
+							objects[objects.size() - 1]["id"] = id
+	length = START_Z + n * ROW_M + 6.0
+	starts.sort()
+	stages = []
+	for k in starts.size():
+		stages.append({"start": starts[k], "end": starts[k + 1] if k + 1 < starts.size() else length})
+	for o in objects:
+		o["stage"] = stage_of(o.z)
+	stage = clampi(stage, 0, stages.size() - 1)
+	_random_traps(stage)
+
+
+## Stage index of a point on the path.
+func stage_of(z: float) -> int:
+	var k := 0
+	for i in stages.size():
+		if z >= stages[i].start:
+			k = i
+	return k
+
+
+## Late stages get side traps at random places (new ones on every repeat).
+func _random_traps(k: int) -> void:
+	objects = objects.filter(func(o): return not (o.get("random", false) and o.stage == k))
+	if k < RANDOM_TRAPS_FROM or k >= stages.size():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 31 + k * 7 + loops * 101
+	var z: float = stages[k].start + 10.0
+	while z < stages[k].end - 6.0:
+		var clear := true
+		for o in objects:
+			if o.kind in ["root", "branch", "bird", "vine", "sun"] and absf(o.z - z) < 2.5:
+				clear = false
+				break
+		if clear:
+			_add("vine", z, -1 if rng.randf() < 0.5 else 1)
+			var v: Dictionary = objects[objects.size() - 1]
+			v["random"] = true
+			v["stage"] = k
+		z += rng.randf_range(9.0, 15.0)
 
 
 func _add(kind: String, z: float, l: int, y := 0.0) -> void:
-	objects.append({"kind": kind, "z": z, "lane": l, "y": y, "hit": false, "taken": false, "dz": 0.0})
+	objects.append({"kind": kind, "z": z, "lane": l, "y": y, "hit": false, "taken": false, "dz": 0.0, "stage": 0})
 
 
 func _add_drops(z: float, l: int, n: int) -> void:
@@ -199,7 +289,8 @@ func _process(delta: float) -> void:
 	var dt := minf(delta, 0.05)
 	time += dt
 	flash = maxf(0, flash - dt)
-	if active and not dialog_open and not done:
+	sun_flash = maxf(0, sun_flash - dt)
+	if active and not dialog_open and not done and not waiting:
 		_update(dt)
 	queue_redraw()
 
@@ -237,17 +328,79 @@ func _update(dt: float) -> void:
 		bump_t -= dt
 		dist = move_toward(dist, _roll_to, BUMP_BACK / 0.45 * dt)
 		return
-	speed = lerpf(SPEED, SPEED_MAX, clampf(dist / LENGTH, 0, 1))
+	var base: float = STAGE_SPEED[mini(stage, STAGE_SPEED.size() - 1)]
+	speed = base + STAGE_RAMP * stage_progress()
 	dist += speed * wdt
 	_hits(wdt)
-	if dist >= LENGTH:
-		done = true
-		finished.emit()
+	if done or waiting or stages.is_empty():
+		return
+	if dist >= stages[stage].end:
+		_stage_end()
+
+
+## The end of a stage: repeat it while its sun pieces are missing, else go on.
+func _stage_end() -> void:
+	var need := mini(SUN_TOTAL, (stage + 1) * SUN_PER_GAME)
+	var left := objects.any(func(o): return o.kind == "sun" and not o.taken and o.stage == stage)
+	if sun < need and left:
+		_loop_stage()
+	elif stage >= stages.size() - 1:
+		_finish()
+	else:
+		stage += 1
+		_random_traps(stage)
+
+
+## Back to the start of the stage: the forest goes round again. Obstacles and
+## water come back; found seeds and sun pieces stay found.
+func _loop_stage() -> void:
+	loops += 1
+	dist = stages[stage].start
+	for o in objects:
+		if o.stage != stage:
+			continue
+		if o.kind in ["root", "branch", "bird", "vine"]:
+			o.hit = false
+			o.dz = 0.0
+		elif o.kind == "drop":
+			o.taken = false
+	_random_traps(stage)
+	flash = 0.0
+	sun_flash = 0.0
+	if not _loop_told:
+		_loop_told = true
+		show_dialog.emit("runner_loop")
+
+
+## After the minigame: on with the next stage (from its start).
+func after_minigame() -> void:
+	waiting = false
+	if stage < stages.size() - 1:
+		stage += 1
+		dist = stages[stage].start
+		_random_traps(stage)
+	py = 0
+	vy = 0
+	jumps = 2
+	bump_t = 0
+	carry_t = 0
+
+
+func _finish() -> void:
+	if done:
+		return
+	done = true
+	finished.emit()
 
 
 func _hits(wdt: float) -> void:
 	for o in objects:
 		if o.taken or o.hit:
+			continue
+		if o.kind == "dialog":
+			if dist >= o.z:
+				o.taken = true
+				show_dialog.emit(o.id)
 			continue
 		if o.kind == "bird" and o.z + o.dz - dist < 28.0:
 			# Birds fly at her once she is near: their speed adds to hers.
@@ -281,12 +434,33 @@ func _hits(wdt: float) -> void:
 					o.taken = true
 					seeds += 1
 					Audio.play_sfx("finished.wav", 0.4)
+			"vine":
+				if py < VINE_H:
+					o.hit = true
+					bump()
+			"sun":
+				if absf(py - o.y) < 0.9:
+					o.taken = true
+					_sun_piece()
+
+
+## A sun piece: one more slice of the sun. Every SUN_PER_GAME a minigame, the
+## last one ends the level.
+func _sun_piece() -> void:
+	sun += 1
+	sun_flash = 1.0
+	Audio.play_sfx("finished.wav", 0.6)
+	if sun >= SUN_TOTAL:
+		_finish()
+	elif sun % SUN_PER_GAME == 0:
+		waiting = true
+		sun_game.emit(sun / SUN_PER_GAME)
 
 
 ## Ran into a root or a branch: bounce back, the path rolls back a bit.
 func bump() -> void:
 	bump_t = 0.45
-	_roll_to = maxf(0, dist - BUMP_BACK)
+	_roll_to = maxf(_stage_start(), dist - BUMP_BACK)
 	vy = 3.0
 	flash = 0.4
 	Audio.play_sfx("au%d.wav" % (1 + int(time * 13) % 5), 0.6)
@@ -296,7 +470,7 @@ func bump() -> void:
 ## Caught by a bird in the air: carried back along the path.
 func carried() -> void:
 	carry_t = 1.2
-	_roll_to = maxf(0, dist - CARRY_BACK)
+	_roll_to = maxf(_stage_start(), dist - CARRY_BACK)
 	flash = 0.3
 	Audio.play_sfx("au%d.wav" % (1 + int(time * 7) % 5), 0.7)
 	_reset_behind()
@@ -307,7 +481,7 @@ func carried() -> void:
 ## they started and fly at her again.
 func _reset_behind() -> void:
 	for o in objects:
-		if not o.kind in ["root", "branch", "bird"]:
+		if not o.kind in ["root", "branch", "bird", "vine"]:
 			continue
 		var here: float = o.z + o.dz
 		var passed: bool = here <= dist + 1 or o.hit
@@ -321,7 +495,31 @@ func _reset_behind() -> void:
 
 
 func progress() -> float:
-	return clampf(dist / LENGTH, 0, 1)
+	return clampf(dist / maxf(1.0, length), 0, 1)
+
+
+## How far through the current stage (0–1).
+func stage_progress() -> float:
+	if stages.is_empty():
+		return 0.0
+	var s: Dictionary = stages[stage]
+	return clampf((dist - s.start) / maxf(1.0, s.end - s.start), 0, 1)
+
+
+## Puts her at `z` (developer shortcuts, tests): the stage follows.
+func jump_to(z: float) -> void:
+	stage = stage_of(z)
+	dist = z
+	# Dialogs she skipped over stay unsaid.
+	for o in objects:
+		if o.kind == "dialog" and o.z <= z:
+			o.taken = true
+	bump_t = 0
+	carry_t = 0
+
+
+func _stage_start() -> float:
+	return stages[stage].start if not stages.is_empty() else 0.0
 
 
 # --- drawing --------------------------------------------------------------------------------
@@ -366,7 +564,7 @@ func _draw() -> void:
 			items.append([t.z, "tree", t])
 	for o in objects:
 		var oz: float = o.z + o.dz
-		if oz > dist - CAM_BACK + 0.5 and oz < dist + VIEW and not o.taken:
+		if oz > dist - CAM_BACK + 0.5 and oz < dist + VIEW and not o.taken and o.kind != "dialog":
 			items.append([oz, o.kind, o])
 	items.sort_custom(func(a, b): return a[0] > b[0])
 	var player_drawn := false
@@ -381,6 +579,8 @@ func _draw() -> void:
 			"bird": _draw_bird(it[2])
 			"drop": _draw_drop(it[2])
 			"seed": _draw_seed(it[2])
+			"sun": _draw_sun_piece(it[2])
+			"vine": _draw_vine(it[2])
 	if not player_drawn:
 		_draw_player()
 	# Slowed time: a cool tint and a focus ring.
@@ -412,8 +612,11 @@ func _lanes_of(o: Dictionary) -> Array:
 
 func _draw_root(o: Dictionary) -> void:
 	var z: float = o.z
-	var a := project(-LANE * 1.8, 0, z)
-	var b := project(LANE * 1.8, 0, z)
+	# Across all paths (lane -9) or one path.
+	var x0: float = -LANE * 1.8 if o.lane == -9 else (o.lane - 0.55) * LANE
+	var x1: float = LANE * 1.8 if o.lane == -9 else (o.lane + 0.55) * LANE
+	var a := project(x0, 0, z)
+	var b := project(x1, 0, z)
 	if a.z <= 0:
 		return
 	var col := _fog(Color("#6b4423"), z)
@@ -429,8 +632,8 @@ func _draw_root(o: Dictionary) -> void:
 	poly.append(Vector2(a.x, a.y + 0.04 * a.z))
 	Draw.polygon_safe(self, poly, col)
 	draw_polyline(top, col.lightened(0.25), maxf(1, 0.06 * a.z), true)
-	for i in 3:
-		var k := 0.25 + i * 0.25
+	for i in (3 if o.lane == -9 else 1):
+		var k := 0.25 + i * 0.25 if o.lane == -9 else 0.5
 		var kx := lerpf(a.x, b.x, k)
 		draw_circle(Vector2(kx, a.y - ROOT_H * 0.35 * a.z), 0.05 * a.z, col.darkened(0.25))
 
@@ -492,6 +695,48 @@ func _draw_seed(o: Dictionary) -> void:
 		return
 	Draw.radial_glow(self, Vector2(c.x, c.y), s * 3, Color(1, 0.85, 0.4, 0.5), Color(1, 0.98, 0.8, 0.95))
 	draw_circle(Vector2(c.x, c.y), s * 0.6, Color("#fff4c2"))
+
+
+## A sun piece: a golden triangular slice, turning slowly, with a glow.
+func _draw_sun_piece(o: Dictionary) -> void:
+	var c := project(_lane_x(o), o.y + sin(time * 3 + o.z) * 0.08, o.z)
+	if c.z <= 0:
+		return
+	var s := 0.3 * c.z
+	var p := Vector2(c.x, c.y)
+	if SpriteArt.draw(self, "sun_piece", p, s * 2.6, time * 1000.0 + o.z * 37.0):
+		return
+	Draw.radial_glow(self, p, s * 2.6, Color(1, 0.8, 0.3, 0.55), Color(1, 0.95, 0.7, 0.9))
+	SpriteArt.draw_sun_piece(self, p, s, cos(time * 2.2 + o.z))
+
+
+## A side trap: a thorny vine that lashes in from the side into the outer path.
+func _draw_vine(o: Dictionary) -> void:
+	var z: float = o.z
+	var rz := z - dist
+	var e := clampf((VINE_REACH - rz) / (VINE_REACH - 4.0), 0, 1)
+	var side: float = o.lane * LANE * 2.7
+	var tip: float = lerpf(side, o.lane * LANE * 0.45, e)
+	var col := _fog(Color("#2f6b2f"), z)
+	var pts := PackedVector2Array()
+	var width := 1.0
+	for i in 9:
+		var k := i / 8.0
+		var x := lerpf(side, tip, k)
+		var y := 0.35 + sin(k * PI) * 0.25 * e + sin(time * 6 + k * 5) * 0.04
+		var q := project(x, y, z)
+		if q.z <= 0:
+			return
+		pts.append(Vector2(q.x, q.y))
+		width = q.z
+	if not SpriteArt.draw(self, "vine", pts[pts.size() / 2], 0.6 * width, time * 1000.0, _fog(Color.WHITE, z), o.lane < 0):
+		SpriteArt.draw_vine(self, pts, maxf(2, 0.12 * width), col)
+	# Its shadow on the path.
+	if e > 0.6:
+		var g := project(o.lane * LANE, 0, z)
+		draw_set_transform(Vector2(g.x, g.y), 0, Vector2(1, 0.25))
+		draw_circle(Vector2.ZERO, 0.5 * g.z, Color(0, 0, 0, 0.15 * e))
+		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 
 
 func _lane_x(o: Dictionary) -> float:
@@ -561,11 +806,10 @@ func _draw_hud() -> void:
 	var ic := Vector2(r.end.x - 26, r.position.y + 24)
 	Draw.radial_glow(self, ic, 16, Color(1, 0.85, 0.4, 0.5), Color(1, 0.98, 0.8, 0.95))
 	draw_circle(ic, 6, Color("#fff4c2"))
-	# Progress along the path.
-	var pr := Rect2(W / 2 - 200, 26, 400, 10)
-	Draw.panel(self, pr, Color(1, 1, 1, 0.5), 5)
-	Draw.panel(self, Rect2(pr.position, Vector2(pr.size.x * progress(), pr.size.y)), Color("#16a34a"), 5)
-	draw_circle(Vector2(pr.position.x + pr.size.x * progress(), pr.get_center().y), 8, Color.WHITE)
+	# The sun: 12 slices, one per piece found; a ring shows the way through the stage.
+	var sc := Vector2(W / 2, 62)
+	draw_arc(sc, 56, -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)
+	SpriteArt.draw_sun(self, sc, 46, sun, sun_flash, time)
 	# Water = focus bar.
 	var v := Rect2(W / 2 - 170, H - 44, 340, 28)
 	Draw.panel(self, v, bg, 14, Color(0.37, 0.61, 0.6, 0.2), 2)

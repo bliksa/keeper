@@ -27,14 +27,18 @@ const DEFS := {
 		"where": "Forest run + meadow"},
 	"seed": {"cat": "collectibles", "label": "Light seed", "size": 30.0, "fps": 8.0, "frames": [],
 		"where": "Forest run + meadow"},
+	"sun_piece": {"cat": "collectibles", "label": "Sun piece", "size": 40.0, "fps": 8.0, "frames": [],
+		"where": "Forest run (12 fill the sun)"},
 	"cramp": {"cat": "enemies", "label": "Cramp", "size": 52.0, "fps": 10.0, "frames": [],
 		"where": "Cave (S / F / J / C in the level)"},
 	"spike": {"cat": "enemies", "label": "Spike cramp", "size": 44.0, "fps": 10.0, "frames": [],
 		"where": "Cave (^ in the level)"},
 	"boss": {"cat": "enemies", "label": "Big Cramp (boss)", "size": 170.0, "fps": 10.0, "frames": [],
 		"where": "Boss arena"},
-	"bird": {"cat": "enemies", "label": "Bird", "size": 60.0, "fps": 10.0, "frames": [],
+	"bird": {"cat": "enemies", "label": "Crow", "size": 60.0, "fps": 10.0, "frames": [],
 		"where": "Forest run (grabs her mid-jump)"},
+	"vine": {"cat": "enemies", "label": "Side trap (vine)", "size": 50.0, "fps": 8.0, "frames": [],
+		"where": "Forest run (lashes in from the side)"},
 	"distraction": {"cat": "enemies", "label": "Notification", "size": 40.0, "fps": 8.0, "frames": [],
 		"where": "Summit + meadow (N in the level)"},
 	"thorn": {"cat": "enemies", "label": "Thorns", "size": 30.0, "fps": 8.0, "frames": [],
@@ -312,9 +316,65 @@ static func draw_bird(ci: CanvasItem, c: Vector2, s: float, flap: float, col := 
 	ci.draw_circle(Vector2(c.x, c.y + s * 0.1), s * 0.07, Color("#fbbf24"))
 
 
+## A sun slice: a triangle pointing down (its tip is the sun's centre).
+## turn = cos of the spin (−1…1) for a slow turn.
+static func draw_sun_piece(ci: CanvasItem, c: Vector2, s: float, turn := 1.0) -> void:
+	var w := s * 0.55 * maxf(0.15, absf(turn))
+	var pts := PackedVector2Array([c + Vector2(-w, -s * 0.6), c + Vector2(w, -s * 0.6), c + Vector2(0, s * 0.7)])
+	Draw.polygon_safe(ci, pts, Color("#fbbf24") if turn > 0 else Color("#f59e0b"))
+	ci.draw_polyline(pts + PackedVector2Array([pts[0]]), Color("#fff7d6"), maxf(1, s * 0.06), true)
+
+
+## A thorny vine along `pts` (screen points, from the side to its tip).
+static func draw_vine(ci: CanvasItem, pts: PackedVector2Array, w: float, col := Color("#2f6b2f")) -> void:
+	ci.draw_polyline(pts, col, w, true)
+	ci.draw_polyline(pts, col.lightened(0.25), maxf(1, w * 0.3), true)
+	for i in range(1, pts.size()):
+		var a := pts[i - 1]
+		var b := pts[i]
+		var n := (b - a).orthogonal().normalized() * w * 0.9 * (1 if i % 2 == 0 else -1)
+		var m := a.lerp(b, 0.5)
+		Draw.polygon_safe(ci, PackedVector2Array([m - (b - a) * 0.15, m + (b - a) * 0.15, m + n]), Color("#b91c1c"))
+
+
+## The sun of the forest run: 12 triangular slices around `c`, the first `found`
+## of them golden; flash (1 → 0) makes the newest one glow.
+static func draw_sun(ci: CanvasItem, c: Vector2, r: float, found: int, flash := 0.0, time := 0.0) -> void:
+	Draw.radial_glow(ci, c, r * (1.7 + 0.08 * sin(time * 2)), Color(1, 0.86, 0.45, 0.35 + 0.25 * minf(1, found / 12.0)), Color(1, 0.95, 0.75, 0.6))
+	for i in 12:
+		var a0 := -PI / 2 + i * TAU / 12 + 0.035
+		var a1 := -PI / 2 + (i + 1) * TAU / 12 - 0.035
+		var tri := PackedVector2Array([c, c + Vector2(cos(a0), sin(a0)) * r, c + Vector2(cos(a1), sin(a1)) * r])
+		if i < found:
+			var col := Color("#fbbf24")
+			if i == found - 1 and flash > 0:
+				col = col.lerp(Color("#fffbeb"), flash)
+			Draw.polygon_safe(ci, tri, col)
+			# A ray beyond each found slice.
+			var am := (a0 + a1) / 2
+			ci.draw_line(c + Vector2(cos(am), sin(am)) * (r + 6), c + Vector2(cos(am), sin(am)) * (r + 14 + 3 * sin(time * 4 + i)), Color(1, 0.85, 0.35, 0.9), 3.0, true)
+		else:
+			Draw.polygon_safe(ci, tri, Color(1, 1, 1, 0.16))
+			ci.draw_polyline(tri + PackedVector2Array([tri[0]]), Color(1, 1, 1, 0.45), 1.5, true)
+	# Every 4 slices: a minigame (a dot on the rim); the last one leads to the summit.
+	for k: int in [4, 8]:
+		var a := -PI / 2 + k * TAU / 12
+		ci.draw_circle(c + Vector2(cos(a), sin(a)) * (r + 3), 4.0, Color("#fef3c7") if found >= k else Color(1, 1, 1, 0.6))
+	ci.draw_circle(c, r * 0.16, Color("#fff7d6"))
+
+
 ## The placeholder of `id` at its game size (the lab's preview of "original").
 static func draw_placeholder(ci: CanvasItem, id: String, c: Vector2, t: float) -> void:
 	match id:
+		"sun_piece":
+			Draw.radial_glow(ci, c, 34, Color(1, 0.8, 0.3, 0.55), Color(1, 0.95, 0.7, 0.9))
+			draw_sun_piece(ci, c, 26, cos(t / 1000.0 * 2.2))
+		"vine":
+			var pts := PackedVector2Array()
+			for i in 9:
+				var k := i / 8.0
+				pts.append(c + Vector2(-60 + 120 * k, sin(k * PI) * -14 + sin(t / 1000.0 * 6 + k * 5) * 3))
+			draw_vine(ci, pts, 8)
 		"iron":
 			Draw.iron_nut(ci, c + Vector2(0, sin(t / 300.0) * 3), 12, t / 800.0)
 		"drop":

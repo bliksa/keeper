@@ -308,17 +308,18 @@ func _run() -> void:
 	rn.lane = 0
 	rn.px = 0
 	rn.build_course()
-	var roots: Array = rn.objects.filter(func(o): return o.kind == "root")
+	check(rn.stages.size() == 3 and rn.objects.filter(func(o): return o.kind == "sun").size() == ForestRunner.SUN_TOTAL, "the map has 3 stages and 12 sun pieces")
+	check(not rn.objects.any(func(o): return o.kind == "bird" and o.stage == 0), "stage 1 has no crows (only jumping and water)")
+	var roots: Array = rn.objects.filter(func(o): return o.kind == "root" and o.lane == -9)
 	var root0: Dictionary = roots[0]
-	rn.dist = root0.z - 0.4
+	rn.jump_to(root0.z - 0.4)
 	rn.py = 0
 	rn.vy = 0
 	await frames(3)
 	check(rn.bump_t > 0, "running into a root bounces her off")
 	await seconds(0.45)
 	check(rn.dist < root0.z - 4 and not root0.hit, "the path rolls back and the root waits for her again")
-	rn.dist = root0.z - 3.0
-	rn.bump_t = 0
+	rn.jump_to(root0.z - 3.0)
 	rn.jump()
 	var cleared := await until(func(): return rn.dist > root0.z + 1.5, 3)
 	check(cleared and rn.bump_t <= 0 and not root0.hit, "a jump clears the root")
@@ -326,7 +327,7 @@ func _run() -> void:
 	var bird: Dictionary = birds[0]
 	rn.lane = bird.lane
 	rn.px = bird.lane * ForestRunner.LANE
-	rn.dist = bird.z + bird.dz - 0.2
+	rn.jump_to(bird.z + bird.dz - 0.2)
 	rn.py = 1.3
 	rn.vy = 0
 	var before := rn.dist
@@ -345,10 +346,10 @@ func _run() -> void:
 	rn.vy = 0
 	rn.bump_t = 0
 	rn.water = 100
-	rn.dist = rbr.z - 3.1
+	rn.jump_to(rbr.z - 3.1)
 	Input.action_press("slow_time")
 	await frames(2)
-	rn.dist = rbr.z - 3.1
+	rn.jump_to(rbr.z - 3.1)
 	rn.jump()
 	var passed_br := await until(func(): return rn.dist > rbr.z + 1.0, 4)
 	Input.action_release("slow_time")
@@ -360,7 +361,7 @@ func _run() -> void:
 	rn.px = rn.lane * ForestRunner.LANE
 	rn.water = 10
 	rn.py = 0
-	rn.dist = rdrop.z - 0.3
+	rn.jump_to(rdrop.z - 0.3)
 	await frames(3)
 	check(rdrop.taken and rn.water > 10, "a water drop fills the focus bar")
 	var seeds_l: Array = rn.objects.filter(func(o): return o.kind == "seed" and o.y < 1.0 and not o.taken)
@@ -368,7 +369,7 @@ func _run() -> void:
 	rn.lane = sd.lane
 	rn.px = sd.lane * ForestRunner.LANE
 	var seeds_before := rn.seeds
-	rn.dist = sd.z - 0.3
+	rn.jump_to(sd.z - 0.3)
 	await frames(3)
 	check(rn.seeds == seeds_before + 1, "a light seed is collected")
 	# Slowed time: the world runs slower while the water drains.
@@ -390,9 +391,55 @@ func _run() -> void:
 	await frames(3)
 	check(not rn.slow, "no slow-down without water")
 	Input.action_release("slow_time")
-	rn.dist = ForestRunner.LENGTH - 1
+	# Side traps: placed ones, and random ones in the last stage.
+	rn.build_course()
+	rn.water = 0
+	var vines: Array = rn.objects.filter(func(o): return o.kind == "vine" and not o.get("random", false))
+	check(vines.size() > 0 and rn.objects.filter(func(o): return o.kind == "vine" and o.get("random", false)).is_empty(), "side traps from the map; no random ones before the last stage")
+	var vine: Dictionary = vines[0]
+	rn.objects = rn.objects.filter(func(o): return o.kind != "root" and o.kind != "branch" and o.kind != "bird")
+	rn.lane = vine.lane
+	rn.px = vine.lane * ForestRunner.LANE
+	rn.py = 0
+	rn.vy = 0
+	rn.jump_to(vine.z - 0.4)
+	await frames(3)
+	check(rn.bump_t > 0 and rn._roll_to < vine.z - 5, "a side trap knocks her back in the outer path")
+	await seconds(0.5)
+	rn.objects = rn.objects.filter(func(o): return o.kind in ["sun", "dialog"])
+	# The sun: a stage repeats while its pieces are missing.
+	rn.jump_to(rn.stages[0].start + 1)
+	check(rn.sun == 0 and rn.stage == 0, "the sun starts empty")
+	rn.jump_to(rn.stages[0].end - 0.2)
+	await frames(3)
+	check(rn.loops == 1 and rn.stage == 0 and rn.dist < rn.stages[0].start + 2, "the stage repeats from its start while its sun pieces are missing")
+	var looped := await until(func(): return node_box().node_id() == "runner_loop", 3)
+	check(looped, "Iskra says the path goes round again")
+	await finish_dialog("runner_loop")
+	for n in ForestRunner.SUN_TOTAL:
+		var pieces: Array = rn.objects.filter(func(o): return o.kind == "sun" and not o.taken)
+		var pc: Dictionary = pieces[0]
+		rn.lane = pc.lane
+		rn.px = pc.lane * ForestRunner.LANE
+		rn.py = 0
+		rn.jump_to(pc.z - 0.3)
+		var got := await until(func(): return pc.taken, 3)
+		if not got or n == ForestRunner.SUN_TOTAL - 1:
+			check(got, "sun piece %d is found" % (n + 1))
+			break
+		if (n + 1) % ForestRunner.SUN_PER_GAME == 0:
+			var game_id := "mg8" if n + 1 == 4 else "mg9"
+			var opened := await until(func(): return main.state == game_id and main.minigame != null, 3)
+			await frames(2)
+			check(opened and rn.waiting and not rn.visible and rn.sun == n + 1, "%d sun pieces open minigame %s" % [n + 1, game_id])
+			await finish_dialog(game_id + "_start")
+			main.minigame.completed.emit()
+			await finish_dialog(game_id + "_after")
+			await frames(3)
+			check(main.state == "runner" and not rn.waiting and rn.stage == (n + 1) / 4 and rn.visible, "after the minigame the run goes on with stage %d" % ((n + 1) / 4 + 1))
+	check(rn.objects.any(func(o): return o.get("random", false) and o.stage == 2), "the last stage has random side traps")
 	var fin := await until(func(): return node_box().node_id() == "runner_end", 5)
-	check(fin and Game.seeds == rn.seeds, "the end of the path; the seeds are kept")
+	check(fin and rn.sun == ForestRunner.SUN_TOTAL and Game.seeds == rn.seeds, "the 12th piece completes the sun and ends the level; the seeds are kept")
 	await finish_dialog("runner_end")
 	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
 	check(summit, "the summit (level 3) starts after the forest run")
@@ -824,6 +871,25 @@ func _run() -> void:
 	ed.select_level(3)
 	await frames(2)
 	check(not ed.horizontal() and ed.rows.size() == Game.level_rows(3).size() and ed._tool_info.has("@") and ed._tool_info.has("E"), "editor switches to the summit and has its tools")
+	ed.select_level(ForestRunner.LEVEL_ID)
+	await frames(3)
+	check(ed.is_runner() and ed.cols() == ForestRunner.COLS and ed.rows.size() == Game.level_rows(ForestRunner.LEVEL_ID).size() and ed._tool_info.has("+") and ed._tool_info.has("<"), "editor shows the forest run as a top-down map with its tools")
+	check(ed._scroll.scroll_vertical > 0, "the map opens at its start (the bottom)")
+	check(ed._level_text().begins_with(ForestRunner.MAP_HEADER) and LevelData.parse_text(ed._level_text(), ForestRunner.COLS) == ed.rows, "the map keeps its legend when saved")
+	var old_row := ed.rows[ed.rows.size() - 2]
+	ed.tool = "+"
+	ed._painting = 1
+	ed._paint_at(Vector2(ed.cw() * 2.5, (ed.rows.size() - 2) * LevelEditor.CELL_H + 5))
+	ed._painting = 0
+	check(ed.rows[ed.rows.size() - 2][2] == "+", "painting a sun piece on the left path")
+	ed.start_test()
+	await frames(3)
+	check(ed._test_run != null and ed._test_run.objects.filter(func(o): return o.kind == "sun").size() == ForestRunner.SUN_TOTAL + 1, "test play runs the edited map")
+	ed.stop_test()
+	await frames(2)
+	check(ed._test_run == null, "back from the forest run test")
+	ed.rows[ed.rows.size() - 2] = old_row
+	ed._autosave()
 	ed.select_level(1)
 	await frames(2)
 	check(ed.rows.size() == Game.level_rows(1).size(), "editor switches back to the cave")

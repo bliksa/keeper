@@ -339,9 +339,12 @@
  "HUD_FLOOR": "Andar",
  "DIA_R01": "Um caminho pela floresta! O peso desapareceu. As minhas pernas querem correr.",
  "DIA_R02": "Então corre! Eu sou a Iskra, eu acordo as coisas. <KB>← →</KB><GP>D-pad</GP> muda de caminho, <KB>Espaço</KB><GP>🟡</GP> salta, duas vezes é salto duplo.",
- "DIA_R03": "Raízes e ramos atiram-te para trás. Os pássaros apanham-te no ar e levam-te para trás. Apanha gotas de água e sementes de luz.",
+ "DIA_R03": "Raízes, galhos e pássaros fazem-te recuar. Procura os pedaços do sol: cada um preenche uma fatia do sol lá em cima. As gotas de água alimentam o teu foco.",
  "DIA_R04": "A água alimenta o teu foco: mantém <KB>Shift ou E</KB><GP>LB</GP> e o tempo abranda para leres um sítio difícil. Gasta a água.",
- "DIA_R05": "Conseguiste! Guarda bem as sementes, vão ser precisas no fim deste nível.",
- "DIA_R06": "Isto foi uma amostra do novo nível. Por agora o caminho leva ao cume.",
- "RUNNER_SLOW_HINT": "<KB>Mantém Shift / E</KB><GP>Mantém LB</GP>: abrandar o tempo"
+ "DIA_R05": "O sol está completo! Está a clarear: a ovulação está perto.",
+ "DIA_R06": "Agora sobe até ao cume. Guarda bem as sementes, vão ser úteis.",
+ "RUNNER_SLOW_HINT": "<KB>Mantém Shift / E</KB><GP>Mantém LB</GP>: abrandar o tempo",
+ "DIA_R07": "Um pedaço do sol escapou. O caminho da floresta dá a volta: procura a fatia dourada.",
+ "DIA_R08": "Corvos! Voam direito a ti e apanham-te no ar. Fica junto ao chão ou muda de caminho.",
+ "DIA_R09": "Agora mais depressa! Trepadeiras com espinhos atacam dos lados. Atenção às margens do caminho."
 }

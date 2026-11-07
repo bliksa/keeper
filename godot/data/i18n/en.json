@@ -339,9 +339,12 @@
  "HUD_FLOOR": "Floor",
  "DIA_R01": "A path through the forest! The heaviness is gone. My legs want to run.",
  "DIA_R02": "Then run! I'm Iskra, I wake things up. <KB>← →</KB><GP>D-pad</GP> to switch paths, <KB>Space</KB><GP>🟡</GP> to jump, twice for a double jump.",
- "DIA_R03": "Roots and branches will knock you back. Birds catch you in the air and carry you back. Collect water drops and light seeds.",
+ "DIA_R03": "Roots, branches and birds knock you back. Find the sun pieces: each fills one slice of the sun up there. Drops of water feed your focus.",
  "DIA_R04": "Water feeds your focus: hold <KB>Shift or E</KB><GP>LB</GP> to slow time and read a tricky spot. It drains the water.",
- "DIA_R05": "You made it through! Keep those seeds safe, they'll matter at the end of this level.",
- "DIA_R06": "This was a preview of the new level. For now the path leads up to the summit.",
- "RUNNER_SLOW_HINT": "<KB>Hold Shift / E</KB><GP>Hold LB</GP>: slow time"
+ "DIA_R05": "The sun is whole! It's getting light: ovulation is near.",
+ "DIA_R06": "Up you go, to the summit. Keep those seeds safe, they'll matter later.",
+ "RUNNER_SLOW_HINT": "<KB>Hold Shift / E</KB><GP>Hold LB</GP>: slow time",
+ "DIA_R07": "A sun piece got away. The forest path goes round again: look for the golden slice.",
+ "DIA_R08": "Crows! They fly at you and grab you in the air. Stay low or switch paths.",
+ "DIA_R09": "Faster now! Thorny vines lash in from the sides. Watch the edges of the path."
 }
