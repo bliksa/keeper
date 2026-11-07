@@ -93,7 +93,7 @@ func read_text(path: String) -> Dictionary:
 
 ## One commit with all files (path in repo -> PackedByteArray) on the default branch.
 func commit(files: Dictionary, message: String) -> Dictionary:
-	if not has_token():
+	if not has_token() and token_override == "":
 		return {"ok": false, "error": "no token"}
 	progress.emit("Connecting to GitHub…")
 	var repo := await _api(HTTPClient.METHOD_GET, "")

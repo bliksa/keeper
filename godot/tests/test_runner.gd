@@ -916,6 +916,18 @@ func _run() -> void:
 	var gs_box := GitHubSave.token_dialog(main._menu, func(_ok): pass)
 	check(gs_box.find_children("*", "LineEdit", true, false)[0].placeholder_text == "Team password", "Save to repo asks for the team password, not a token")
 	gs_box.queue_free()
+	# Setting up the password commits with the pasted token before any is saved.
+	GitHubSave.forget_token()
+	var api0 := GitHubSave.api_base
+	GitHubSave.api_base = "http://127.0.0.1:9"
+	GitHubSave.token_override = "github_pat_NEW"
+	var ghs := GitHubSave.new()
+	main.add_child(ghs)
+	var cres: Dictionary = await ghs.commit({"x.txt": "x".to_utf8_buffer()}, "test")
+	GitHubSave.token_override = ""
+	GitHubSave.api_base = api0
+	ghs.queue_free()
+	check(not cres.ok and cres.error != "no token" and not GitHubSave.has_token(), "the team password setup commits with the pasted token (not 'no token')")
 	DevAccess.data_override = null
 	GitHubSave.forget_token()
 	if token0 != "":
