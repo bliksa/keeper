@@ -904,6 +904,7 @@ func _run() -> void:
 	var pwd: Control = main._menu.get_child(main._menu.get_child_count() - 1)
 	var pw_edit: LineEdit = pwd.find_children("*", "LineEdit", true, false)[0]
 	check(main.state == "boot" and pw_edit != null, "with a team password, DEV asks for it first")
+	check(not pwd.find_children("*", "Button", true, false).any(func(b): return b.text == "Use a GitHub token"), "… and only the password (an unchecked token can't open it)")
 	pw_edit.text = "nope nope nope"
 	pw_edit.text_submitted.emit(pw_edit.text)
 	await frames(4)
@@ -1329,8 +1330,14 @@ func _run() -> void:
 	de.delete_dialog()
 	check(de.nodes.has("1C") and de.where_of("1C").begins_with("Started by the game"), "a dialog the game starts (1C, the boss) can't be deleted")
 	check(de.next_id("2") == "2F" and de.next_id("1") == "1F", "new dialogs never take a letter the game uses")
+	var cf := FileAccess.open(DialogEditor.EDIT_PATH, FileAccess.WRITE)
+	cf.store_string(JSON.stringify({"saved_characters": {"Luna": {"name": {"sk": "Luna", "en": "Luna", "pt": "Luna"}, "portrait": "portrait_luna"}}}))
+	cf.close()
 	Text._ready()
-	check(Text.dialogs["2C"].parts.size() == 1, "the game's dialogs back as built")
+	check(Text.characters.has("Luna") and SpriteArt.is_sprite("portrait_luna"), "characters made in this browser are known at start-up (avatar slot in the lab)")
+	DirAccess.remove_absolute(DialogEditor.EDIT_PATH)
+	Text._ready()
+	check(Text.dialogs["2C"].parts.size() == 1 and not Text.characters.has("Luna"), "the game's dialogs back as built")
 	dev._show("shortcuts")
 	await frames(2)
 	_finished = true

@@ -52,6 +52,16 @@ func _ready() -> void:
 	breathing_hints = d.get("breathing_hints", {})
 	var ch: Variant = _load_json("res://data/characters.json")
 	characters = ch.get("characters", {}) if ch is Dictionary else {}
+	# Characters made in this browser's dialog editor (not in the build yet).
+	if FileAccess.file_exists(DialogEditor.EDIT_PATH):
+		var e: Variant = JSON.parse_string(FileAccess.get_file_as_string(DialogEditor.EDIT_PATH))
+		if e is Dictionary:
+			for part in ["saved_characters", "characters"]:
+				var c: Variant = e.get(part, {})
+				if c is Dictionary:
+					for cid in c:
+						if not characters.has(cid) or part == "characters":
+							characters[cid] = c[cid]
 	# Sprites (with an avatar for every character) once the characters are known.
 	SpriteArt.load_game_defaults()
 	var base: Font = load("res://assets/fonts/Comfortaa.ttf")

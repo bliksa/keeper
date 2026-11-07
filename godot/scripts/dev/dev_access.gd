@@ -193,7 +193,7 @@ static func setup_dialog(parent: Node, gh: GitHubSave, on_done: Callable) -> Con
 		"Everyone who knows this password can open developer mode and save to the repo, without a token.\n" +
 		"1. GitHub token: github.com → Settings → Developer settings → Fine-grained tokens → only %s/%s, Contents = Read and write.\n" % [GitHubSave.OWNER, GitHubSave.REPO] +
 		"2. A long password (e.g. four random words). The token is stored in the repo encrypted with it.\n" +
-		"Changing it later: set it up again here; the old password stops working after the next build.",
+		"Changing it: make a NEW token, set it up here again and delete the old token on GitHub (only that locks the old password out).",
 		12, Color("#cbd5e1"))
 	help.position = Vector2(24, 54)
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -209,7 +209,7 @@ static func setup_dialog(parent: Node, gh: GitHubSave, on_done: Callable) -> Con
 		e.size = Vector2(592, 36)
 		card.add_child(e)
 		fields.append(e)
-	if GitHubSave.has_token():
+	if GitHubSave.has_token() and not is_set_up():
 		fields[0].placeholder_text = "GitHub token (empty = the one this browser already uses)"
 	var msg := UiKit.label("", 12, Color("#f87171"))
 	msg.position = Vector2(24, 336)
@@ -226,11 +226,11 @@ static func setup_dialog(parent: Node, gh: GitHubSave, on_done: Callable) -> Con
 	ok.position = Vector2(490, 386)
 	ok.pressed.connect(func():
 		var token: String = fields[0].text.strip_edges()
-		if token == "":
+		if token == "" and not is_set_up():
 			token = GitHubSave.get_token()
 		var pw: String = fields[1].text
 		if token == "":
-			msg.text = "Paste a GitHub token."
+			msg.text = "Paste a GitHub token (a new one when changing the password)." if is_set_up() else "Paste a GitHub token."
 			return
 		if pw.length() < 12:
 			msg.text = "Use at least 12 characters (e.g. four random words)."
@@ -241,15 +241,16 @@ static func setup_dialog(parent: Node, gh: GitHubSave, on_done: Callable) -> Con
 		msg.text = "Encrypting…"
 		await parent.get_tree().process_frame
 		var d := encrypt(token, pw)
-		GitHubSave.set_token(token)
 		msg.text = "Saving to the repo…"
+		# Commit with the new token; it replaces this browser's token only if that works.
+		GitHubSave.token_override = token
 		var res: Dictionary = await gh.commit({REPO_PATH: (JSON.stringify(d, " ", false) + "\n").to_utf8_buffer()},
 			"Developer mode: team password\n\nThe repo token, encrypted with the team password (data/dev_access.json).")
+		GitHubSave.token_override = ""
 		if not res.ok:
 			msg.text = "Save failed: " + str(res.error)
-			if "token" in str(res.error):
-				GitHubSave.forget_token()
 			return
+		GitHubSave.set_token(token)
 		data_override = d
 		root.queue_free()
 		on_done.call(true))

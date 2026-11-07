@@ -50,6 +50,8 @@ var deleted := {}
 ## Who speaks (data/characters.json): id -> {name: {lang: s}, portrait: sprite id}.
 var characters := {}
 var _chars_bundled := {}
+## Characters saved to the repo from here, not in this build yet.
+var _saved_chars := {}
 ## Texts of the dialog buttons (BTN_* keys, shared by every dialog): key -> {lang: s}.
 var button_texts := {}
 var _btn_bundled := {}
@@ -169,6 +171,15 @@ func load_data() -> void:
 		if lb is Dictionary:
 			for k in lb:
 				button_texts[k] = lb[k]
+		var sc: Variant = e.get("saved_characters", {})
+		if sc is Dictionary:
+			for cid in sc.keys():
+				if JSON.stringify(_chars_bundled.get(cid)) == JSON.stringify(sc[cid]):
+					sc.erase(cid)
+					continue
+				characters[cid] = sc[cid]
+				_chars_bundled[cid] = sc[cid]
+			_saved_chars = sc
 		var lc: Variant = e.get("characters", {})
 		if lc is Dictionary:
 			for cid in lc:
@@ -322,7 +333,7 @@ func add_character(id: String, names: Dictionary) -> String:
 
 
 func _save_local() -> void:
-	var out := {"nodes": {}, "deleted": deleted, "saved": _saved, "characters": changed_characters(), "buttons": changed_buttons()}
+	var out := {"nodes": {}, "deleted": deleted, "saved": _saved, "characters": changed_characters(), "buttons": changed_buttons(), "saved_characters": _saved_chars}
 	for id in changed_ids():
 		out.nodes[id] = _normalized(id)
 	var f := FileAccess.open(EDIT_PATH, FileAccess.WRITE)
@@ -474,7 +485,7 @@ func discard() -> void:
 	# Dialogs already saved to the repo stay (they are in the next build).
 	var f := FileAccess.open(EDIT_PATH, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"saved": _saved}, " ", false))
+		f.store_string(JSON.stringify({"saved": _saved, "saved_characters": _saved_chars}, " ", false))
 		f.close()
 	load_data()
 	if _used:
@@ -615,6 +626,8 @@ func save_to_repo() -> void:
 		_saved[id] = _normalized(id)
 		_bundled[id] = JSON.stringify(_saved[id])
 	deleted = {}
+	for cid in changed_characters():
+		_saved_chars[cid] = characters[cid]
 	_chars_bundled = characters.duplicate(true)
 	_btn_bundled = button_texts.duplicate(true)
 	_save_local()

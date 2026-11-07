@@ -15,6 +15,8 @@ const TOKEN_FILE := "user://github_token"
 
 ## Override for tests (a local mock of the API); also settable with ?gh_api=… on the web.
 static var api_base := "https://api.github.com"
+## A token to try (team password setup) without replacing the saved one yet.
+static var token_override := ""
 
 
 static func has_token() -> bool:
@@ -50,7 +52,7 @@ func _api(method: int, path: String, body: Variant = null) -> Dictionary:
 	add_child(req)
 	var headers := PackedStringArray([
 		"Accept: application/vnd.github+json",
-		"Authorization: Bearer " + get_token(),
+		"Authorization: Bearer " + (token_override if token_override != "" else get_token()),
 		"X-GitHub-Api-Version: 2022-11-28",
 		"Content-Type: application/json",
 	])

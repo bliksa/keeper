@@ -189,9 +189,10 @@ func _go_title() -> void:
 ## Developer mode: behind the team password once it is set up (DevAccess).
 func _go_dev() -> void:
 	if DevAccess.is_set_up() and not GitHubSave.has_token() and _menu:
+		# Password only: an unchecked pasted token must not open developer mode.
 		DevAccess.password_dialog(_menu, func(ok):
 			if ok:
-				_open_dev())
+				_open_dev(), false)
 		return
 	_open_dev()
 
