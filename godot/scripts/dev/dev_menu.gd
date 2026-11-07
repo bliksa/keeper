@@ -153,13 +153,17 @@ func _build_shortcuts() -> void:
 		b.position = Vector2(480, 56 + i * 44)
 		b.pressed.connect(func(): action.emit("checkpoint", cps[i][0]))
 		card.add_child(b)
-	var h4 := UiKit.label("MEADOW (level 2)", 13, Color("#94a3b8"), true)
+	var h4 := UiKit.label("LEVEL 2", 13, Color("#94a3b8"), true)
 	h4.position = Vector2(32, 230)
 	card.add_child(h4)
-	var cps2 := [[1, "Meadow start"], [2, "After memory"], [3, "After catch"], [4, "After pairs"], [5, "The gate (vessel full, 10 seeds)"]]
+	var rb := UiKit.button("Forest run (new level 2 demo)", Vector2(400, 40), 13, Color("#059669"))
+	rb.position = Vector2(32, 256)
+	rb.pressed.connect(func(): action.emit("runner", _iron))
+	card.add_child(rb)
+	var cps2 := [[1, "Old meadow: start"], [4, "Old meadow: after its minigames"], [5, "Old meadow: the gate"]]
 	for i in cps2.size():
 		var b := UiKit.button(cps2[i][1], Vector2(400, 34), 12, Color("#1e3a5f"))
-		b.position = Vector2(32, 256 + i * 40)
+		b.position = Vector2(32, 304 + i * 40)
 		b.pressed.connect(func(): action.emit("checkpoint2", cps2[i][0]))
 		card.add_child(b)
 	var h5 := UiKit.label("SUMMIT (level 3)", 13, Color("#94a3b8"), true)

@@ -336,5 +336,12 @@
  "MARKET_20": "Cherries",
  "UPGRADE_PULL": "faster pull",
  "UPGRADE_SHIELD": "dew shield",
- "HUD_FLOOR": "Floor"
+ "HUD_FLOOR": "Floor",
+ "DIA_R01": "A path through the forest! The heaviness is gone. My legs want to run.",
+ "DIA_R02": "Then run! I'm Iskra, I wake things up. <KB>← →</KB><GP>D-pad</GP> to switch paths, <KB>Space</KB><GP>🟡</GP> to jump, twice for a double jump.",
+ "DIA_R03": "Roots and branches will knock you back. Birds catch you in the air and carry you back. Collect water drops and light seeds.",
+ "DIA_R04": "Water feeds your focus: hold <KB>Shift or E</KB><GP>LB</GP> to slow time and read a tricky spot. It drains the water.",
+ "DIA_R05": "You made it through! Keep those seeds safe, they'll matter at the end of this level.",
+ "DIA_R06": "This was a preview of the new level. For now the path leads up to the summit.",
+ "RUNNER_SLOW_HINT": "<KB>Hold Shift / E</KB><GP>Hold LB</GP>: slow time"
 }

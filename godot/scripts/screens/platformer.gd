@@ -96,6 +96,10 @@ var meadow_end := 0.0
 var _meadow_done_sent := false
 ## Scripted walk to the right after the boss (seconds left).
 var scripted_walk := 0.0
+## After the boss: a corridor into the forest opens in the middle (seconds since)
+## and Kyra walks to it.
+var corridor_t := 0.0
+var walk_to_x := -1.0
 ## 1 = the cave (down, cramps, boss), 2 = the garden (up, bubbles, LH wave).
 var level_id := 1
 ## The LH wave (level 2): rises from below once triggered; reach the summit first.
@@ -578,6 +582,14 @@ func _update(dt: float) -> void:
 		scripted_walk -= dt
 		left = false
 		right = true
+	if corridor_t > 0:
+		corridor_t += dt
+	if walk_to_x >= 0:
+		var d := walk_to_x - (p.x + p.width / 2)
+		left = d < -4
+		right = d > 4
+		if not (left or right):
+			p.facing_right = true
 	if meadow_end > 0:
 		left = false
 		right = false
@@ -1434,6 +1446,8 @@ func _draw_world() -> void:
 		_draw_arena(ci, t, top, bottom)
 	if summit_timer > 0:
 		_draw_summit_egg(ci, t)
+	if corridor_t > 0:
+		_draw_corridor(ci, t)
 	if combo_flash > 0 and combo >= 2:
 		var ck := combo_flash / 0.8
 		Draw.text_center(ci, _font, Vector2(p.x + p.width / 2, p.y - 20 - (1 - ck) * 30), "x%d" % combo, 22, Color(1, 0.9, 0.4, ck))
@@ -2211,3 +2225,39 @@ func _draw_gate(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	if not open:
 		var txt := "%d/100  ·  %d/%d" % [Game.water, Game.seeds, Game.SEEDS_NEEDED]
 		Draw.text_center(ci, _font, Vector2(gx, gy - 215), txt, 14, Color("#2f5d3f", 0.9))
+
+
+# --- after the boss: the corridor into the forest -------------------------------------
+
+## Opens the corridor in the middle of the arena; Kyra walks to it.
+func open_corridor() -> void:
+	corridor_t = 0.01
+	walk_to_x = W / 2
+
+
+func _draw_corridor(ci: CanvasItem, t: float) -> void:
+	var k := clampf(corridor_t / 1.4, 0, 1)
+	var floor_y := camera_y + H - 40
+	var w := 280.0 * k
+	var h := 340.0
+	var r := Rect2(W / 2 - w / 2, floor_y - h, w, h)
+	if w < 2:
+		return
+	Draw.radial_glow(ci, Vector2(W / 2, floor_y - h * 0.45), 260 * k, Color(1, 0.95, 0.75, 0.35 * k))
+	# Inside: a forest path running away to a bright horizon.
+	var hz := r.position.y + h * 0.45
+	for b in 6:
+		ci.draw_rect(Rect2(r.position.x, r.position.y + (hz - r.position.y) * b / 6.0, w, (hz - r.position.y) / 6.0 + 1), Color("#a8d8cf").lerp(Color("#f3f0c8"), b / 6.0))
+	ci.draw_rect(Rect2(r.position.x, hz, w, r.end.y - hz), Color("#4f8a4f"))
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(W / 2 - 6, hz), Vector2(W / 2 + 6, hz), Vector2(W / 2 + w * 0.42, r.end.y), Vector2(W / 2 - w * 0.42, r.end.y)]), Color("#b48a5a"))
+	for i in 5:
+		var d := 1.0 - i / 5.0
+		var tx := w * (0.18 + 0.32 * d)
+		var th := h * (0.15 + 0.5 * d)
+		for side: float in [-1.0, 1.0]:
+			var bx: float = W / 2 + side * tx
+			ci.draw_line(Vector2(bx, hz + 4 + 60 * d), Vector2(bx, hz - th * 0.4), Color("#3d2a1a"), 2 + 5 * d)
+			ci.draw_circle(Vector2(bx, hz - th * 0.45), 8 + 22 * d, Color("#2f6b3a").lerp(Color("#9fc9a8"), 1.0 - d))
+	# The rough edge of the opening.
+	ci.draw_rect(r, Color("#3b0a0a"), false, 6.0)
+	Draw.radial_glow(ci, Vector2(W / 2, hz), 60 * k, Color(1, 1, 0.9, 0.7 * k))

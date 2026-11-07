@@ -20,6 +20,8 @@ var _node_box: DialogBox
 
 var forest: ForestIntro
 var platformer: Platformer
+## Level 2 (demo): the forest run after the Big Cramp.
+var runner: ForestRunner
 var minigame: Minigame
 var _menu: Control
 var _pause: PauseMenu
@@ -86,6 +88,7 @@ func _set_state(s: String) -> void:
 	match s:
 		"intro", "mg1": Audio.play_bgm("forest.mp3", 0.4)
 		"platformer": Audio.play_bgm("chamber.mp3" if Game.level == 1 else "forest.mp3", 0.5)
+		"runner": Audio.play_bgm("forest.mp3", 0.55)
 		"mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10": Audio.play_bgm("minihra.mp3", 0.5)
 		"title": Audio.play_bgm("menu.mp3", 0.5)
 
@@ -107,6 +110,7 @@ func _clear_world() -> void:
 		c.queue_free()
 	forest = null
 	platformer = null
+	runner = null
 	_clear_minigame()
 
 
@@ -130,8 +134,11 @@ func _dialog(id: String, then: Callable = Callable()) -> void:
 
 
 func _process(_delta: float) -> void:
-	_pause.allowed = state in ["intro", "mg1", "platformer", "mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
+	_pause.allowed = state in ["intro", "mg1", "platformer", "runner", "mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
 	var any_dialog := _node_box.is_open() or _panel_box.is_open()
+	if runner:
+		runner.active = state == "runner"
+		runner.dialog_open = any_dialog
 	if platformer:
 		platformer.active = state == "platformer"
 		platformer.dialog_open = any_dialog
@@ -198,8 +205,15 @@ func _dev_action(name: String, value: int) -> void:
 			_start_cave(value, 0)
 		"boss":
 			_skip_to_boss(value)
+		"runner":
+			# Level 2 demo: the forest run.
+			Game.reset_run()
+			Game.has_breathing = true
+			Game.intro_done = true
+			Game.iron = value
+			_start_runner()
 		"checkpoint2":
-			# Meadow checkpoints: 1 start, 2..4 after its minigames, 5 the gate (ready to open).
+			# Old meadow checkpoints: 1 start, 2..4 after its minigames, 5 the gate (ready to open).
 			Game.reset_run()
 			Game.has_breathing = true
 			Game.intro_done = true
@@ -538,8 +552,57 @@ func _mg7_done() -> void:
 
 
 func _on_boss_defeated() -> void:
-	# The cycle goes on: Kyra gets up and walks off to the meadow (follicular phase).
-	_dialog("boss_win", _walk_to_meadow)
+	# The cycle goes on: a corridor opens in the middle of the arena and Kyra
+	# runs into the forest (follicular phase).
+	_dialog("boss_win", _into_corridor)
+
+
+func _into_corridor() -> void:
+	var run := _run_id
+	if platformer:
+		platformer.open_corridor()
+	await get_tree().create_timer(2.6).timeout
+	if run != _run_id:
+		return
+	await _fade_to(1.0, 0.8, Color.WHITE)
+	if run != _run_id:
+		return
+	await _start_runner(false)
+	if run != _run_id:
+		return
+	_fade_to(0.0, 0.8, Color.WHITE)
+
+
+## Level 2 (demo): the forest run, seen from behind.
+func _start_runner(fade := true) -> void:
+	var run := _run_id
+	if fade:
+		await _fade_to(1.0)
+		if run != _run_id:
+			return
+	_clear_menu()
+	_clear_world()
+	_node_box.close()
+	_set_dim(false)
+	Game.level = 2
+	Game.water = 0
+	Game.seeds = 0
+	runner = ForestRunner.new()
+	runner.finished.connect(_runner_done)
+	_world_layer.add_child(runner)
+	_set_state("runner")
+	if fade:
+		_fade_to(0.0)
+	_dialog("runner_start")
+
+
+func _runner_done() -> void:
+	if runner:
+		Game.seeds = runner.seeds
+		Game.water = int(runner.water)
+	_dialog("runner_end", func():
+		Game.upgrades = {}
+		_start_summit(1, maxi(Game.iron, 8)))
 
 
 func _walk_to_meadow() -> void:

@@ -33,7 +33,27 @@ Godot editor na to netreba. Všetko je v čitateľných súboroch:
 Hra obieha cyklus ako kruh: level 1 ide **dole**, level 2 **doprava**, level 3
 **hore** (a plánovaný level 4 **doľava**).
 
-### Level 2: Lúka (folikulárna fáza, zľava doprava)
+### Level 2: Beh lesom (ukážka, nová verzia)
+
+Po porazení Veľkého kŕču sa v strede arény otvorí chodba do lesa. Kyra k nej
+dôjde a ďalej ju vidíme **odzadu** (2D sprite, zatiaľ kreslený kódom), ako beží
+dopredu lesom v štýle endless runnera.
+
+- **← →** prepína medzi tromi cestičkami, **skok** (dvakrát = dvojskok)
+  preskakuje **korene** (cez celú cestu) a **konáre** (na jednej či dvoch
+  cestičkách). Keď do nich narazí, odrazí sa a cesta sa kus odroluje naspäť.
+- **Vtáky** (zatiaľ pracovné) letia proti nej vo výške skoku: keď ju chytia vo
+  vzduchu, odnesú ju kus späť.
+- **Kvapky vody** plnia lištu sústredenia. Podržaním **Shift / E** (gamepad
+  **LB**) sa spomalí čas, kým sa voda míňa, takže sa dá prečítať a preskákať
+  zložitejšie zoskupenie prekážok.
+- **Svetelné semienka** sa zbierajú na koniec levelu (ten ešte doplníme).
+- Po dobehnutí nasleduje level 3 (vrchol). V developer menu je tlačidlo
+  **Forest run**.
+
+Stará lúka (nižšie) ostala v hre len cez developer menu.
+
+### Level 2 (stará verzia): Lúka (folikulárna fáza, zľava doprava)
 
 Po porazení Veľkého kŕču Kyra vstane, odíde doprava a ocitne sa na lúke po
 daždi (Kráľovstvo Rastov podľa poznámok v game design dokumente). Sprevádza ju

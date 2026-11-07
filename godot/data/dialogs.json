@@ -774,6 +774,44 @@
    "buttons": [
     "BTN_NEXT_PHASE"
    ]
+  },
+  "runner_start": {
+   "parts": [
+    {
+     "speaker": "Kyra",
+     "text": "DIA_R01"
+    },
+    {
+     "speaker": "Iskra",
+     "text": "DIA_R02"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_R03"
+    },
+    {
+     "speaker": "Iskra",
+     "text": "DIA_R04"
+    }
+   ],
+   "buttons": [
+    "BTN_LETS_GO"
+   ]
+  },
+  "runner_end": {
+   "parts": [
+    {
+     "speaker": "Iskra",
+     "text": "DIA_R05"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "DIA_R06"
+    }
+   ],
+   "buttons": [
+    "BTN_CONTINUE"
+   ]
   }
  },
  "breathing_hints": {

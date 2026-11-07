@@ -336,5 +336,12 @@
  "MARKET_20": "Čerešne",
  "UPGRADE_PULL": "rýchlejšie ťahá",
  "UPGRADE_SHIELD": "rosa chráni",
- "HUD_FLOOR": "Poschodie"
+ "HUD_FLOOR": "Poschodie",
+ "DIA_R01": "Cestička cez les! Ťažoba je preč. Nohy chcú bežať.",
+ "DIA_R02": "Tak bež! Ja som Iskra, ja veci prebúdzam. <KB>← →</KB><GP>D-pad</GP> mení cestičku, <KB>medzerník</KB><GP>🟡</GP> skáče, dvakrát je dvojskok.",
+ "DIA_R03": "Korene a konáre ťa odhodia späť. Vtáky ťa chytia vo vzduchu a odnesú kus naspäť. Zbieraj kvapky vody a svetelné semienka.",
+ "DIA_R04": "Voda živí tvoje sústredenie: podrž <KB>Shift alebo E</KB><GP>LB</GP> a čas sa spomalí, aby si prečítala ťažké miesto. Míňa to vodu.",
+ "DIA_R05": "Prebehla si! Semienka si dobre schovaj, na konci levelu sa zídu.",
+ "DIA_R06": "Toto bola ukážka nového levelu. Zatiaľ cestička vedie hore na vrchol.",
+ "RUNNER_SLOW_HINT": "<KB>Podrž Shift / E</KB><GP>Podrž LB</GP>: spomalenie času"
 }

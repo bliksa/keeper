@@ -10,7 +10,7 @@ web and deploys it to GitHub Pages, so changes are tested in a browser.
 godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
   project.godot            minimal engine config (autoloads, window)
   scenes/main.tscn         the only real scene — everything else is built in code
-  scripts/main.gd          game flow / state machine (boot → title → forest → cave → boss → garden)
+  scripts/main.gd          game flow / state machine (boot → title → forest → cave → boss → forest run → summit)
   scripts/autoload/        Game (state + input actions), Text (strings, dialogs, fonts), Audio
   scripts/screens/         boot, title, forest_intro, platformer (cave + boss; garden + LH wave)
   scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4),
@@ -156,7 +156,24 @@ by signature and scaled to 4096 px), `thumb()`, `bytes_of()` / `file_name()` for
 downloads, `store()`; Upload (JS file input / FileDialog / drop), per-tile
 download, delete only for `user://uploads/` and not while `in_use` says so.
 
-## Level 2: the meadow (follicular phase, horizontal)
+## Level 2: the forest run (demo, the current level 2)
+
+`scripts/screens/forest_runner.gd` (`ForestRunner`, a Node2D screen, not a
+Platformer): a pseudo-3D endless runner seen from behind (`project()`: x sideways,
+y up, z along the path; `dist` = progress, `LENGTH`). Three lanes (`lane`, `px`),
+jump / double jump (`jump()`), `objects` from `build_course()` (patterns, harder
+towards the end): `root` (all lanes, `ROOT_H`), `branch` (one lane, `BRANCH_H`),
+`bird` (flies at her when near, `BIRD_REACH`), `drop` (+`DROP_WATER`), `seed`.
+Hitting a root / branch = `bump()` (rolls `dist` back `BUMP_BACK`), a bird in the
+air = `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass
+again. Slow time: action `slow_time` (Shift / E / LB / Y) while `water` lasts
+(`SLOW_SCALE`, `SLOW_DRAIN`). Kyra from behind is drawn in `_draw_player()`
+(placeholder art). Flow: `boss_win` → `Platformer.open_corridor()` (corridor drawn
+in the arena, `walk_to_x`) → `main._start_runner()` (state "runner", dialog
+`runner_start`) → `finished` → `runner_end` → `_start_summit`. Dev menu: "Forest
+run" (`_dev_action("runner", iron)`). Strings `DIA_R*`, `RUNNER_SLOW_HINT`.
+
+## Old level 2: the meadow (follicular phase, horizontal; dev menu only)
 
 Same `Platformer` with `level_id = 2` (`is_meadow()`, `level.horizontal`): the
 camera follows `camera_x`, `level_w` is the row length × `CELL_W`. Mechanics in

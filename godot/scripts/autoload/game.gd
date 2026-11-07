@@ -120,7 +120,9 @@ func _setup_input() -> void:
 	_action("rotate_right", [KEY_E], [JOY_BUTTON_A, JOY_BUTTON_X, JOY_BUTTON_Y], [])
 	_action("skip_minigame", [KEY_X], [], [])
 	_action("pause", [KEY_ESCAPE], [JOY_BUTTON_START], [])
-	# Level 2: hold to focus the light thread on a seed (also the left mouse button).
+	# Level 2 (forest run): hold to slow time while the water lasts.
+	_action("slow_time", [KEY_SHIFT, KEY_E], [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_Y], [])
+	# Level 2 (old meadow): hold to focus the light thread on a seed (also the left mouse button).
 	_action("focus", [KEY_E], [JOY_BUTTON_LEFT_SHOULDER], [])
 	var mb := InputEventMouseButton.new()
 	mb.button_index = MOUSE_BUTTON_LEFT

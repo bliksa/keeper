@@ -268,8 +268,274 @@ func _run() -> void:
 	var won := await until(func(): return node_box().node_id() == "boss_win", 5)
 	check(won, "boss defeated")
 	await finish_dialog("boss_win")
+	await frames(5)
+	check(main.platformer != null and main.platformer.corridor_t > 0 and main.platformer.walk_to_x > 0, "a corridor opens in the middle of the arena")
+	var run_ok := await until(func(): return main.state == "runner" and main.runner != null, 8)
+	check(run_ok and Game.level == 2, "the forest run (level 2) starts after the boss")
+
+	step("level 2 – the forest run")
+	await finish_dialog("runner_start")
+	var rn: ForestRunner = main.runner
+	await frames(3)
+	check(rn.active and not rn.dialog_open, "the run is active")
+	var d0 := rn.dist
+	await seconds(0.5)
+	check(rn.dist > d0 + 3, "she runs forward on her own")
+	rn.objects.clear()
+	_key(KEY_RIGHT, true)
+	await frames(2)
+	_key(KEY_RIGHT, false)
+	await seconds(0.3)
+	check(rn.lane == 1 and absf(rn.px - ForestRunner.LANE) < 0.05, "→ moves her to the right path")
+	_key(KEY_LEFT, true)
+	await frames(2)
+	_key(KEY_LEFT, false)
+	await seconds(0.3)
+	check(rn.lane == 0, "← back to the middle")
+	rn.build_course()
+	var roots: Array = rn.objects.filter(func(o): return o.kind == "root")
+	var root0: Dictionary = roots[0]
+	rn.dist = root0.z - 0.4
+	rn.py = 0
+	rn.vy = 0
+	await frames(3)
+	check(rn.bump_t > 0, "running into a root bounces her off")
+	await seconds(0.45)
+	check(rn.dist < root0.z - 4 and not root0.hit, "the path rolls back and the root waits for her again")
+	rn.dist = root0.z - 3.0
+	rn.bump_t = 0
+	rn.jump()
+	var cleared := await until(func(): return rn.dist > root0.z + 1.5, 3)
+	check(cleared and rn.bump_t <= 0 and not root0.hit, "a jump clears the root")
+	var birds: Array = rn.objects.filter(func(o): return o.kind == "bird")
+	var bird: Dictionary = birds[0]
+	rn.lane = bird.lane
+	rn.px = bird.lane * ForestRunner.LANE
+	rn.dist = bird.z + bird.dz - 0.2
+	rn.py = 1.3
+	rn.vy = 0
+	var before := rn.dist
+	await frames(2)
+	check(rn.carry_t > 0, "a bird catches her in the air")
+	await seconds(1.4)
+	check(rn.dist < before - 10 and rn.carry_t <= 0, "and carries her back along the path")
+	var drops: Array = rn.objects.filter(func(o): return o.kind == "drop" and o.y < 1.0 and not o.taken)
+	var rdrop: Dictionary = drops[0]
+	rn.lane = 0 if rdrop.lane == -9 else rdrop.lane
+	rn.px = rn.lane * ForestRunner.LANE
+	rn.water = 10
+	rn.py = 0
+	rn.dist = rdrop.z - 0.3
+	await frames(3)
+	check(rdrop.taken and rn.water > 10, "a water drop fills the focus bar")
+	var seeds_l: Array = rn.objects.filter(func(o): return o.kind == "seed" and o.y < 1.0 and not o.taken)
+	var sd: Dictionary = seeds_l[0]
+	rn.lane = sd.lane
+	rn.px = sd.lane * ForestRunner.LANE
+	var seeds_before := rn.seeds
+	rn.dist = sd.z - 0.3
+	await frames(3)
+	check(rn.seeds == seeds_before + 1, "a light seed is collected")
+	# Slowed time: the world runs slower while the water drains.
+	rn.objects.clear()
+	rn.water = 80
+	var t0 := rn.dist
+	await seconds(0.5)
+	var normal := rn.dist - t0
+	Input.action_press("slow_time")
+	await frames(2)
+	t0 = rn.dist
+	await seconds(0.5)
+	var slowed := rn.dist - t0
+	Input.action_release("slow_time")
+	await frames(3)
+	check(rn.slow == false and slowed < normal * 0.6 and rn.water < 80, "holding Slow slows time (%.1f m vs %.1f m) and uses water" % [slowed, normal])
+	rn.water = 2
+	Input.action_press("slow_time")
+	await frames(3)
+	check(not rn.slow, "no slow-down without water")
+	Input.action_release("slow_time")
+	rn.dist = ForestRunner.LENGTH - 1
+	var fin := await until(func(): return node_box().node_id() == "runner_end", 5)
+	check(fin and Game.seeds == rn.seeds, "the end of the path; the seeds are kept")
+	await finish_dialog("runner_end")
+	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
+	check(summit, "the summit (level 3) starts after the forest run")
+
+	step("level 3 – the summit")
+	await finish_dialog("garden_start")
+	pf = main.platformer
+	check(pf.is_summit() and pf.p.y > pf.level_h - 500, "starts at the bottom of the summit")
+	check(pf.wave.active and pf.wave.y > pf.p.y + 300, "the LH wave rises from the start, well below the player")
+	# The tests teleport around; keep the wave out of the way until its own step.
+	pf.wave.active = false
+	# Wall jump: out of jumps, touching the left wall.
+	pf.p.x = 0
+	pf.p.y = pf.level_h - 400
+	pf.p.vy = 2
+	pf.p.jumps_left = 0
+	pf.p.is_grounded = false
+	await frames(2)
+	check(pf.on_wall, "touching the wall in the air")
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	check(pf.p.vy < -5 and pf.p.vx > 5, "a wall jump kicks off the wall")
+	# Momentum: a running jump is higher than a standing one.
+	pf.p.vx = 0
+	var standing := pf._jump_force()
+	pf.p.vx = Platformer.MAX_SPEED * Platformer.SUMMIT_SPEED
+	check(pf._jump_force() < standing * 1.3, "a running start jumps much higher")
+	pf.p.vx = 0
+	# Combo: jumps that clear two or more floors chain up.
+	var ups: Array = pf.level.platforms.filter(func(pl): return pl.kind == "rock")
+	ups.sort_custom(func(a, b): return a.base_y > b.base_y)
+	pf.combo = 0
+	pf.last_floor = 0
+	var landed := 0
+	var prev_floor := 0
+	for pl in ups:
+		if landed >= 3:
+			break
+		var fl: int = pf.floor_of(pl.base_y)
+		if fl < prev_floor + 2:
+			continue
+		prev_floor = fl
+		landed += 1
+		pf.p.x = pl.x + 4
+		pf.p.y = pl.base_y - pf.p.height - 6
+		pf.p.vy = 2
+		pf.p.is_grounded = false
+		pf.p.was_grounded = false
+		await frames(4)
+	check(pf.combo >= 6 and pf.floor_now == prev_floor, "three multi-floor jumps chain into a combo (x%d) on floor %d" % [pf.combo, pf.floor_now])
+	pf.p.y = pf.p.y + 400
+	await seconds(0.5)
+	check(pf.combo == 0, "falling back down resets the combo")
+	await seconds(1.0)
+	check(pf.p.is_grounded, "stands on the garden floor")
+	# A popping bubble bursts after standing on it and regrows later.
+	var pop: LevelData.Plat = null
+	for pl in pf.level.platforms:
+		if pl.kind == "pop":
+			pop = pl
+			break
+	pf.p.x = pop.x + 6
+	pf.p.y = pop.base_y - pf.p.height - 2
+	pf.p.vy = 0
+	pf.camera_y = pf.p.y - 300
+	await seconds(1.3)
+	check(pop.regrow > 0 and pf.p.y > pop.base_y, "a yellow bubble bursts after standing on it")
+	await seconds(4.0)
+	check(pop.regrow <= 0, "the bubble regrows")
+	# An updraft lifts the player.
+	var draft: LevelData.Ent = null
+	for e in pf.level.entities:
+		if e.type == "updraft":
+			draft = e
+	pf.p.x = draft.x + 6
+	pf.p.y = draft.y + draft.h - pf.p.height
+	pf.p.vy = 0
+	var y_in := pf.p.y
+	await seconds(0.5)
+	check(pf.p.vy < 0 and pf.p.y < y_in - 40, "the updraft lifts the player")
+	# Distractions only slow the player down.
+	var iron_now := Game.iron
+	_teleport_to_entity(pf, "enemy")
+	await frames(4)
+	check(pf.p.slow_timer > 0 and Game.iron == iron_now and pf.p.held_by_cramp == -1, "a distraction slows the player, costs no iron")
+
+	step("minigame 5 – iron plate")
+	await _go_trigger(pf, "mg5")
+	check(main.state == "mg5", "state mg5")
+	check(pf.p.is_grounded and pf.p.vy == 0, "Kyra lands on the ground when a minigame opens")
+	await finish_dialog("mg5_start")
+	var ip: IronPlateGame = main.minigame
+	var bad_i := -1
+	var good_i := []
+	for i in 8:
+		if ip._item(i).good: good_i.append(i)
+		elif bad_i < 0: bad_i = i
+	for i in [good_i[0], good_i[1], good_i[2], bad_i]:
+		ip.toggle(i)
+	await frames(2)
+	check(ip.chosen.size() == 4 and panel_box().is_open(), "4 foods on the plate, serve button offered")
+	panel_box()._press(0)
+	await frames(2)
+	check(ip.evaluated and not ip.perfect, "a plate with tea is not accepted")
+	panel_box()._press(0)
+	await frames(2)
+	check(not ip.evaluated and ip.chosen.is_empty(), "try again clears the plate")
+	for i in good_i:
+		ip.toggle(i)
+	await frames(2)
+	panel_box()._press(0)
+	await frames(2)
+	check(ip.perfect, "the iron-friendly plate is accepted")
+	await finish_dialog("mg5_after")
+	await frames(3)
+	check(main.state == "platformer" and Game.checkpoint == 2 and Game.upgrades.has("jump"), "back in the garden, checkpoint 2, higher jump")
+	check(pf._jump_force() < Platformer.JUMP_FORCE, "jump power-up applies")
+
+	step("minigame 6 – rhythm")
+	await _go_trigger(pf, "mg6")
+	await finish_dialog("mg6_start")
+	var rg: RhythmGame = main.minigame
+	rg._time = rg._beat_time(0) + 0.4
+	rg.tap()
+	check(rg.misses == 1 and rg.hits == 0, "a tap off the beat is a miss")
+	for i in range(1, 11):
+		rg._time = rg._beat_time(i)
+		rg.tap()
+	check(rg.hits == 10, "ten taps on the beat")
+	await finish_dialog("mg6_after")
+	await frames(3)
+	check(Game.checkpoint == 3 and Game.upgrades.has("dash"), "checkpoint 3, dash unlocked")
+	_key(KEY_SHIFT, true)
+	await frames(2)
+	_key(KEY_SHIFT, false)
+	check(pf.p.dash_timer > 0 and absf(pf.p.vx) >= Platformer.DASH_SPEED - 0.1, "Shift dashes")
+
+	step("minigame 7 – body signals")
+	await _go_trigger(pf, "mg7")
+	await finish_dialog("mg7_start")
+	var sg: SignalsGame = main.minigame
+	var phase_ids := ["m", "f", "o", "l"]
+	sg.place((phase_ids.find(sg.card().phase) + 1) % 4)
+	check(sg.wrong == 1 and sg.current == 0, "a wrong phase shakes the card")
+	while not sg.all_placed():
+		sg.place(phase_ids.find(sg.card().phase))
+	check(sg.all_placed(), "all signals sorted")
+	await finish_dialog("mg7_after")
+	await frames(3)
+	check(Game.checkpoint == 4 and Game.upgrades.has("double"), "checkpoint 4, super double jump")
+
+	step("LH wave and the summit")
+	await _go_trigger(pf, "wave")
+	await finish_dialog("wave_start")
+	await frames(2)
+	check(pf.wave.active and Game.checkpoint == 5, "the LH wave rises")
+	var wy: float = pf.wave.y
+	await seconds(0.5)
+	check(pf.wave.y < wy, "the wave moves up")
+	var caught := await until(func(): return panel_box().is_open(), 15)
+	check(caught and pf.wave.lost, "standing still, the wave catches the player")
+	panel_box()._press(0)
+	var old_pf := pf.get_instance_id()
+	var retried := await until(func(): return main.platformer != null and main.platformer.get_instance_id() != old_pf and main.platformer.wave.active, 5)
+	check(retried and Game.checkpoint == 4, "try again restarts from the last stage floor with the wave")
+	pf = main.platformer
+	await _go_trigger(pf, "summit")
+	await frames(3)
+	check(pf.wave.won and pf.summit_timer > 0, "reaching the summit stops the wave")
+	await finish_dialog("garden_end")
+	await frames(5)
+	check(main.state == "title" and Game.level == 1, "back to the title after the summit")
+
+	step("old meadow (developer menu)")
+	main._dev_action("checkpoint2", 1)
 	var meadow := await until(func(): return main.state == "platformer" and Game.level == 2 and main.platformer != null, 8)
-	check(meadow, "the meadow (level 2) starts after the boss")
+	check(meadow, "the old meadow still starts from the developer menu")
 
 	step("level 2 – the meadow")
 	await finish_dialog("meadow_start")
@@ -442,178 +708,10 @@ func _run() -> void:
 	await frames(3)
 	check(pf.meadow_end > 0 and Game.checkpoint == 5, "the gate opens with a full vessel and ten seeds")
 	await finish_dialog("meadow_end")
-	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
+	summit = await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
 	check(summit, "the summit (level 3) starts after the meadow")
-
-	step("level 3 – the summit")
-	await finish_dialog("garden_start")
-	pf = main.platformer
-	check(pf.is_summit() and pf.p.y > pf.level_h - 500, "starts at the bottom of the summit")
-	check(pf.wave.active and pf.wave.y > pf.p.y + 300, "the LH wave rises from the start, well below the player")
-	# The tests teleport around; keep the wave out of the way until its own step.
-	pf.wave.active = false
-	# Wall jump: out of jumps, touching the left wall.
-	pf.p.x = 0
-	pf.p.y = pf.level_h - 400
-	pf.p.vy = 2
-	pf.p.jumps_left = 0
-	pf.p.is_grounded = false
-	await frames(2)
-	check(pf.on_wall, "touching the wall in the air")
-	_key(KEY_SPACE, true)
-	await frames(2)
-	_key(KEY_SPACE, false)
-	check(pf.p.vy < -5 and pf.p.vx > 5, "a wall jump kicks off the wall")
-	# Momentum: a running jump is higher than a standing one.
-	pf.p.vx = 0
-	var standing := pf._jump_force()
-	pf.p.vx = Platformer.MAX_SPEED * Platformer.SUMMIT_SPEED
-	check(pf._jump_force() < standing * 1.3, "a running start jumps much higher")
-	pf.p.vx = 0
-	# Combo: jumps that clear two or more floors chain up.
-	var ups: Array = pf.level.platforms.filter(func(pl): return pl.kind == "rock")
-	ups.sort_custom(func(a, b): return a.base_y > b.base_y)
-	pf.combo = 0
-	pf.last_floor = 0
-	var landed := 0
-	var prev_floor := 0
-	for pl in ups:
-		if landed >= 3:
-			break
-		var fl: int = pf.floor_of(pl.base_y)
-		if fl < prev_floor + 2:
-			continue
-		prev_floor = fl
-		landed += 1
-		pf.p.x = pl.x + 4
-		pf.p.y = pl.base_y - pf.p.height - 6
-		pf.p.vy = 2
-		pf.p.is_grounded = false
-		pf.p.was_grounded = false
-		await frames(4)
-	check(pf.combo >= 6 and pf.floor_now == prev_floor, "three multi-floor jumps chain into a combo (x%d) on floor %d" % [pf.combo, pf.floor_now])
-	pf.p.y = pf.p.y + 400
-	await seconds(0.5)
-	check(pf.combo == 0, "falling back down resets the combo")
-	await seconds(1.0)
-	check(pf.p.is_grounded, "stands on the garden floor")
-	# A popping bubble bursts after standing on it and regrows later.
-	var pop: LevelData.Plat = null
-	for pl in pf.level.platforms:
-		if pl.kind == "pop":
-			pop = pl
-			break
-	pf.p.x = pop.x + 6
-	pf.p.y = pop.base_y - pf.p.height - 2
-	pf.p.vy = 0
-	pf.camera_y = pf.p.y - 300
-	await seconds(1.3)
-	check(pop.regrow > 0 and pf.p.y > pop.base_y, "a yellow bubble bursts after standing on it")
-	await seconds(4.0)
-	check(pop.regrow <= 0, "the bubble regrows")
-	# An updraft lifts the player.
-	var draft: LevelData.Ent = null
-	for e in pf.level.entities:
-		if e.type == "updraft":
-			draft = e
-	pf.p.x = draft.x + 6
-	pf.p.y = draft.y + draft.h - pf.p.height
-	pf.p.vy = 0
-	var y_in := pf.p.y
-	await seconds(0.5)
-	check(pf.p.vy < 0 and pf.p.y < y_in - 40, "the updraft lifts the player")
-	# Distractions only slow the player down.
-	var iron_now := Game.iron
-	_teleport_to_entity(pf, "enemy")
-	await frames(4)
-	check(pf.p.slow_timer > 0 and Game.iron == iron_now and pf.p.held_by_cramp == -1, "a distraction slows the player, costs no iron")
-
-	step("minigame 5 – iron plate")
-	await _go_trigger(pf, "mg5")
-	check(main.state == "mg5", "state mg5")
-	check(pf.p.is_grounded and pf.p.vy == 0, "Kyra lands on the ground when a minigame opens")
-	await finish_dialog("mg5_start")
-	var ip: IronPlateGame = main.minigame
-	var bad_i := -1
-	var good_i := []
-	for i in 8:
-		if ip._item(i).good: good_i.append(i)
-		elif bad_i < 0: bad_i = i
-	for i in [good_i[0], good_i[1], good_i[2], bad_i]:
-		ip.toggle(i)
-	await frames(2)
-	check(ip.chosen.size() == 4 and panel_box().is_open(), "4 foods on the plate, serve button offered")
-	panel_box()._press(0)
-	await frames(2)
-	check(ip.evaluated and not ip.perfect, "a plate with tea is not accepted")
-	panel_box()._press(0)
-	await frames(2)
-	check(not ip.evaluated and ip.chosen.is_empty(), "try again clears the plate")
-	for i in good_i:
-		ip.toggle(i)
-	await frames(2)
-	panel_box()._press(0)
-	await frames(2)
-	check(ip.perfect, "the iron-friendly plate is accepted")
-	await finish_dialog("mg5_after")
-	await frames(3)
-	check(main.state == "platformer" and Game.checkpoint == 2 and Game.upgrades.has("jump"), "back in the garden, checkpoint 2, higher jump")
-	check(pf._jump_force() < Platformer.JUMP_FORCE, "jump power-up applies")
-
-	step("minigame 6 – rhythm")
-	await _go_trigger(pf, "mg6")
-	await finish_dialog("mg6_start")
-	var rg: RhythmGame = main.minigame
-	rg._time = rg._beat_time(0) + 0.4
-	rg.tap()
-	check(rg.misses == 1 and rg.hits == 0, "a tap off the beat is a miss")
-	for i in range(1, 11):
-		rg._time = rg._beat_time(i)
-		rg.tap()
-	check(rg.hits == 10, "ten taps on the beat")
-	await finish_dialog("mg6_after")
-	await frames(3)
-	check(Game.checkpoint == 3 and Game.upgrades.has("dash"), "checkpoint 3, dash unlocked")
-	_key(KEY_SHIFT, true)
-	await frames(2)
-	_key(KEY_SHIFT, false)
-	check(pf.p.dash_timer > 0 and absf(pf.p.vx) >= Platformer.DASH_SPEED - 0.1, "Shift dashes")
-
-	step("minigame 7 – body signals")
-	await _go_trigger(pf, "mg7")
-	await finish_dialog("mg7_start")
-	var sg: SignalsGame = main.minigame
-	var phase_ids := ["m", "f", "o", "l"]
-	sg.place((phase_ids.find(sg.card().phase) + 1) % 4)
-	check(sg.wrong == 1 and sg.current == 0, "a wrong phase shakes the card")
-	while not sg.all_placed():
-		sg.place(phase_ids.find(sg.card().phase))
-	check(sg.all_placed(), "all signals sorted")
-	await finish_dialog("mg7_after")
-	await frames(3)
-	check(Game.checkpoint == 4 and Game.upgrades.has("double"), "checkpoint 4, super double jump")
-
-	step("LH wave and the summit")
-	await _go_trigger(pf, "wave")
-	await finish_dialog("wave_start")
-	await frames(2)
-	check(pf.wave.active and Game.checkpoint == 5, "the LH wave rises")
-	var wy: float = pf.wave.y
-	await seconds(0.5)
-	check(pf.wave.y < wy, "the wave moves up")
-	var caught := await until(func(): return panel_box().is_open(), 15)
-	check(caught and pf.wave.lost, "standing still, the wave catches the player")
-	panel_box()._press(0)
-	var old_pf := pf.get_instance_id()
-	var retried := await until(func(): return main.platformer != null and main.platformer.get_instance_id() != old_pf and main.platformer.wave.active, 5)
-	check(retried and Game.checkpoint == 4, "try again restarts from the last stage floor with the wave")
-	pf = main.platformer
-	await _go_trigger(pf, "summit")
-	await frames(3)
-	check(pf.wave.won and pf.summit_timer > 0, "reaching the summit stops the wave")
-	await finish_dialog("garden_end")
+	main._quit_to_title()
 	await frames(5)
-	check(main.state == "title" and Game.level == 1, "back to the title after the summit")
 
 	step("game over")
 	main._dev_action("checkpoint", 1)
