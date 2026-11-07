@@ -15,6 +15,8 @@ var _editor: LevelEditor
 var _lab: AnimLab
 var _dialogs: DialogEditor
 var _gh: GitHubSave
+## The home button (game logo) at the start of the bar: back to the menu.
+var _home: Button
 var _old_pick: OptionButton
 ## Header slot the active tab can fill with its own icon buttons.
 var header_tools: HBoxContainer
@@ -35,19 +37,39 @@ func _ready() -> void:
 	bar.color = Color(0, 0, 0, 0.8)
 	bar.size = Vector2(1066, BAR_H)
 	add_child(bar)
-	var x := 8.0
-	for t in [["shortcuts", "Shortcuts"], ["level", "Level editor"], ["anim", "Animations"], ["dialogs", "Dialogs"]]:
-		var b := UiKit.button(t[1], Vector2(110, ICON), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
+	# Home: the game's logo, back to the menu.
+	var home := Button.new()
+	home.icon = load("res://assets/images/keeper.png")
+	home.expand_icon = true
+	home.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	home.custom_minimum_size = Vector2(ICON + 8, ICON + 4)
+	home.size = home.custom_minimum_size
+	home.position = Vector2(6, (BAR_H - ICON - 4) / 2)
+	home.focus_mode = Control.FOCUS_NONE
+	home.tooltip_text = "Back to the menu"
+	var hsb := StyleBoxFlat.new()
+	hsb.bg_color = Color("#0f172a")
+	hsb.set_corner_radius_all(10)
+	hsb.border_color = Color("#334155")
+	hsb.set_border_width_all(1)
+	hsb.set_content_margin_all(3)
+	home.add_theme_stylebox_override("normal", hsb)
+	var hh := hsb.duplicate()
+	hh.bg_color = Color("#1e293b")
+	home.add_theme_stylebox_override("hover", hh)
+	home.add_theme_stylebox_override("pressed", hh)
+	home.pressed.connect(func(): back.emit())
+	add_child(home)
+	_home = home
+	var x := 6.0 + ICON + 8 + 10
+	# Tabs as wide as their names (the level editor's header needs the room).
+	for t in [["shortcuts", "Shortcuts", 96.0], ["level", "Levels", 74.0], ["anim", "Animations", 102.0], ["dialogs", "Dialogs", 82.0]]:
+		var b := UiKit.button(t[1], Vector2(t[2], ICON), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
 		b.position = Vector2(x, (BAR_H - ICON) / 2)
 		b.pressed.connect(_show.bind(t[0]))
 		add_child(b)
 		_tabs[t[0]] = b
-		x += 114
-	var ret := UiKit.button("Menu", Vector2(76, ICON), 12, Color("#0f172a"), Color("#cbd5e1"))
-	ret.tooltip_text = "Return to the title screen"
-	ret.position = Vector2(1066 - 84, (BAR_H - ICON) / 2)
-	ret.pressed.connect(func(): back.emit())
-	add_child(ret)
+		x += t[2] + 4
 	_content = Control.new()
 	_content.position = Vector2(0, BAR_H)
 	_content.size = Vector2(1066, 600 - BAR_H)
