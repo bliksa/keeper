@@ -205,8 +205,8 @@ download, delete only for `user://uploads/` and not while `in_use` says so.
 `scripts/screens/forest_runner.gd` (`ForestRunner`, a Node2D screen, not a
 Platformer): a pseudo-3D endless runner seen from behind (`project()`: x sideways,
 y up, z along the path; `dist` = progress). The course is a **top-down map**,
-`data/levels/forest_run.txt` (level editor id 4 = `ForestRunner.LEVEL_ID`, 5 columns:
-left side | three paths | right side, one row = `ROW_M` m, the bottom row is the
+`data/levels/forest_run.txt` (level editor id 4 = `ForestRunner.LEVEL_ID`, 6 columns:
+left side | four paths | right side (`PATHS` = −1.5…1.5 × `LANE`), one row = `ROW_M` m, the bottom row is the
 start; `MAP_HEADER` keeps the legend): `R` root, `H` branch, `V` flying notification (an envelope with wings and "!", kind `bird`), `D`/`U` water
 drop low/high, `+` sun piece, `<` `>` side trap (thorny vine),
 `A` next stage, `a–z` dialog. `build_course()` reads it (`rows`, or
@@ -221,7 +221,7 @@ flying notifications, fastest + random side traps): speed `STAGE_SPEED[stage]` +
 stage; from `RANDOM_TRAPS_FROM` random side traps (`_random_traps`, new on every
 repeat). Reaching a stage's end with its pieces still missing repeats it
 (`_loop_stage`: seamless, no message: this stage's objects and everything after
-move one stage length ahead, obstacles + drops re-armed, found pieces stay). Three lanes (`lane`, `px`), jump / double jump (`jump()`), hits:
+move one stage length ahead, obstacles + drops re-armed, found pieces stay). Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`, costs `JUMP_WATER` / `DOUBLE_WATER`), hits:
 `bump()` (roll back `BUMP_BACK`, not before the stage start), a flying notification in the air =
 `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass again,
 except within `GRACE`. Slow time: action `slow_time` (Shift / E / LB / Y) while

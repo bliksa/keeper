@@ -306,12 +306,12 @@ func _run() -> void:
 	await frames(2)
 	_key(KEY_RIGHT, false)
 	await seconds(0.3)
-	check(rn.lane == 1 and absf(rn.px - ForestRunner.LANE) < 0.05, "→ moves her to the right path")
+	check(rn.lane == 0.5 and absf(rn.px - 0.5 * ForestRunner.LANE) < 0.05, "→ moves her one path to the right (four paths)")
 	_key(KEY_LEFT, true)
 	await frames(2)
 	_key(KEY_LEFT, false)
 	await seconds(0.3)
-	check(rn.lane == 0, "← back to the middle")
+	check(rn.lane == -0.5, "← back one path")
 	# A stick tilt sends many motion events but changes lane once.
 	for v in [0.3, 0.5, 0.7, 0.9, 1.0, 1.0]:
 		var jm := InputEventJoypadMotion.new()
@@ -324,9 +324,10 @@ func _run() -> void:
 	jm0.axis_value = 0.0
 	Input.parse_input_event(jm0)
 	await frames(2)
-	check(rn.lane == 1, "a stick tilt moves one path, not two")
-	rn.lane = 0
-	rn.px = 0
+	check(rn.lane == 0.5, "a stick tilt moves one path, not two")
+	check(ForestRunner.PATHS.size() == 4 and Array(rn.rows).any(func(r): return r.length() > 4 and r[4] in ["H", "D", "+", "R"]), "four paths, the outer ones used")
+	rn.lane = -0.5
+	rn.px = -0.5 * ForestRunner.LANE
 	rn.build_course()
 	check(rn.stages.size() == 4 and rn.objects.filter(func(o): return o.kind == "sun").size() == ForestRunner.SUN_TOTAL, "the map has 4 stages and 12 sun pieces")
 	check(not rn.objects.any(func(o): return o.kind == "bird" and o.stage < 2) and not rn.objects.any(func(o): return o.kind == "seed"), "no flying notifications before stage 3, no seeds")
@@ -350,7 +351,9 @@ func _run() -> void:
 	await seconds(1.0)
 	check(rn.recover_t <= 0 and rn.dist > d_stand + 2, "then she runs again")
 	rn.jump_to(root0.z - 3.0)
+	rn.water = 50
 	rn.jump()
+	check(rn.water == 50 - ForestRunner.JUMP_WATER, "a jump costs a little water")
 	var cleared := await until(func(): return rn.dist > root0.z + 1.5, 3)
 	check(cleared and rn.bump_t <= 0 and not root0.hit, "a jump clears the root")
 	var birds: Array = rn.objects.filter(func(o): return o.kind == "bird" and o.z - rn.stages[o.stage].start > ForestRunner.CARRY_BACK + 6)

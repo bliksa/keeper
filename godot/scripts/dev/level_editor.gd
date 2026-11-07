@@ -605,15 +605,16 @@ func _draw_grid() -> void:
 ## The forest run's map: green sides, a brown path of three lanes, stage lines.
 func _draw_runner_row(ci: CanvasItem, r: int, y: float) -> void:
 	var w := cw()
+	var n := ForestRunner.COLS
 	ci.draw_rect(Rect2(0, y, w, CELL_H), Color("#14532d", 0.55))
-	ci.draw_rect(Rect2(w, y, w * 3, CELL_H), Color("#78350f", 0.35))
-	ci.draw_rect(Rect2(w * 4, y, w, CELL_H), Color("#14532d", 0.55))
+	ci.draw_rect(Rect2(w, y, w * (n - 2), CELL_H), Color("#78350f", 0.35))
+	ci.draw_rect(Rect2(w * (n - 1), y, w, CELL_H), Color("#14532d", 0.55))
 	if rows[r].contains("A"):
-		ci.draw_line(Vector2(0, y + CELL_H - 1), Vector2(w * 5, y + CELL_H - 1), Color("#facc15"), 3.0)
+		ci.draw_line(Vector2(0, y + CELL_H - 1), Vector2(w * n, y + CELL_H - 1), Color("#facc15"), 3.0)
 	# Distance from the start every 10 rows (20 m).
 	var from_start := rows.size() - 1 - r
 	if from_start % 10 == 0:
-		ci.draw_string(Text.font, Vector2(w * 5 + 8, y + CELL_H - 8), "%d m" % int(ForestRunner.START_Z + from_start * ForestRunner.ROW_M), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
+		ci.draw_string(Text.font, Vector2(w * ForestRunner.COLS + 8, y + CELL_H - 8), "%d m" % int(ForestRunner.START_Z + from_start * ForestRunner.ROW_M), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
 
 
 ## Cells of the forest run; false = drawn the usual way (dialog letters).

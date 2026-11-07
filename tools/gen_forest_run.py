@@ -9,11 +9,12 @@
 import random, re, sys
 rng = random.Random(11)
 rows = []
-L = {-1: 1, 0: 2, 1: 3}
-LANES = [-1, 0, 1]
+# Paths 0–3 (left to right) are columns 1–4; columns 0 and 5 are the sides.
+L = {0: 1, 1: 2, 2: 3, 3: 4}
+LANES = [0, 1, 2, 3]
 
 def blank(n=1):
-    for _ in range(n): rows.append(list("....."))
+    for _ in range(n): rows.append(list("......"))
 
 def put(r, col, ch):
     while len(rows) <= r: blank()
@@ -37,10 +38,10 @@ def stage(n_rows, level, n_sun=3, notes=False, traps=False, marker=True, dialog=
     start = len(rows)
     blank(n_rows)
     if marker: put(start, 0, "A")
-    if dialog: put(start + 2, 4, dialog)
+    if dialog: put(start + 2, 5, dialog)
     r = start + 6
     end = start + n_rows - 6
-    free = 0
+    free = 1
     gaps = {1: (7, 9), 2: (6, 8), 3: (5, 7), 4: (5, 6)}[level]
     pats = ["gate", "gate", "slalom", "one", "two_low", "weave"]
     if level == 1: pats += ["root", "one"]
@@ -77,7 +78,7 @@ def stage(n_rows, level, n_sun=3, notes=False, traps=False, marker=True, dialog=
         elif pat == "weave":
             l = free
             for k in range(6):
-                l = max(-1, min(1, l + rng.choice([-1, 1])))
+                l = max(0, min(3, l + rng.choice([-1, 1])))
                 put(r + k * 2, L[l], "D")
             free = l
             r += 10
@@ -87,7 +88,6 @@ def stage(n_rows, level, n_sun=3, notes=False, traps=False, marker=True, dialog=
         elif pat == "note_lane":
             # A notification over the free path: dodge sideways (or stay low).
             nf = rng.choice([x for x in LANES if x != free])
-            gate(r, free, tall=True) if False else None
             put(r, L[free], "V")
             trail(r - 4, r - 1, free, nf)
             free = nf
@@ -100,17 +100,17 @@ def stage(n_rows, level, n_sun=3, notes=False, traps=False, marker=True, dialog=
             free = rng.choice([x for x in LANES if x != nf])
             trail(r + 1, r + 3, nf, free)
         elif pat == "trap_gate":
-            side = rng.choice([-1, 1])
-            put(r, 0 if side < 0 else 4, "<" if side < 0 else ">")
+            side = rng.choice([0, 3])
+            put(r, 0 if side == 0 else 5, "<" if side == 0 else ">")
             nf = rng.choice([x for x in LANES if x != side])
-            put(r + 3, L[side], "H"); put(r + 3, L[-nf if nf else -side], "H") if False else None
             trail(r - 4, r - 1, free, nf)
             free = nf
         elif pat == "squeeze":
-            # Traps on both sides: the middle path only.
-            put(r, 0, "<"); put(r, 4, ">")
-            trail(r - 4, r - 1, free, 0)
-            free = 0
+            # Traps on both sides: the two middle paths only.
+            put(r, 0, "<"); put(r, 5, ">")
+            nf = rng.choice([1, 2])
+            trail(r - 4, r - 1, free, nf)
+            free = nf
         r += rng.randint(*gaps)
         # Now and then a calm stretch: just running and a few drops.
         done += 1
@@ -125,7 +125,7 @@ def stage(n_rows, level, n_sun=3, notes=False, traps=False, marker=True, dialog=
     want = [start + int(n_rows * f) for f in ([0.25, 0.55, 0.85] if n_sun == 3 else [0.5])]
     for w in want:
         cand = [g for g in picks if g[0] >= w - 10]
-        gr, gl = cand[0] if cand else (w, 0)
+        gr, gl = cand[0] if cand else (w, 1)
         rr = gr + 2
         while rr < len(rows) and rows[rr][L[gl]] not in ".D":
             rr += 1

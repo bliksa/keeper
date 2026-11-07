@@ -13,7 +13,7 @@ extends Node2D
 ##    (STAGE_SPEED); from RANDOM_TRAPS_FROM on, side traps also appear at random.
 ##    A stage repeats from its start until its pieces are found (endless forest).
 ##
-##  * Three lanes; ← → change lane, jump / double jump over roots (low, all lanes)
+##  * Four lanes; ← → change lane, jump / double jump over roots (low, all lanes)
 ##    and branches (higher, one or two lanes). Hitting one bounces her back and
 ##    the path rolls back a bit.
 ##  * Flying notifications (envelopes with wings, kind "bird") fly at her at jump
@@ -51,13 +51,18 @@ const GRAIN_R := 45.0
 const LEVEL_ID := 4
 ## Kept at the top of the map file (the level editor writes it back).
 const MAP_HEADER := """# Forest run (level 2), a top-down map: the bottom row is the start, she runs up the file.
-# Columns: left side | left path | middle path | right path | right side. One row = 2 m.
-# R root (jump)  H branch (high: change path or double jump)  V flying notification  D water drop  U drop up high
+# Columns: left side | four paths | right side. One row = 2 m.
+# R root (jump; RRRR = across all paths)  H branch (high: change path or double jump)  V flying notification  D water drop  U drop up high
 # + sun piece (12 = the sun; every 3 a minigame, the 12th leads to the summit)
 # < > side trap from the left / right side   A next stage starts here (faster; stage 4: random side traps)
 # a-z dialog of level 2 (c = dialog 2C, Developer mode > Dialogs)
 """
-const COLS := 5
+const COLS := 6
+## Four paths: their centres are at PATHS[i] * LANE (between the paths the middle).
+const PATHS := [-1.5, -0.5, 0.5, 1.5]
+## Water a jump costs (a double jump more).
+const JUMP_WATER := 2.0
+const DOUBLE_WATER := 5.0
 const ROW_M := 2.0
 ## The first row lies this far ahead of the start.
 const START_Z := 8.0
@@ -111,8 +116,8 @@ var dialog_open := false
 ## Progress along the path (m); the speed grows with it.
 var dist := 0.0
 var speed := SPEED
-var lane := 0
-var px := 0.0
+var lane := -0.5
+var px := -0.5 * 1.7
 var py := 0.0
 var vy := 0.0
 var jumps := 2
@@ -198,7 +203,7 @@ func _ready() -> void:
 func _extend_trees() -> void:
 	while _tree_z < length + VIEW:
 		for side: float in [-1.0, 1.0]:
-			trees.append({"x": side * _tree_rng.randf_range(4.2, 9.0), "z": _tree_z + _tree_rng.randf_range(0, 3), "h": _tree_rng.randf_range(4.5, 8.0), "r": _tree_rng.randf_range(1.2, 2.2), "tone": _tree_rng.randf()})
+			trees.append({"x": side * _tree_rng.randf_range(5.0, 10.0), "z": _tree_z + _tree_rng.randf_range(0, 3), "h": _tree_rng.randf_range(4.5, 8.0), "r": _tree_rng.randf_range(1.2, 2.2), "tone": _tree_rng.randf()})
 		_tree_z += _tree_rng.randf_range(2.5, 4.0)
 
 
@@ -216,14 +221,15 @@ func build_course() -> void:
 	for i in n:
 		var row: String = rows[n - 1 - i]
 		var z := START_Z + i * ROW_M
-		var full_root := row.length() >= 4 and row[1] == "R" and row[2] == "R" and row[3] == "R"
+		var full_root := row.length() >= 5 and row[1] == "R" and row[2] == "R" and row[3] == "R" and row[4] == "R"
 		if full_root:
 			_add("root", z, -9)
 		for c in mini(row.length(), COLS):
 			var ch := row[c]
-			var l := c - 2
-			var on_path := absi(l) <= 1
-			var pl := clampi(l, -1, 1)
+			# Columns: 0 left side, 1–4 the paths, 5 right side.
+			var on_path := c >= 1 and c <= 4
+			var l: float = PATHS[clampi(c - 1, 0, 3)]
+			var pl := l
 			match ch:
 				"R":
 					if on_path and not full_root:
@@ -241,9 +247,9 @@ func build_course() -> void:
 				"+":
 					_add("sun", z, pl, 0.5)
 				"<":
-					_add("vine", z, -1)
+					_add("vine", z, PATHS[0])
 				">":
-					_add("vine", z, 1)
+					_add("vine", z, PATHS[3])
 				"A":
 					if z > START_Z and not starts.has(z):
 						starts.append(z)
@@ -288,14 +294,14 @@ func _random_traps(k: int) -> void:
 				clear = false
 				break
 		if clear:
-			_add("vine", z, -1 if rng.randf() < 0.5 else 1)
+			_add("vine", z, PATHS[0] if rng.randf() < 0.5 else PATHS[3])
 			var v: Dictionary = objects[objects.size() - 1]
 			v["random"] = true
 			v["stage"] = k
 		z += rng.randf_range(9.0, 15.0)
 
 
-func _add(kind: String, z: float, l: int, y := 0.0) -> void:
+func _add(kind: String, z: float, l: float, y := 0.0) -> void:
 	objects.append({"kind": kind, "z": z, "lane": l, "y": y, "hit": false, "taken": false, "dz": 0.0, "stage": 0})
 
 
@@ -329,7 +335,7 @@ func _read_input() -> void:
 	_pending_lane = 0
 	_pending_jump = false
 	if d != 0:
-		lane = clampi(lane + d, -1, 1)
+		lane = clampf(lane + d, PATHS[0], PATHS[PATHS.size() - 1])
 	if j:
 		jump()
 
@@ -338,6 +344,8 @@ func jump() -> void:
 	if jumps <= 0 or bump_t > 0 or carry_t > 0:
 		return
 	vy = JUMP_V if jumps == 2 else DOUBLE_V
+	# Jumping costs focus water, a double jump more.
+	water = maxf(0, water - (JUMP_WATER if jumps == 2 else DOUBLE_WATER))
 	jumps -= 1
 	Audio.jump_sound(jumps == 0)
 
@@ -752,16 +760,16 @@ func _draw() -> void:
 	Draw.radial_glow(self, Vector2(W * 0.5, HORIZON - 30), 160, Color(1, 0.96, 0.75, 0.5), Color(1, 1, 0.9, 0.9))
 	draw_rect(Rect2(0, HORIZON, W, H - HORIZON), Color("#4f8a4f"))
 	# The path: a trapezoid to the horizon with moving stripes.
-	var near_l := project(-LANE * 1.9, 0, dist + 0.4 - CAM_BACK + 0.31)
-	var near_r := project(LANE * 1.9, 0, dist + 0.4 - CAM_BACK + 0.31)
+	var near_l := project(-LANE * 2.4, 0, dist + 0.4 - CAM_BACK + 0.31)
+	var near_r := project(LANE * 2.4, 0, dist + 0.4 - CAM_BACK + 0.31)
 	# The path runs to the horizon (its vanishing point, far away).
-	var far_l := project(-LANE * 1.9, 0, dist + 100000.0)
-	var far_r := project(LANE * 1.9, 0, dist + 100000.0)
+	var far_l := project(-LANE * 2.4, 0, dist + 100000.0)
+	var far_r := project(LANE * 2.4, 0, dist + 100000.0)
 	draw_colored_polygon(PackedVector2Array([Vector2(near_l.x - 200, H), Vector2(far_l.x, far_l.y), Vector2(far_r.x, far_r.y), Vector2(near_r.x + 200, H)]), Color("#b48a5a"))
 	var sz := floorf(dist / 3.0) * 3.0
 	while sz < dist + VIEW:
-		var a := project(-LANE * 1.9, 0, sz)
-		var b := project(LANE * 1.9, 0, sz)
+		var a := project(-LANE * 2.4, 0, sz)
+		var b := project(LANE * 2.4, 0, sz)
 		if a.z > 0:
 			draw_line(Vector2(a.x, a.y), Vector2(b.x, b.y), _fog(Color("#9c7448"), sz), maxf(1, a.z * 0.05))
 		sz += 3.0
@@ -839,14 +847,14 @@ func _draw_tree(t: Dictionary) -> void:
 
 
 func _lanes_of(o: Dictionary) -> Array:
-	return [-1, 0, 1] if o.lane == -9 else [o.lane]
+	return PATHS if o.lane == -9 else [o.lane]
 
 
 func _draw_root(o: Dictionary) -> void:
 	var z: float = o.z
 	# Across all paths (lane -9) or one path.
-	var x0: float = -LANE * 1.8 if o.lane == -9 else (o.lane - 0.55) * LANE
-	var x1: float = LANE * 1.8 if o.lane == -9 else (o.lane + 0.55) * LANE
+	var x0: float = -LANE * 2.3 if o.lane == -9 else (o.lane - 0.55) * LANE
+	var x1: float = LANE * 2.3 if o.lane == -9 else (o.lane + 0.55) * LANE
 	var a := project(x0, 0, z)
 	var b := project(x1, 0, z)
 	if a.z <= 0:
@@ -864,8 +872,8 @@ func _draw_root(o: Dictionary) -> void:
 	poly.append(Vector2(a.x, a.y + 0.04 * a.z))
 	Draw.polygon_safe(self, poly, col)
 	draw_polyline(top, col.lightened(0.25), maxf(1, 0.06 * a.z), true)
-	for i in (3 if o.lane == -9 else 1):
-		var k := 0.25 + i * 0.25 if o.lane == -9 else 0.5
+	for i in (4 if o.lane == -9 else 1):
+		var k := 0.2 + i * 0.2 if o.lane == -9 else 0.5
 		var kx := lerpf(a.x, b.x, k)
 		draw_circle(Vector2(kx, a.y - ROOT_H * 0.35 * a.z), 0.05 * a.z, col.darkened(0.25))
 
@@ -936,8 +944,10 @@ func _draw_vine(o: Dictionary) -> void:
 	var z: float = o.z
 	var rz := z - dist
 	var e := clampf((VINE_REACH - rz) / (VINE_REACH - 4.0), 0, 1)
-	var side: float = o.lane * LANE * 2.7
-	var tip: float = lerpf(side, o.lane * LANE * 0.45, e)
+	# From beside the path into the outer path (to its inner edge).
+	var sgn := signf(o.lane)
+	var side: float = sgn * LANE * 3.6
+	var tip: float = lerpf(side, sgn * (absf(o.lane) - 0.5) * LANE, e)
 	var col := _fog(Color("#2f6b2f"), z)
 	var pts := PackedVector2Array()
 	var width := 1.0
