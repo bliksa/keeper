@@ -62,6 +62,8 @@ static func load_game_defaults() -> void:
 	var anims: Dictionary = d.get("anims", {})
 	var in_game: Dictionary = d.get("in_game", {})
 	for anim in in_game:
+		if not ANIMS.has(anim):
+			continue
 		var paths: Array = anims.get(anim, {}).get(in_game[anim], [])
 		var tex := []
 		for path in paths:

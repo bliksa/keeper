@@ -1421,7 +1421,9 @@ func _draw_world() -> void:
 				if is_meadow():
 					_draw_drop(ci, e, t)
 				else:
-					Draw.iron_nut(ci, Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3), e.w / 2, t / 800.0 + e.id)
+					var ic := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3)
+					if not SpriteArt.draw(ci, "iron", ic, SpriteArt.DEFS.iron.size, t + e.id * 137.0):
+						Draw.iron_nut(ci, ic, e.w / 2, t / 800.0 + e.id)
 			"seed":
 				_draw_seed(ci, e, t)
 			"enemy", "spike":
@@ -1495,17 +1497,11 @@ func _draw_cramp(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var jx := sin(t / 50.0 + e.x) * amp + ((randf() - 0.5) * 10 if held else 0.0)
 	var jy := cos(t / 40.0 + e.y) * amp + ((randf() - 0.5) * 10 if held else 0.0)
 	var c := Vector2(e.x + e.w / 2 + jx, e.y + e.h / 2 + jy)
-	var r := e.w / 2 + pulse
-	var pts := PackedVector2Array()
-	for i in 10:
-		var a := i / 10.0 * TAU + t * 0.002
-		var wob := sin(t / 30.0 + i) * 4
-		pts.append(c + Vector2(cos(a), sin(a)) * (r + wob))
-		var a2 := a + TAU / 20
-		pts.append(c + Vector2(cos(a2), sin(a2)) * (r * 0.4))
 	var spike := e.type == "spike"
-	Draw.polygon_safe(ci, pts, Color("#b91c1c") if spike else Color("#ea580c"))
-	ci.draw_circle(c, maxf(1, r * 0.4 + sin(t / 80.0) * 2), Color("#b15827") if spike else Color("#facc15"))
+	var id := "spike" if spike else "cramp"
+	if SpriteArt.draw(ci, id, c, SpriteArt.DEFS[id].size * (1 + pulse / 60.0), t + e.id * 137.0, Color.WHITE, c.x > p.x + p.width / 2):
+		return
+	SpriteArt.draw_cramp(ci, c, e.w / 2 + pulse, t, spike)
 
 
 func _draw_orb(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
@@ -1569,24 +1565,12 @@ func _draw_boss(ci: CanvasItem, t: float) -> void:
 	var col := Color("#fca5a5") if b.hit_timer > 0 else Color("#b15827")
 	var c := Vector2(b.x, b.y) + Vector2(sin(t / 50.0 + b.x) * 6, cos(t / 40.0 + b.y) * 6)
 	var r: float = b.radius + sin(t / 150.0) * 12
+	if SpriteArt.draw(ci, "boss", c, SpriteArt.DEFS.boss.size * r / 60.0, t, Color(1, 0.6, 0.6) if b.hit_timer > 0 else Color.WHITE):
+		return
 	var alive := {}
 	for i in range(0, maxi(0, b.hp)):
 		alive[b.spike_order[i]] = true
-	var rot1 := t * 0.002 + sin(t / 1500.0) * 0.8 + cos(t / 800.0) * 0.3
-	var rot2 := t * -0.0025 + sin(t / 1100.0 + 1) * 1.0
-	for ring in [[10, rot1], [0, rot2]]:
-		var pts := PackedVector2Array()
-		for i in 10:
-			var a: float = i / 10.0 * TAU + ring[1]
-			var wob := sin(t / 30.0 + i) * 8
-			var a0 := a - TAU / 20
-			var a1 := a + TAU / 20
-			pts.append(c + Vector2(cos(a0), sin(a0)) * r * 0.5)
-			if alive.has(ring[0] + i):
-				pts.append(c + Vector2(cos(a), sin(a)) * (r + 15 + wob))
-			pts.append(c + Vector2(cos(a1), sin(a1)) * r * 0.5)
-		Draw.polygon_safe(ci, pts, col)
-	ci.draw_circle(c, r * 0.4, Color("#fef08a"))
+	SpriteArt.draw_boss(ci, c, r, t, alive, col)
 
 
 func _draw_particle(ci: CanvasItem, q: Dictionary) -> void:
@@ -1795,23 +1779,16 @@ func _draw_updraft(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 
 
 func _draw_thorn(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
-	var c := Vector2(e.x + e.w / 2, e.y + e.h)
-	for i in 3:
-		var bx := c.x + (i - 1) * 10
-		var pts := PackedVector2Array([Vector2(bx - 6, c.y), Vector2(bx + (i - 1) * 3, c.y - 26 - (3 if i == 1 else 0)), Vector2(bx + 6, c.y)])
-		ci.draw_colored_polygon(pts, Color("#166534"))
-		ci.draw_line(pts[0], pts[1], Color("#4ade80"), 1.5, true)
+	var base := Vector2(e.x + e.w / 2, e.y + e.h)
+	var h: float = SpriteArt.DEFS.thorn.size
+	if not SpriteArt.draw(ci, "thorn", base - Vector2(0, h * SpriteArt.scale_of("thorn") / 2), h, t + e.id * 137.0):
+		SpriteArt.draw_thorn(ci, base)
 
 
 func _draw_distraction(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 180.0 + e.id) * 3)
-	var r := Rect2(c.x - 22, c.y - 15, 44, 30)
-	Draw.panel(ci, r, Color("#e2e8f0"), 8, Color("#94a3b8"), 1)
-	ci.draw_colored_polygon(PackedVector2Array([Vector2(c.x - 6, r.end.y), Vector2(c.x + 6, r.end.y), Vector2(c.x, r.end.y + 7)]), Color("#e2e8f0"))
-	ci.draw_line(Vector2(r.position.x + 9, c.y - 4), Vector2(r.end.x - 9, c.y - 4), Color("#94a3b8"), 2.0)
-	ci.draw_line(Vector2(r.position.x + 9, c.y + 3), Vector2(r.end.x - 15, c.y + 3), Color("#cbd5e1"), 2.0)
-	ci.draw_circle(Vector2(r.end.x - 4, r.position.y + 4), 6 + sin(t / 120.0) * 1.0, Color("#ef4444"))
-	ci.draw_string(_font, Vector2(r.end.x - 7, r.position.y + 8), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color.WHITE)
+	if not SpriteArt.draw(ci, "distraction", c, SpriteArt.DEFS.distraction.size, t + e.id * 137.0):
+		SpriteArt.draw_distraction(ci, c, t)
 
 
 func _draw_wave(ci: CanvasItem, t: float) -> void:
@@ -2115,15 +2092,8 @@ func _draw_meadow_front(ci: CanvasItem, t: float, left: float, right: float) -> 
 	for sh in shadows:
 		var a: float = clampf(sh.alpha, 0, 1)
 		var c := Vector2(sh.x, sh.y + sin(t / 120.0 + sh.x) * 4)
-		Draw.radial_glow(ci, c, 34, Color(0.1, 0.05, 0.2, 0.5 * a))
-		var pts := PackedVector2Array()
-		for i in 12:
-			var ang := i / 12.0 * TAU
-			var rr := 18 + sin(t / 60.0 + i * 2 + sh.x) * 5
-			pts.append(c + Vector2(cos(ang), sin(ang)) * rr)
-		Draw.polygon_safe(ci, pts, Color(0.12, 0.06, 0.22, 0.85 * a))
-		ci.draw_circle(c + Vector2(-5, -3), 2.5, Color(1, 0.3, 0.3, a))
-		ci.draw_circle(c + Vector2(5, -3), 2.5, Color(1, 0.3, 0.3, a))
+		if not SpriteArt.draw(ci, "shadow", c, SpriteArt.DEFS.shadow.size, t + sh.x, Color(1, 1, 1, a)):
+			SpriteArt.draw_shadow(ci, c, t, a, sh.x)
 	if meadow_end > 0:
 		# The poured water sinks in and a golden flower grows.
 		var k := clampf((meadow_end - 1.2) / 2.0, 0, 1)
@@ -2157,12 +2127,8 @@ func _draw_meadow_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void
 
 func _draw_drop(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 3)
-	var pts := PackedVector2Array([c + Vector2(0, -13)])
-	for i in range(1, 12):
-		var ang := -PI / 2 + i / 12.0 * TAU
-		pts.append(c + Vector2(cos(ang) * 9, sin(ang) * 9 + 3))
-	Draw.polygon_safe(ci, pts, Color("#5fb3f0"))
-	ci.draw_circle(c + Vector2(-3, 1), 2.5, Color(1, 1, 1, 0.8))
+	if not SpriteArt.draw(ci, "drop", c, SpriteArt.DEFS.drop.size, t + e.id * 137.0):
+		SpriteArt.draw_drop(ci, c)
 
 
 func _draw_seed(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
@@ -2174,9 +2140,8 @@ func _draw_seed(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	if e.tier == 1:
 		var ph := fmod(t / 1000.0 + e.id * 0.7, 4.0)
 		a = clampf(minf(ph / 0.3, (2.5 - ph) / 0.3), 0, 1)
-	Draw.radial_glow(ci, c, 30 + pulse * 10, Color(1, 0.85, 0.4, 0.45 * a), Color(1, 0.98, 0.8, 0.9 * a))
-	ci.draw_circle(c, 7, Color("#fff4c2", a))
-	ci.draw_circle(c + Vector2(-2, -2), 2.5, Color(1, 1, 1, a))
+	if not SpriteArt.draw(ci, "seed", c, SpriteArt.DEFS.seed.size, t + e.id * 137.0, Color(1, 1, 1, a)):
+		SpriteArt.draw_seed(ci, c, pulse, a)
 	if thread_target == e.id and focus:
 		ci.draw_arc(c, 16 + pulse * 3, 0, TAU, 32, Color(1, 1, 1, 0.8), 2.0, true)
 

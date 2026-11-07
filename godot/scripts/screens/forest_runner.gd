@@ -458,11 +458,9 @@ func _draw_bird(o: Dictionary) -> void:
 	var s := 0.45 * c.z
 	var flap := sin(time * 14 + o.z) * 0.6
 	var col := _fog(Color("#3b3b4f"), z)
-	# Placeholder bird: body and two flapping wings.
-	draw_circle(Vector2(c.x, c.y), s * 0.35, col)
-	draw_colored_polygon(PackedVector2Array([Vector2(c.x - s * 0.2, c.y), Vector2(c.x - s * 1.2, c.y - s * flap), Vector2(c.x - s * 0.5, c.y + s * 0.15)]), col)
-	draw_colored_polygon(PackedVector2Array([Vector2(c.x + s * 0.2, c.y), Vector2(c.x + s * 1.2, c.y - s * flap), Vector2(c.x + s * 0.5, c.y + s * 0.15)]), col)
-	draw_circle(Vector2(c.x, c.y + s * 0.1), s * 0.07, Color("#fbbf24"))
+	# The lab's frames, or the placeholder bird: body and two flapping wings.
+	if not SpriteArt.draw(self, "bird", Vector2(c.x, c.y), s * 1.5, time * 1000.0 + o.z * 37.0, _fog(Color.WHITE, z)):
+		SpriteArt.draw_bird(self, Vector2(c.x, c.y), s, flap, col)
 	# Its shadow on the path.
 	var g := project(o.lane * LANE, 0, z)
 	draw_set_transform(Vector2(g.x, g.y), 0, Vector2(1, 0.3))
@@ -475,6 +473,8 @@ func _draw_drop(o: Dictionary) -> void:
 	if c.z <= 0:
 		return
 	var s := 0.16 * c.z
+	if SpriteArt.draw(self, "drop", Vector2(c.x, c.y), s * 2.9, time * 1000.0 + o.z * 37.0, _fog(Color.WHITE, o.z)):
+		return
 	var pts := PackedVector2Array([Vector2(c.x, c.y - s * 1.6)])
 	for i in range(1, 12):
 		var ang := -PI / 2 + i / 12.0 * TAU
@@ -488,6 +488,8 @@ func _draw_seed(o: Dictionary) -> void:
 	if c.z <= 0:
 		return
 	var s := 0.18 * c.z
+	if SpriteArt.draw(self, "seed", Vector2(c.x, c.y), s * 3.3, time * 1000.0 + o.z * 37.0):
+		return
 	Draw.radial_glow(self, Vector2(c.x, c.y), s * 3, Color(1, 0.85, 0.4, 0.5), Color(1, 0.98, 0.8, 0.95))
 	draw_circle(Vector2(c.x, c.y), s * 0.6, Color("#fff4c2"))
 

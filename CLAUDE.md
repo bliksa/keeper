@@ -85,6 +85,15 @@ After push, GitHub Actions deploys to `https://bliksa.github.io/keeper/`
 walk, run, jump, sidejump, doublejump, fall, lookdown, sit, pain, dead, hang) on the
 real renderer (`PlayerArt.overrides`).
 
+Besides Kyra, the category tabs (Kyra / Items / Enemies / NPCs) list the sprites of
+`scripts/ui/sprite_art.gd` (`SpriteArt.DEFS`: iron, drop, seed, cramp, spike, boss,
+bird, distraction, thorn, shadow, estra, portrait_estra / _kyra / _iskra). Most are
+drawn in code (`SpriteArt.draw_*` placeholders, empty "original" frame list); a
+variant with frames replaces the placeholder wherever the game draws it
+(`SpriteArt.draw()` returns false → the caller draws the code art). Per-sprite
+fps / size go to `sprites` in `data/anim_variants.json`; ids must not clash with
+`PlayerArt.ANIMS`.
+
 The UI has three parts:
 - an animation dropdown;
 - a variant dropdown with new / duplicate / rename / delete;
@@ -102,7 +111,8 @@ in the browser only).
 - `anims`: anim → variant → [res:// frame paths];
 - `in_game`: anim → variant used by the game, applied at start-up by
   `PlayerArt.load_game_defaults()`;
-- `settings`: scale, anim_fps, run_rate.
+- `settings`: scale, anim_fps, run_rate;
+- `sprites`: sprite id → {scale, fps}.
 
 To add PNGs the user sends in chat:
 

@@ -49,6 +49,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_input()
 	PlayerArt.load_game_defaults()
+	SpriteArt.load_game_defaults()
 
 
 func reset_run() -> void:

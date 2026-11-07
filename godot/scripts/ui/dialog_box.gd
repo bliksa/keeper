@@ -36,6 +36,9 @@ var _speaker: Label
 var _text: RichTextLabel
 var _buttons: VBoxContainer
 var _node_style := true
+## Speaker whose portrait is shown ("" = a panel avatar); animated when the lab gave it frames.
+var _portrait_of := ""
+var _portrait_ms := 0.0
 ## Another dialog drawn above this one; while it is open this one ignores input.
 var blocker: DialogBox
 
@@ -173,6 +176,7 @@ func _refresh() -> void:
 		var part := _part_data()
 		var speaker: String = part.get("speaker", "")
 		_avatar.texture = _portrait(speaker)
+		_portrait_of = speaker
 		_speaker.text = Text.speaker_name(speaker).to_upper()
 		_set_text(Text.bb(part.get("text", "")))
 		if _is_last():
@@ -184,6 +188,7 @@ func _refresh() -> void:
 	else:
 		_bg.add_theme_stylebox_override("panel", _style(Color(PANEL_BG, 0.95)))
 		_avatar.texture = load(_panel.get("avatar", "res://assets/images/dia1.png"))
+		_portrait_of = ""
 		_speaker.text = Text.plain(Text.t(_panel.get("title", ""))).to_upper()
 		_set_text(Text.bb(_panel.get("text", "")))
 		var choices: Array = _panel.get("choices", [])
@@ -306,39 +311,15 @@ func _input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if visible and _portrait_of != "" and SpriteArt.portrait_animated(_portrait_of):
+		_portrait_ms += delta * 1000.0
+		_avatar.texture = SpriteArt.portrait(_portrait_of, _portrait_ms)
 	if _shake > 0:
 		_shake = maxf(0, _shake - delta)
 		_buttons.position.x = 1066 - 16 - 220 + sin(_shake * 60) * 5 * (_shake / 0.4)
 
 
-static var _iskra: ImageTexture
-
 ## Kyra and Estra have art; Iskra (FSH, level 2) is a sparkle drawn in code.
+## The animation lab can replace any of them (SpriteArt portrait_*).
 static func _portrait(speaker: String) -> Texture2D:
-	if speaker == "Kyra":
-		return load("res://assets/images/dia2.png")
-	if speaker != "Iskra":
-		return load("res://assets/images/dia1.png")
-	if _iskra == null:
-		var img := Image.create(160, 160, false, Image.FORMAT_RGBA8)
-		img.fill(Color("#1a2a3a"))
-		var c := Vector2(80, 86)
-		for y in 160:
-			for x in 160:
-				var d := Vector2(x, y).distance_to(c)
-				var ray := absf(sin(atan2(y - c.y, x - c.x) * 4.0))
-				var glow := clampf(1.0 - d / 70.0, 0, 1)
-				var a := clampf(glow * glow * (0.35 + 0.65 * ray) + clampf(1.0 - d / 22.0, 0, 1), 0, 1)
-				if a > 0.02:
-					var col := Color("#ffd166").lerp(Color("#fff7d6"), clampf(1.0 - d / 24.0, 0, 1))
-					img.set_pixel(x, y, Color("#1a2a3a").lerp(col, a))
-		for i in 26:
-			var px := int(20 + fmod(i * 61.0, 120.0))
-			var py := int(16 + fmod(i * 37.0, 130.0))
-			if Vector2(px, py).distance_to(c) > 36:
-				for dx in range(-1, 2):
-					for dy in range(-1, 2):
-						if absi(dx) + absi(dy) <= 1:
-							img.set_pixel(px + dx, py + dy, Color("#fff1a8"))
-		_iskra = ImageTexture.create_from_image(img)
-	return _iskra
+	return SpriteArt.portrait(speaker)

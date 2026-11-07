@@ -3,6 +3,9 @@ extends Control
 ## Developer menu > Animations: edit and test every character animation on
 ## the real renderer, then save it to the repo for everyone.
 ##
+##  * Top left: what to edit — Kyra (PlayerArt.ANIMS) or the collectibles,
+##    enemies and NPCs (SpriteArt.DEFS). Those are mostly drawn in code; their
+##    "original" variant is that placeholder until frames replace it.
 ##  * Left: animation dropdown, its variants (new / duplicate / rename / delete)
 ##    and the frame list — each frame can be replaced, moved or removed, and
 ##    frames can be added. Changes live in this browser (user://anim_uploads/)
@@ -39,6 +42,8 @@ var stage_bg := ""
 var settings := {"scale": 1.6, "anim_fps": 12.0, "run_rate": 0.026}
 
 var anim := "run"
+## "kyra" or a SpriteArt category (collectibles / enemies / npcs).
+var category := "kyra"
 var preview := "anim" # "anim" = the selected animation, "game" = auto run & jump / keys
 var paused := false
 var selected := -1
@@ -58,7 +63,11 @@ var _status: Label
 var _play_btn: Button
 var _frame_lbl: Label
 var _mode_btns := {}
+var _cat_btns := {}
+var _settings_grid: GridContainer
+var _ids: Array = []
 var _stage: Control
+var _sprite_node: Node2D
 var _js_cb: JavaScriptObject
 var _pending: Array = []
 var _pick_purpose := ""
@@ -72,7 +81,8 @@ var _asset_purpose := ""
 func _ready() -> void:
 	size = Vector2(1066, 600)
 	_saved_state = {"overrides": PlayerArt.overrides.duplicate(), "scale": PlayerArt.scale,
-		"fps": PlayerArt.anim_fps, "rate": PlayerBody.run_rate}
+		"fps": PlayerArt.anim_fps, "rate": PlayerBody.run_rate,
+		"sprites": SpriteArt.overrides.duplicate(), "sprite_settings": SpriteArt.settings.duplicate(true)}
 	_gh = GitHubSave.new()
 	add_child(_gh)
 	_gh.progress.connect(_say)
@@ -94,6 +104,9 @@ func _ready() -> void:
 			set_paused(not paused))
 	_stage.draw.connect(_draw_stage)
 	add_child(_stage)
+	_sprite_node = Node2D.new()
+	_sprite_node.draw.connect(_draw_sprite_node)
+	_stage.add_child(_sprite_node)
 	var bg_btn := UiKit.icon_button(ICONS % "wallpaper", "Change the background (from the assets)", 34)
 	bg_btn.position = Vector2(STAGE.size.x - 44, 10)
 	bg_btn.pressed.connect(open_assets.bind("background"))
@@ -114,6 +127,8 @@ func _exit_tree() -> void:
 		PlayerArt.scale = _saved_state.scale
 		PlayerArt.anim_fps = _saved_state.fps
 		PlayerBody.run_rate = _saved_state.rate
+		SpriteArt.overrides = _saved_state.sprites
+		SpriteArt.settings = _saved_state.sprite_settings
 
 
 # --- data ---------------------------------------------------------------------------
@@ -124,6 +139,9 @@ func _load_manifests() -> void:
 		repo = d.get("anims", {}).duplicate(true)
 		chosen = d.get("in_game", {}).duplicate()
 		settings.merge(d.get("settings", {}), true)
+		var sp: Variant = d.get("sprites", {})
+		if sp is Dictionary:
+			SpriteArt.settings = sp.duplicate(true)
 	var l: Variant = _read_json(LOCAL_MANIFEST)
 	if l is Dictionary:
 		for k in ["anims", "deleted", "saved"]:
@@ -131,6 +149,11 @@ func _load_manifests() -> void:
 		# The lab reopens on the variants picked last time.
 		chosen.merge(l.get("chosen", {}), true)
 		stage_bg = l.get("bg", "")
+		var sp: Variant = l.get("sprites", {})
+		if sp is Dictionary:
+			for id in sp:
+				if SpriteArt.is_sprite(id) and sp[id] is Dictionary:
+					SpriteArt.settings[id] = sp[id]
 	# Drop local copies that were saved and are now part of the repo build.
 	for a in local.saved:
 		for name in local.saved[a]:
@@ -155,6 +178,7 @@ func _save_local() -> void:
 		var out := local.duplicate()
 		out["chosen"] = chosen
 		out["bg"] = stage_bg
+		out["sprites"] = SpriteArt.settings
 		f.store_string(JSON.stringify(out, " "))
 
 
@@ -178,8 +202,22 @@ func paths_of(a: String, name: String) -> Array:
 	if is_local(a, name):
 		return local.anims[a][name]
 	if name == "original" or not repo.get(a, {}).has(name):
-		return PlayerArt.original_paths(a)
+		return original_paths(a)
 	return repo[a][name]
+
+
+## Original frames: Kyra's files, or a sprite's (empty = drawn in code).
+func original_paths(a: String) -> Array:
+	return SpriteArt.original_paths(a) if SpriteArt.is_sprite(a) else PlayerArt.original_paths(a)
+
+
+func is_sprite() -> bool:
+	return SpriteArt.is_sprite(anim)
+
+
+## Animations / sprites listed for a category.
+func ids_of(cat: String) -> Array:
+	return PlayerArt.ANIMS.keys() if cat == "kyra" else SpriteArt.ids_in(cat)
 
 
 func current_variant() -> String:
@@ -217,11 +255,16 @@ func _textures(paths: Array) -> Array:
 ## Push the chosen variants into the renderer (preview = what the game would show).
 func _apply_preview() -> void:
 	var o := {}
+	var so := {}
 	for a in chosen:
 		var v: String = chosen[a]
 		if v != "original" and variant_names(a).has(v):
-			o[a] = _textures(paths_of(a, v))
+			if SpriteArt.is_sprite(a):
+				so[a] = _textures(paths_of(a, v))
+			elif PlayerArt.ANIMS.has(a):
+				o[a] = _textures(paths_of(a, v))
 	PlayerArt.overrides = o
+	SpriteArt.overrides = so
 
 
 # --- left: animation, variants, frames ------------------------------------------------
@@ -237,11 +280,19 @@ func _build_left() -> void:
 	box.custom_minimum_size = Vector2(LIST_W - 28, 0)
 	box.add_theme_constant_override("separation", 5)
 	add_child(box)
+	var cats := HBoxContainer.new()
+	cats.add_theme_constant_override("separation", 3)
+	for c in [["kyra", "Kyra"], ["collectibles", "Items"], ["enemies", "Enemies"], ["npcs", "NPCs"]]:
+		var b := UiKit.button(c[1], Vector2((LIST_W - 28 - 9) / 4, 28), 11, Color("#1e293b"), Color("#cbd5e1"))
+		b.tooltip_text = {"kyra": "Kyra's animations", "collectibles": "Collectibles: iron, water drops, light seeds",
+			"enemies": "Enemies: cramps, the boss, birds, notifications…", "npcs": "NPCs: Estra and the dialog portraits"}[c[0]]
+		b.pressed.connect(select_category.bind(c[0]))
+		cats.add_child(b)
+		_cat_btns[c[0]] = b
+	box.add_child(cats)
 	box.add_child(UiKit.label("ANIMATION", 11, Color("#94a3b8"), true))
 	_anim_pick = _picker()
-	for a in PlayerArt.ANIMS:
-		_anim_pick.add_item(a)
-	_anim_pick.item_selected.connect(func(i): _select_anim(_anim_pick.get_item_text(i)))
+	_anim_pick.item_selected.connect(func(i): _select_anim(_anim_pick.get_item_metadata(i)))
 	box.add_child(_anim_pick)
 	box.add_child(UiKit.label("VARIANT", 11, Color("#94a3b8"), true))
 	var vrow := HBoxContainer.new()
@@ -259,9 +310,12 @@ func _build_left() -> void:
 		vrow.add_child(b)
 	box.add_child(vrow)
 	_list_title = UiKit.label("", 11, Color("#94a3b8"), true)
+	_list_title.clip_text = true
+	_list_title.custom_minimum_size = Vector2(LIST_W - 28, 0)
+	_list_title.tooltip_text = "Code-drawn art is replaced as soon as the variant has frames."
 	box.add_child(_list_title)
 	var sc := ScrollContainer.new()
-	sc.custom_minimum_size = Vector2(LIST_W - 28, 600 - top - 10 - 196)
+	sc.custom_minimum_size = Vector2(LIST_W - 28, 600 - top - 10 - 196 - 33)
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	box.add_child(sc)
 	_list = VBoxContainer.new()
@@ -298,9 +352,32 @@ func _picker() -> OptionButton:
 	return o
 
 
+## Shows Kyra's animations or one category of sprites.
+func select_category(cat: String) -> void:
+	category = cat
+	_ids = ids_of(cat)
+	for k in _cat_btns:
+		var b: Button = _cat_btns[k]
+		var sb: StyleBoxFlat = b.get_theme_stylebox("normal").duplicate()
+		sb.bg_color = Color("#059669") if k == cat else Color("#1e293b")
+		b.add_theme_stylebox_override("normal", sb)
+	_anim_pick.clear()
+	for i in _ids.size():
+		var id: String = _ids[i]
+		_anim_pick.add_item(SpriteArt.label(id) if cat != "kyra" else id)
+		_anim_pick.set_item_metadata(i, id)
+	_build_settings()
+	if not _ids.has(anim):
+		_select_anim("run" if cat == "kyra" else _ids[0])
+
+
 func _select_anim(a: String) -> void:
+	var cat := "kyra" if not SpriteArt.is_sprite(a) else str(SpriteArt.DEFS[a].cat)
 	anim = a
-	_anim_pick.select(PlayerArt.ANIMS.keys().find(a))
+	if cat != category or _anim_pick.item_count == 0:
+		select_category(cat)
+	_anim_pick.select(_ids.find(a))
+	_build_settings()
 	selected = -1
 	set_paused(false)
 	_refresh_variants()
@@ -338,7 +415,12 @@ func _refresh_frames() -> void:
 	for c in _list.get_children():
 		c.queue_free()
 	var paths := current_paths()
-	_list_title.text = "FRAMES (%d)%s" % [paths.size(), "" if is_local(anim, current_variant()) or current_variant() != "original" else "  · original art"]
+	var note := ""
+	if not is_local(anim, current_variant()) and current_variant() == "original":
+		note = "  · original art"
+	if paths.is_empty():
+		note = "  · drawn in code"
+	_list_title.text = "FRAMES (%d)%s" % [paths.size(), note]
 	for i in paths.size():
 		_list.add_child(_frame_row(i, paths[i]))
 
@@ -410,6 +492,12 @@ func _editable() -> String:
 	return name
 
 
+## The frame list of the current variant, made editable first (see _editable).
+func _edit_list() -> Array:
+	var name := _editable()
+	return local.anims[anim][name]
+
+
 func _unique(base: String) -> String:
 	var names := variant_names(anim)
 	var name := base
@@ -429,7 +517,7 @@ func _after_edit(msg: String) -> void:
 
 
 func move_frame(i: int, d: int) -> void:
-	var list: Array = local.anims[anim][_editable()]
+	var list: Array = _edit_list()
 	var j := i + d
 	if j < 0 or j >= list.size():
 		return
@@ -441,13 +529,14 @@ func move_frame(i: int, d: int) -> void:
 
 
 func remove_frame(i: int) -> void:
-	if current_paths().size() <= 1:
+	# A sprite drawn in code may lose every frame (it goes back to the code art).
+	if current_paths().size() <= (0 if is_sprite() and SpriteArt.code_drawn(anim) else 1):
 		_say("An animation needs at least one frame.")
 		return
-	var list: Array = local.anims[anim][_editable()]
+	var list: Array = _edit_list()
 	list.remove_at(i)
 	selected = mini(i, list.size() - 1)
-	_after_edit("Frame %d removed." % (i + 1))
+	_after_edit("Frame %d removed." % (i + 1) + (" No frames left: the code-drawn art is used." if list.is_empty() else ""))
 
 
 func _replace_at(i: int) -> void:
@@ -614,13 +703,15 @@ func receive_files(files: Array, purpose: String) -> void:
 			selected = -1
 			_after_edit("New variant '%s' with %d frame(s)." % [name, files.size()])
 		"replace":
-			var list: Array = local.anims[anim][_editable()]
+			var list: Array = _edit_list()
+			if list.is_empty():
+				list.append("")
 			var i := clampi(selected, 0, list.size() - 1)
 			list[i] = _store(files.slice(0, 1))[0]
 			selected = i
 			_after_edit("Frame %d replaced." % (i + 1))
 		"add":
-			var list: Array = local.anims[anim][_editable()]
+			var list: Array = _edit_list()
 			var at := list.size() if selected < 0 else selected + 1
 			var paths := _store(files)
 			for k in paths.size():
@@ -677,6 +768,10 @@ func build_commit(remote: String) -> Dictionary:
 			in_game[a] = chosen[a]
 	manifest["in_game"] = in_game
 	manifest["settings"] = {"scale": PlayerArt.scale, "anim_fps": PlayerArt.anim_fps, "run_rate": PlayerBody.run_rate}
+	var sp: Dictionary = manifest.get("sprites", {}) if manifest.get("sprites", {}) is Dictionary else {}
+	for id in SpriteArt.settings:
+		sp[id] = SpriteArt.settings[id].duplicate()
+	manifest["sprites"] = sp
 	files["godot/data/anim_variants.json"] = (JSON.stringify(manifest, " ") + "\n").to_utf8_buffer()
 	return files
 
@@ -763,15 +858,12 @@ func _build_right() -> void:
 	sb.content_margin_bottom = 10
 	card.add_theme_stylebox_override("panel", sb)
 	add_child(card)
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 32)
-	grid.add_theme_constant_override("v_separation", 6)
-	card.add_child(grid)
-	_slider(grid, "Run speed (gameplay)", 2.0, 12.0, 0.1, max_speed, "%.1f", func(v): max_speed = v)
-	_slider(grid, "Walk / run frame rate", 0.008, 0.08, 0.001, PlayerBody.run_rate, "%.3f", func(v): PlayerBody.run_rate = v)
-	_slider(grid, "Pose frames per second", 2.0, 30.0, 1.0, PlayerArt.anim_fps, "%d", func(v): PlayerArt.anim_fps = v)
-	_slider(grid, "Sprite scale", 0.8, 2.6, 0.05, PlayerArt.scale, "%.2f", func(v): PlayerArt.scale = v)
+	_settings_grid = GridContainer.new()
+	_settings_grid.columns = 2
+	_settings_grid.add_theme_constant_override("h_separation", 32)
+	_settings_grid.add_theme_constant_override("v_separation", 6)
+	card.add_child(_settings_grid)
+	_build_settings()
 
 	# Bottom: status on the left, actions on the right.
 	var actions := HBoxContainer.new()
@@ -798,6 +890,29 @@ func _build_right() -> void:
 	save.tooltip_text = "Commit the variants, the chosen ones and the settings to GitHub;\nthe game for everyone updates after the automatic build."
 	save.pressed.connect(save_to_repo)
 	actions.add_child(save)
+
+
+## Kyra's settings, or the selected sprite's frame rate and size.
+func _build_settings() -> void:
+	if _settings_grid == null:
+		return
+	for c in _settings_grid.get_children():
+		_settings_grid.remove_child(c)
+		c.queue_free()
+	var g := _settings_grid
+	if is_sprite():
+		var id := anim
+		_slider(g, "Frames per second (%s)" % SpriteArt.label(id), 1.0, 30.0, 0.5, SpriteArt.fps_of(id), "%.1f", func(v):
+			SpriteArt.set_setting(id, "fps", v)
+			_save_local())
+		_slider(g, "Size in game (%s)" % SpriteArt.label(id), 0.3, 3.0, 0.05, SpriteArt.scale_of(id), "%.2f", func(v):
+			SpriteArt.set_setting(id, "scale", v)
+			_save_local())
+		return
+	_slider(g, "Run speed (gameplay)", 2.0, 12.0, 0.1, max_speed, "%.1f", func(v): max_speed = v)
+	_slider(g, "Walk / run frame rate", 0.008, 0.08, 0.001, PlayerBody.run_rate, "%.3f", func(v): PlayerBody.run_rate = v)
+	_slider(g, "Pose frames per second", 2.0, 30.0, 1.0, PlayerArt.anim_fps, "%d", func(v): PlayerArt.anim_fps = v)
+	_slider(g, "Sprite scale", 0.8, 2.6, 0.05, PlayerArt.scale, "%.2f", func(v): PlayerArt.scale = v)
 
 
 func _slider(parent: Control, label: String, lo: float, hi: float, step: float, value: float, fmt: String, on_change: Callable) -> void:
@@ -855,6 +970,8 @@ func set_paused(on: bool) -> void:
 
 func step_frame(d: int) -> void:
 	var n := current_paths().size()
+	if n == 0:
+		return
 	selected = posmod(maxi(selected, 0) + d if paused else 0, n)
 	set_paused(true)
 	_refresh_frames()
@@ -896,12 +1013,13 @@ func _jump() -> void:
 
 func _process(delta: float) -> void:
 	_stage.queue_redraw()
+	_sprite_node.visible = is_sprite()
 	if paused:
 		return
 	var dt := minf(delta, 0.1)
 	var d60 := dt * 60.0
 	_time += dt * 1000.0
-	if preview == "anim" and anim in POSED:
+	if preview == "anim" and (anim in POSED or is_sprite()):
 		return
 	var speed := max_speed
 	var left := Input.is_action_pressed("move_left")
@@ -998,8 +1116,10 @@ func _draw_stage() -> void:
 		for i in range(0, int(STAGE.size.x), 40):
 			s.draw_line(Vector2(i, 0), Vector2(i, FLOOR_Y), Color(1, 1, 1, 0.03))
 	s.draw_line(Vector2(0, FLOOR_Y), Vector2(STAGE.size.x, FLOOR_Y), Color("#475569"), 2.0)
-	var info := "%s · %s" % [anim, current_variant()]
-	if paused or (preview == "anim" and anim in POSED):
+	var info := "%s · %s" % [SpriteArt.label(anim) if is_sprite() else anim, current_variant()]
+	if is_sprite():
+		_draw_sprite_stage(s)
+	elif paused or (preview == "anim" and anim in POSED):
 		var posed := _posed(selected if paused else -1)
 		PlayerArt.draw(s, posed[0], posed[1], false, posed[2])
 		_frame_lbl.text = ("Frame %d / %d" % [selected + 1, posed[3]]) if paused else "%d frames · looping" % posed[3]
@@ -1010,6 +1130,57 @@ func _draw_stage() -> void:
 		Draw.panel(s, Rect2(STAGE.size.x - 140, 14, 80, 26), Color("#78350f"), 13)
 		s.draw_string(Text.font_bold, Vector2(STAGE.size.x - 140, 32), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color.WHITE)
 	s.draw_string(Text.font, Vector2(14, STAGE.size.y - 12), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
+
+
+## A sprite: big in the middle (Animation), or at game size next to Kyra (Gameplay).
+## It is drawn by `_sprite_node` (a scaled child), so the zoom also applies to the
+## code-drawn art, whose helpers reset the drawing transform.
+func _draw_sprite_stage(s: Control) -> void:
+	var id := anim
+	var n := current_paths().size()
+	var portrait := id.begins_with("portrait_")
+	var game := preview == "game" and not portrait
+	var h: float = SpriteArt.DEFS[id].size
+	var zoom := 1.0 if game or portrait or h >= 100 else minf(3.0, 160.0 / h)
+	var c := Vector2(STAGE.size.x / 2, FLOOR_Y - 150)
+	if game:
+		PlayerArt.draw(s, p, _time)
+		c = Vector2(STAGE.size.x * 0.62, FLOOR_Y - h * SpriteArt.scale_of(id) / 2 - (0.0 if id in ["thorn", "spike", "cramp"] else 40.0))
+	if portrait:
+		Draw.panel(s, Rect2(c - Vector2(68, 68), Vector2(136, 136)), Color("#2b4150"), 16)
+	_sprite_node.position = c
+	_sprite_node.scale = Vector2(zoom, zoom)
+	_sprite_node.queue_redraw()
+	var where: String = SpriteArt.DEFS[id].get("where", "")
+	s.draw_string(Text.font, Vector2(14, 26), where + ("" if n > 0 else "  ·  drawn in code"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#94a3b8"))
+	if zoom != 1.0:
+		s.draw_string(Text.font_bold, Vector2(14, 46), "×%.1f" % zoom, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#64748b"))
+	if paused and n > 0:
+		_frame_lbl.text = "Frame %d / %d" % [selected + 1, n]
+	elif n == 0:
+		_frame_lbl.text = "Drawn in code"
+	else:
+		_frame_lbl.text = "Gameplay" if game else "%d frames · %.1f fps" % [n, SpriteArt.fps_of(id)]
+
+
+## The selected sprite at the origin of `_sprite_node`: the variant's frames
+## (unsaved edits too), else its code-drawn art.
+func _draw_sprite_node() -> void:
+	if not is_sprite():
+		return
+	var id := anim
+	var paths := current_paths()
+	if paths.is_empty():
+		SpriteArt.draw_placeholder(_sprite_node, id, Vector2.ZERO, _time)
+		return
+	var had: bool = SpriteArt.overrides.has(id)
+	var saved: Variant = SpriteArt.overrides.get(id)
+	SpriteArt.overrides[id] = _textures(paths)
+	SpriteArt.draw(_sprite_node, id, Vector2.ZERO, SpriteArt.DEFS[id].size, _time, Color.WHITE, false, selected if paused else -1)
+	if had:
+		SpriteArt.overrides[id] = saved
+	else:
+		SpriteArt.overrides.erase(id)
 
 
 func _on_token(ok: bool) -> void:
@@ -1083,7 +1254,7 @@ func assign_asset(path: String) -> void:
 		return
 	if path == "":
 		return
-	var list: Array = local.anims[anim][_editable()]
+	var list: Array = _edit_list()
 	if purpose == "replace" and list.size() > 0:
 		var i := clampi(selected, 0, list.size() - 1)
 		list[i] = path

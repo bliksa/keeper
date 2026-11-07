@@ -38,7 +38,6 @@ var _back: Texture2D
 var _middle: Texture2D
 var _front: Texture2D
 var _cave: Texture2D
-var _ghost: Array = []
 
 
 func _ready() -> void:
@@ -46,8 +45,6 @@ func _ready() -> void:
 	_middle = load("res://assets/images/middle3.png")
 	_front = load("res://assets/images/front.png")
 	_cave = load("res://assets/images/cave.png")
-	for i in range(1, 7):
-		_ghost.append(load("res://assets/images/duch%d.png" % i))
 	p.y = 420
 	p.is_grounded = true
 	p.was_grounded = true
@@ -174,11 +171,12 @@ func _draw() -> void:
 	_tile_x(_middle, 0.5)
 	draw_set_transform(Vector2(-camera_x, 0), 0, Vector2.ONE)
 	if ghost_alpha > 0:
-		var tex: Texture2D = _ghost[int(time_ms / 150.0) % 6]
-		var gh := 120.0
-		var gw := tex.get_width() / float(tex.get_height()) * gh
+		# Estra: her frames from the animation lab (originally duch1–6).
+		var tex := SpriteArt.texture("estra", time_ms)
+		var gh: float = SpriteArt.DEFS.estra.size
+		var gw := tex.get_width() / float(tex.get_height()) * gh if tex else gh
 		var bob := sin(time_ms / 500.0) * 10
-		draw_texture_rect(tex, Rect2(ghost_x, GROUND - 160 + bob, gw, gh), false, Color(1, 1, 1, ghost_alpha))
+		SpriteArt.draw(self, "estra", Vector2(ghost_x + gw / 2, GROUND - 160 + gh / 2 + bob), gh, time_ms, Color(1, 1, 1, ghost_alpha))
 	draw_texture_rect(_cave, Rect2(CAVE_X + camera_x * 0.5, 0, _cave_w(), H), false)
 	draw_set_transform(Vector2(-camera_x, 0), 0, Vector2.ONE)
 	_draw_player_world()
