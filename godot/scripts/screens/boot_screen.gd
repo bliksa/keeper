@@ -27,19 +27,27 @@ func _ready() -> void:
 	# As wide as the green bar and START + DEV below it.
 	_full = UiKit.button("", Vector2(256, 40), FONT, Color(0, 0, 0, 0), Color("#9ca3af"))
 	_full.position = Vector2(405, 166)
+	_icon_left(_full, "maximize")
 	_full.pressed.connect(_toggle_fullscreen)
 	add_child(_full)
-	var bar := ColorRect.new()
-	bar.color = Color("#10b981")
+	# The green bar (where the browser's loading bar was), rounded like it.
+	var bar := Panel.new()
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color("#10b981")
+	bsb.set_corner_radius_all(4)
+	bar.add_theme_stylebox_override("panel", bsb)
 	bar.position = Vector2(405, 226)
 	bar.size = Vector2(256, 8)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bar)
-	_start = UiKit.button("", Vector2(184, 50), FONT)
+	_start = UiKit.button("", Vector2(160, 50), FONT)
 	_start.position = Vector2(405, 266)
+	_icon_left(_start, "play")
 	_start.pressed.connect(_go)
 	add_child(_start)
-	_dev = UiKit.button("DEV", Vector2(64, 50), FONT)
-	_dev.position = Vector2(597, 266)
+	_dev = UiKit.button("DEV", Vector2(88, 50), FONT)
+	_dev.position = Vector2(405 + 256 - 88, 266)
+	_icon_left(_dev, "lock")
 	_dev.pressed.connect(func(): dev_pressed.emit())
 	add_child(_dev)
 	_subs = UiKit.label("", FONT, Color("#9ca3af"), true)
@@ -70,6 +78,14 @@ func _ready() -> void:
 	_version = ver
 	Text.language_changed.connect(_refresh)
 	_refresh()
+
+
+## An icon before the button's text.
+func _icon_left(b: Button, icon: String) -> void:
+	b.icon = load("res://assets/ui/icons/%s.svg" % icon)
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.add_theme_constant_override("icon_max_width", 20)
+	b.add_theme_constant_override("h_separation", 8)
 
 
 func _refresh() -> void:
