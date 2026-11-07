@@ -120,6 +120,8 @@ var _loop_told := false
 var trees: Array = []
 var _font: Font
 var _prev_slow := false
+## The slow-time hint (under the water pill) shows until it was used once.
+var _slow_used := false
 ## Lane / jump presses made while she is bumped or carried, applied after.
 var _pending_lane := 0
 var _pending_jump := false
@@ -298,6 +300,8 @@ func _update(dt: float) -> void:
 	var want_slow := not rolling and Input.is_action_pressed("slow_time") and water > (0.0 if _prev_slow else SLOW_MIN)
 	slow = want_slow
 	_prev_slow = slow
+	if slow:
+		_slow_used = true
 	var wdt := dt * (SLOW_SCALE if slow else 1.0)
 	if slow:
 		water = maxf(0, water - SLOW_DRAIN * dt)
@@ -775,17 +779,34 @@ func _draw_player() -> void:
 
 
 func _draw_hud() -> void:
-	var bg := Color("#f0eee9")
-	# The sun: 12 slices, one per piece found; a ring shows the way through the stage.
-	var sc := Vector2(W / 2, 62)
+	# The sun at the top-left (where the iron nut is in the cave): 12 slices, one
+	# per piece found; the ring shows the way through the stage.
+	var sc := Vector2(66, 66)
 	draw_arc(sc, 56, -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)
 	SpriteArt.draw_sun(self, sc, 46, sun, sun_flash, time)
-	# Water = focus bar.
-	var v := Rect2(W / 2 - 170, H - 44, 340, 28)
-	Draw.panel(self, v, bg, 14, Color(0.37, 0.61, 0.6, 0.2), 2)
-	var inner := Rect2(v.position.x + 6, v.position.y + 6, v.size.x - 12, v.size.y - 12)
-	Draw.panel(self, inner, Color("#dbeafe"), 8)
-	if water > 0.5:
-		Draw.panel(self, Rect2(inner.position, Vector2(inner.size.x * water / 100.0, inner.size.y)), Color("#5fb3f0") if not slow else Color("#93c5fd"), 8)
-	var hint := Text.plain(Text.t("RUNNER_SLOW_HINT"))
-	Draw.text_center(self, Text.font, Vector2(v.get_center().x, v.position.y - 10), hint, 12, Color(1, 1, 1, 0.95))
+	# Hydration at the top-right (where the breath is in the cave): the water
+	# that feeds slowed time.
+	draw_water_pill(self, Rect2(W - 16 - 150, 16, 150, 48), water, slow, time, SLOW_MIN)
+	if not _slow_used and water >= SLOW_MIN:
+		var hint := Text.plain(Text.t("RUNNER_SLOW_HINT"))
+		var hw := Text.font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+		var hp := Vector2(W - 16 - hw, 82)
+		draw_string_outline(Text.font, hp, hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, 4, Color(0, 0, 0, 0.45))
+		draw_string(Text.font, hp, hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+
+
+## The hydration pill: a drop and how full the water is (slowed time pulses it).
+static func draw_water_pill(ci: CanvasItem, r: Rect2, amount: float, slowing: bool, t: float, min_use := 6.0) -> void:
+	Draw.panel(ci, r, Color("#f0eee9"), 16, Color(0.37, 0.61, 0.6, 0.2), 2)
+	var drop_c := Vector2(r.position.x + 26, r.get_center().y + 1)
+	SpriteArt.draw_drop(ci, drop_c, 1.25, Color("#5fb3f0") if amount >= min_use else Color("#94a3b8"))
+	var bar := Rect2(r.position.x + 48, r.get_center().y - 7, r.size.x - 62, 14)
+	Draw.panel(ci, bar, Color("#dbeafe"), 7)
+	if amount > 0.5:
+		var col := Color("#5fb3f0")
+		if slowing:
+			col = Color("#93c5fd").lerp(Color.WHITE, 0.25 + 0.25 * sin(t * 10))
+		Draw.panel(ci, Rect2(bar.position, Vector2(maxf(bar.size.y, bar.size.x * clampf(amount / 100.0, 0, 1)), bar.size.y)), col, 7)
+	# The least water slowed time needs.
+	var mx := bar.position.x + bar.size.x * min_use / 100.0
+	ci.draw_line(Vector2(mx, bar.position.y - 2), Vector2(mx, bar.end.y + 2), Color(0.02, 0.3, 0.23, 0.5), 1.5)

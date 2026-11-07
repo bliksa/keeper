@@ -200,7 +200,7 @@ drop low/high, `+` sun piece, `<` `>` side trap (thorny vine),
 `A` next stage, `a–z` dialog. `build_course()` reads it (`rows`, or
 `Game.current_level_rows(4)`).
 
-The sun (HUD top centre, `SpriteArt.draw_sun`) has 12 triangular slices; each
+The sun (HUD top-left where the cave's iron nut is, `SpriteArt.draw_sun`; water = the hydration pill top-right, `draw_water_pill`, where the cave's breath is) has 12 triangular slices; each
 `+` fills one (`sun`). Every `SUN_PER_GAME` = 3 pieces `sun_game(n)` → Main opens
 mg8 (memory) / mg9 (catch) / mg10 (pairs) and `_back_to_cave` calls `after_minigame()` (next stage
 from its start); the 12th piece → `finished` → `runner_end` → `_start_summit`.

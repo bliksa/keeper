@@ -38,25 +38,8 @@ func _draw() -> void:
 		if Game.has_breathing:
 			_draw_breath(font)
 		return
-	# Iron counter.
-	var label := str(Game.iron)
-	var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x
-	var bounce := -sin(_bounce / 0.3 * PI) * 10.0
-	var r := Rect2(16, 16 + bounce, tw + 20 + 24 + 30, 48)
-	Draw.panel(self, r, BG, 16, Color(TEAL, 0.2), 2)
-	draw_string(font, Vector2(r.position.x + 20, r.position.y + 31), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, INK)
-	var ic := Vector2(r.end.x - 26, r.position.y + 24)
-	var hex := PackedVector2Array()
-	for i in 6:
-		# Coin-like spin: only the width changes.
-		var a := i / 6.0 * TAU - PI / 2
-		hex.append(ic + Vector2(cos(a) * absf(cos(_spin)), sin(a)) * 11)
-	draw_colored_polygon(hex, Color("#9ca3af"))
-	draw_polyline(hex + PackedVector2Array([hex[0]]), Color("#4b5563"), 1.5, true)
-	draw_set_transform(ic, 0, Vector2(maxf(absf(cos(_spin)), 0.01), 1))
-	draw_circle(Vector2.ZERO, 4.5, BG)
-	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-
+	# Iron: one big nut with the count in its middle (top-left, like the sun in level 2).
+	var r := draw_iron(self, font, Vector2(60, 58), Game.iron, _bounce, _spin)
 	if Game.has_breathing:
 		_draw_breath(font)
 	if platformer.is_summit():
@@ -73,6 +56,34 @@ func _draw() -> void:
 			var cr := Rect2(1066 / 2 - cw / 2 - 14, 56, cw + 28, 34)
 			Draw.panel(self, cr, Color("#78350f"), 17, Color("#fbbf24"), 2)
 			draw_string(font, Vector2(cr.position.x + 14, cr.position.y + 24), ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#fef3c7"))
+
+
+## The big nut of the HUD centred on `c`; returns its box (for what goes below).
+static func draw_iron(ci: CanvasItem, font: Font, c: Vector2, count: int, bounce := 0.0, spin := 0.0) -> Rect2:
+	c.y += -sin(bounce / 0.3 * PI) * 8.0
+	var r := 42.0
+	var tex := SpriteArt.texture("iron", 0.0)
+	if tex:
+		# The drawn nut, face on (its first frame), a little larger than the code one.
+		var h := r * 2.3
+		var w := tex.get_width() * h / tex.get_height()
+		ci.draw_texture_rect(tex, Rect2(c.x - w / 2, c.y - h / 2, w, h), false)
+	else:
+		var hex := PackedVector2Array()
+		for i in 6:
+			var a := i / 6.0 * TAU - PI / 2
+			hex.append(c + Vector2(cos(a), sin(a)) * r)
+		ci.draw_colored_polygon(hex, Color("#9ca3af"))
+		ci.draw_polyline(hex + PackedVector2Array([hex[0]]), Color("#374151"), 3.0, true)
+		ci.draw_circle(c, r * 0.5, Color("#4b5563"))
+	# The count in the hole: white with a dark outline, readable on any nut.
+	var label := str(count)
+	var fs := 28 if label.length() < 3 else 22
+	var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var pos := Vector2(c.x - tw / 2, c.y + fs * 0.36)
+	ci.draw_string_outline(font, pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 6, Color("#1f2937"))
+	ci.draw_string(font, pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color.WHITE)
+	return Rect2(c - Vector2(r, r), Vector2(r, r) * 2)
 
 
 ## Level 2 power-ups earned so far (and the dash cooldown).
