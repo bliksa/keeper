@@ -18,9 +18,9 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "godot/data/levels/climb.txt"
 PLATFORMER = ROOT / "godot/scripts/screens/platformer.gd"
 
-COLS = 25
+COLS = 36  # LevelData.CLIMB_COLS: wider than the other levels (drawn zoomed out)
 ROW_H = 120.0
-CELL_W = 1066.0 / COLS
+CELL_W = 1066.0 / 25  # the cell width of every level (LevelData.CELL_W)
 ROWS = 170
 SEED = 3105
 PLAYER_W = 30.0
@@ -109,53 +109,69 @@ def generate() -> list:
         grid[bottom][c] = "="
     grid[bottom - 1][COLS // 2] = "P"
     top_plat = 2  # the wide platform at the top, E in the row above it
-    mains = {bottom: (0, COLS - 1)}
-    prev = (8, 16)
-    direction = 1
-    for r in range(bottom - 1, top_plat, -1):
+    mains = {bottom: [(0, COLS - 1)]}
+    # Two routes wander up side by side (each one jump from its own platform below):
+    # where they drift apart she picks one, where they meet they merge and split again.
+    routes = [[(COLS // 2 - 9, COLS // 2 - 4), -1], [(COLS // 2 + 3, COLS // 2 + 7), 1]]
+
+    def step(prev, direction):
         ln = rng.randint(3, 7)
         g = rng.randint(-1, MAX_GAP)  # sideways step from the previous platform
-        if direction > 0:
-            c0 = prev[1] + 1 + g
-        else:
-            c0 = prev[0] - 1 - g - (ln - 1)
+        c0 = prev[1] + 1 + g if direction > 0 else prev[0] - 1 - g - (ln - 1)
         if c0 < 0 or c0 + ln - 1 >= COLS:
             direction = -direction
             c0 = prev[1] + 1 + g if direction > 0 else prev[0] - 1 - g - (ln - 1)
         c0 = max(0, min(COLS - ln, c0))
         if rng.random() < 0.18:
             direction = -direction
-        cur = (c0, c0 + ln - 1)
-        if r == bottom - 1:
-            cur = (COLS // 2 + 3, COLS // 2 + 7)  # beside P
-        for c in range(cur[0], cur[1] + 1):
-            put(r, c, "=", force=True)
-        mains[r] = cur
-        prev = cur
-        # Sometimes an alternative on the other side, also one jump from the platform below.
-        below = mains[r + 1]
-        if rng.random() < 0.3:
-            ln2 = rng.randint(3, 5)
-            if cur[0] > below[0]:
+        return (c0, c0 + ln - 1), direction
+
+    for r in range(bottom - 1, top_plat, -1):
+        runs = []
+        for rt in routes:
+            if r == bottom - 1:
+                cur = rt[0]  # beside P, both sides
+            else:
+                cur, rt[1] = step(rt[0], rt[1])
+            rt[0] = cur
+            runs.append(cur)
+        a, b = routes[0][0], routes[1][0]
+        if gap(a, b) < 2:
+            # Met: one platform (the union); split again, the left one going left.
+            u = (min(a[0], b[0]), max(a[1], b[1]))
+            routes[0][0] = routes[1][0] = u
+            routes[0][1], routes[1][1] = -1, 1
+            runs = [u]
+        elif a[0] > b[0]:
+            routes.reverse()
+        for cur in runs:
+            for c in range(cur[0], cur[1] + 1):
+                put(r, c, "=", force=True)
+        mains[r] = runs
+        # Side branches: a short ledge off a route (chips on it), one jump from below.
+        if rng.random() < 0.35:
+            below = rng.choice(mains[r + 1])
+            ln2 = rng.randint(2, 4)
+            if rng.random() < 0.5:
                 a0 = below[0] - 1 - rng.randint(0, MAX_GAP - 1) - (ln2 - 1)
             else:
                 a0 = below[1] + 1 + rng.randint(0, MAX_GAP - 1)
             a0 = max(0, min(COLS - ln2, a0))
             alt = (a0, a0 + ln2 - 1)
-            if gap(alt, cur) >= 2:
+            if all(gap(alt, cur) >= 2 for cur in runs):
                 for c in range(alt[0], alt[1] + 1):
                     put(r, c, "=")
-    for c in range(5, 20):
+                if rng.random() < 0.7 and r - 1 > top_plat:
+                    for c in range(alt[0], alt[1] + 1):
+                        put(r - 1, c, "$")
+    for c in range(8, 28):
         grid[top_plat][c] = "="
-    mains[top_plat] = (5, 19)
+    mains[top_plat] = [(8, 27)]
     grid[1][COLS // 2] = "E"
 
     def free_over(r):
         """Free cells of row r standing on the main platform of row r + 1."""
-        b = mains.get(r + 1)
-        if not b:
-            return []
-        return [c for c in range(b[0], b[1] + 1) if grid[r][c] == "."]
+        return [c for b in mains.get(r + 1, []) for c in range(b[0], b[1] + 1) if grid[r][c] == "."]
 
     # Jackpot rows at 1/4, 2/4, 3/4 of the height (a free cell of the row; the trigger spans it).
     span = bottom - top_plat
@@ -173,9 +189,11 @@ def generate() -> list:
             c = rng.choice(cells)
             put(r, c, "!")
             springs.append((r, c))
-            # Chips up the spring's path.
-            for k in range(1, 5):
+            # Chips up the spring's path, a fan two cells wide.
+            for k in range(1, 6):
                 put(r - k, c, "$")
+                if k >= 3:
+                    put(r - k, c + (1 if k % 2 else -1), "$")
             r -= rng.randint(8, 12)
         else:
             r -= 1
@@ -200,7 +218,7 @@ def generate() -> list:
     # Updrafts: a few columns of warm air beside the path.
     r = bottom - 20
     while r > top_plat + 10:
-        c = 0 if mains[r][0] > COLS // 2 else COLS - 1
+        c = 0 if min(m[0] for m in mains[r]) > 2 else COLS - 1
         if all(grid[r - k][c] == "." for k in range(4)):
             for k in range(4):
                 put(r - k, c, "~")

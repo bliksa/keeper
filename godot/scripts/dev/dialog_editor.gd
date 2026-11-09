@@ -23,7 +23,7 @@ const EDIT_VERSION := 2
 const LANGS := ["sk", "en", "pt"]
 const LANG_NAMES := {"sk": "SK", "en": "EN", "pt": "PT"}
 const GROUPS := [["0", "0 · Prologue (forest)"], ["1", "1 · Cave"], ["2", "2 · Forest run"],
-	["3", "3 · Jackpot climb"], ["M", "M · Old meadow"], ["S", "S · Old summit"], ["mg", "Minigames"]]
+	["3", "3 · Jackpot climb"], ["4", "4 · PMS maze"], ["M", "M · Old meadow"], ["S", "S · Old summit"], ["mg", "Minigames"]]
 const CHARACTERS := "res://data/characters.json"
 const LIST_W := 270.0
 ## Dialogs the game starts by name (not by a map letter): they can't be deleted
@@ -35,7 +35,11 @@ const BY_GAME := {
 	"2A": "the start of the forest run", "2E": "the full sun (end of level 2)",
 	"3A": "the jackpot climb's first super jump (on the board)", "3B": "the jackpot climb's first triple jump (on the board)",
 	"3C": "the jackpot climb's first chip magnet (on the board)", "3D": "the jackpot climb's first rocket (on the board)",
-	"3E": "the top of the jackpot climb (end of level 3, on the board)",
+	"3E": "the top of the jackpot climb (end of level 3, on the board; then the transformation)",
+	"4A": "the start of the PMS maze (after the transformation)", "4B": "the PMS maze's 1st comfort item (tea)",
+	"4C": "the PMS maze's 2nd comfort item (hot-water bottle)", "4D": "the PMS maze's 3rd comfort item (blanket)",
+	"4E": "the PMS maze's open door (the end of the game)",
+	"4F": "the PMS maze's last comfort item found (the door opens)",
 	"MA": "the start of the old meadow", "MF": "the locked gate", "MG": "the open gate (end)",
 	"SA": "the start of the old summit", "SF": "the LH wave (old summit)", "SG": "the old summit (end)",
 }

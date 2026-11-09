@@ -365,9 +365,10 @@ func preview_cam() -> Vector2:
 		var lw := editor.cols() * LevelData.CELL_W
 		return Vector2(maxf(0, lw - 1066) * cam_k, 0)
 	var lh := rows * LevelData.ROW_H
+	var view := Platformer.view_size_for(editor.level_id)
 	# Vertical levels: the cave is played downwards, the climbs (old summit, jackpot climb) upwards.
 	var k := cam_k if editor.level_id == 1 else 1.0 - cam_k
-	return Vector2(0, maxf(0, lh - 600) * k)
+	return Vector2(0, maxf(0, lh - view.y) * k)
 
 
 func _draw_preview() -> void:
@@ -380,9 +381,11 @@ func _draw_preview() -> void:
 		var bot_c := Color("#f1e6b8") if editor.level_id == 2 else Color("#1c1533")
 		for b in 10:
 			ci.draw_rect(Rect2(0, PREVIEW.y * b / 10.0, PREVIEW.x, PREVIEW.y / 10.0 + 1), top_c.lerp(bot_c, (b + 0.5) / 10.0))
-	ci.draw_set_transform(Vector2.ZERO, 0, PREVIEW / Vector2(1066, 600))
+	# The game draws the layers into the visible world (wider in the zoomed-out climb), scaled to the screen.
+	var view := Platformer.view_size_for(editor.level_id)
+	ci.draw_set_transform(Vector2.ZERO, 0, PREVIEW / view)
 	var origin := Platformer.bg_origin_for(editor.level_id, editor.rows.size() * LevelData.ROW_H)
-	BackgroundData.draw_layers(ci, c, preview_cam(), Vector2(1066, 600), Game.is_horizontal(editor.level_id), origin)
+	BackgroundData.draw_layers(ci, c, preview_cam(), view, Game.is_horizontal(editor.level_id), origin)
 	ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	if c.tint:
 		Draw.vignette(ci, Rect2(Vector2.ZERO, PREVIEW), Color(0, 0, 0, 0.35), 0.4)

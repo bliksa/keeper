@@ -252,8 +252,10 @@ func _build_shortcuts() -> void:
 			["Start", "", "checkpoint5", 1], ["1st jackpot", "At the first jackpot row", "checkpoint5", 2],
 			["2nd jackpot", "", "checkpoint5", 3], ["3rd jackpot", "", "checkpoint5", 4],
 			["Near the top", "A few floors below the top", "checkpoint5", 5]]],
-		["4 · PMS", "luteal phase · right to left", Color.from_hsv(215.0 / 360, 0.7, 0.75), [
-			["Start", "Level 4 is not built yet (right to left, PMS; the sex-ed branch)", "", 0]]],
+		["4 · PMS maze", "luteal phase · upside down", Color.from_hsv(215.0 / 360, 0.7, 0.75), [
+			["Start", "The PMS maze (drawn upside down, the arrows feel reversed), 4A", "checkpoint6", 1],
+			["Transformation", "The climb's top: the jackpot, 3E on the board, then the view turns into the maze", "pms_transform", 0],
+			["Door open", "The maze with all three comfort items found, beside the door", "checkpoint6", 2]]],
 	]
 	for c in cols.size():
 		var x := 24 + c * (COL_W + 16)
@@ -324,7 +326,7 @@ func _build_shortcuts() -> void:
 	card.add_child(go)
 	_old_pick = old
 
-	var keys := UiKit.label("Keys while playing: 1–4 restart at a checkpoint · Shift+2–5 jump to the next minigame / boss / jackpot row · 5 boss (climb: near the top) · G old summit with power-ups · C breathing + 20 iron · X skip a minigame · Esc pause", 11, Color("#64748b"))
+	var keys := UiKit.label("Keys while playing: 1–4 restart at a checkpoint · Shift+2–5 jump to the next minigame / boss / jackpot row · 5 boss (climb: near the top, PMS maze: open the door) · G old summit with power-ups · C breathing + 20 iron · X skip a minigame · Esc pause", 11, Color("#64748b"))
 	keys.autowrap_mode = TextServer.AUTOWRAP_WORD
 	keys.custom_minimum_size = Vector2(952, 0)
 	keys.position = Vector2(24, 458)

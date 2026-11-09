@@ -214,8 +214,8 @@ var _tree_rng := RandomNumberGenerator.new()
 var _tree_z := 0.0
 var _font: Font
 var _prev_slow := false
-## The slow-time hint (under the water pill) shows until it was used once.
-var _slow_used := false
+## The abilities usable right now, under the water pill (AbilityHints).
+var hints := AbilityHints.new()
 ## Lane / jump presses made while she is bumped or carried, applied after.
 var _pending_lane := 0
 var _pending_jump := false
@@ -414,6 +414,7 @@ func _process(delta: float) -> void:
 		loop_note = maxf(0, loop_note - dt)
 	_update_flyers(dt)
 	land_t = maxf(0, land_t - dt)
+	hints.update(dt, _wanted_hints())
 	if intro > 0:
 		_update_intro(dt)
 		queue_redraw()
@@ -421,6 +422,24 @@ func _process(delta: float) -> void:
 	if active and not dialog_open and not done and not waiting:
 		_update(dt)
 	queue_redraw()
+
+
+## Focus while a drop is in the magazine (and it isn't reloading), the double jump
+## while two are.
+func _wanted_hints() -> Array:
+	if intro > 0 or not active or dialog_open or done or waiting:
+		return []
+	var out: Array = []
+	if (drops >= 1.0 or slow) and reload_t <= 0:
+		out.append("HINT_RUN_FOCUS")
+	if drops >= DOUBLE_DROPS - 0.001:
+		out.append("HINT_RUN_DOUBLE")
+	return out
+
+
+## The keys of the ability hints shown right now.
+func hint_lines() -> Array:
+	return hints.active()
 
 
 func _update(dt: float) -> void:
@@ -436,8 +455,6 @@ func _update(dt: float) -> void:
 	_update_magazine(dt)
 	slow = want_slow
 	_prev_slow = slow
-	if slow:
-		_slow_used = true
 	var wdt := dt * (SLOW_SCALE if slow else 1.0)
 	if slow:
 		drops = maxf(0, drops - FOCUS_DRAIN * dt)
@@ -1358,12 +1375,7 @@ func _draw_hud() -> void:
 	draw_water_pill(self, wr, drops, water / 100.0, slow, time, short_for if water_short > 0 else "", reload_t)
 	if water_short > 0:
 		Draw.panel(self, wr.grow(2), Color(0, 0, 0, 0), 18, Color(0.94, 0.27, 0.27, water_short / 0.5), 3)
-	if not _slow_used and drops >= 1.0:
-		var hint := Text.plain(Text.t("RUNNER_SLOW_HINT"))
-		var hw := Text.font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-		var hp := Vector2(W - 16 - hw, 82)
-		draw_string_outline(Text.font, hp, hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, 4, Color(0, 0, 0, 0.45))
-		draw_string(Text.font, hp, hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	hints.draw(self, Vector2(WATER_HUD.end.x, WATER_HUD.end.y))
 
 
 ## The hydration pill: a drop and how full the water is (slowed time pulses it).

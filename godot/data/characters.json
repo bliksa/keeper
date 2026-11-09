@@ -24,6 +24,14 @@
     "pt": "Iskra"
    },
    "portrait": "portrait_iskra"
+  },
+  "Progesteronka": {
+   "name": {
+    "sk": "Progesterónka",
+    "en": "Progesterone",
+    "pt": "Progesterona"
+   },
+   "portrait": "portrait_progesterone"
   }
  }
 }

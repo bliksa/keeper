@@ -1,0 +1,28 @@
+# Level 4 of the game: the PMS maze (luteal phase, level_id 6). World coordinates: the game draws it rotated 180°
+# (she walks on the ceiling, the arrows feel reversed). P spawn at the top, D the door at the bottom.
+# Legend: W wall (solid from every side)  = platform (one-way)  & comfort item (tea, hot-water bottle, blanket by order)  D door
+WWWWWWWWWWWWWWWWWWWWWWWWW
+W.......................W
+W..P.............WW.....W
+WWWWWWWWWWWWWWWWWWWW..WWW
+W.....W.............=...W
+W.&...W.........==......W
+WWW..WWWWWWWW..WWWWWWWWWW
+W..=.........=..........W
+W....==.....W..==...W...W
+WWWWWWWWWWWWWWWWW..WWWWWW
+W.................=.....W
+W.......WWW....==.....&.W
+WWWWW..WWWWWWWWWWWWW..WWW
+W....=..............=...W
+W..==......W.....==W....W
+WWWWWWWWWWWW..WWWWWWWWWWW
+W............=..........W
+W.&....W.......==..W....W
+WWWWWWWWWWWWWWWWWWW...WWW
+W....................=..W
+W........WWW.......==...W
+WWW...WWWWWWWWWWWWWWWWWWW
+W....=..................W
+W..==......W..........D.W
+WWWWWWWWWWWWWWWWWWWWWWWWW

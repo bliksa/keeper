@@ -17,6 +17,13 @@ var _spin := 0.0
 ## The climb's WIN counter rolls up towards the real value; a bump when it grows.
 var _win_shown := 0.0
 var _win_bump := 0.0
+## The abilities usable right now, under the top-right indicator (AbilityHints).
+var hints := AbilityHints.new()
+## The climb's counters fade during the transformation (colours through _a()).
+var _alpha := 1.0
+## The maze's item slots: a little pop when one fills.
+var _slot_pop := [0.0, 0.0, 0.0]
+var _items_seen: Array[bool] = [false, false, false]
 
 
 func _ready() -> void:
@@ -38,6 +45,53 @@ func _process(delta: float) -> void:
 			_win_shown = minf(target, _win_shown + maxf(1.0, (target - _win_shown) * minf(1.0, delta * 5.0)) + 60.0 * delta)
 			_win_bump = 0.25
 	_win_bump = maxf(0, _win_bump - delta)
+	if platformer and platformer.is_pms():
+		for i in 3:
+			if platformer.pms_found[i] and not _items_seen[i]:
+				_slot_pop[i] = 0.45
+				_items_seen[i] = true
+		for i in 3:
+			_slot_pop[i] = maxf(0.0, _slot_pop[i] - delta)
+	hints.update(delta, _wanted_hints() if platformer else [])
+
+
+## The keys of the ability hints shown right now.
+func hint_lines() -> Array:
+	return hints.active()
+
+
+## Cave: what the breath can do now (attack / charge it / the rhythm while charging).
+## Climb: the active power-ups with their time. Other levels: none.
+func _wanted_hints() -> Array:
+	var pf := platformer
+	if pf.is_pms():
+		# The maze: the calming breath (hold), and how long the calm lasts.
+		if pf.dialog_open or pf.hold_input:
+			return []
+		if pf.calm_t > 0:
+			return [{"key": "HINT_PMS_CALM", "k": pf.calm_t / Platformer.CALM_TIME}]
+		return ["HINT_PMS_BREATHE"]
+	if pf.prerod_t >= 0:
+		return []
+	if pf.is_climb():
+		var out: Array = []
+		for k in Platformer.POWERS:
+			if pf.climb_power.has(k):
+				var full := Platformer.ROCKET_TIME if k == "rocket" else Platformer.POWER_TIME
+				out.append({"key": "HINT_CLIMB_" + String(k).to_upper(), "k": float(pf.climb_power[k]) / full})
+		return out
+	if pf.is_meadow() or pf.is_summit() or not Game.has_breathing:
+		return []
+	var p := pf.p
+	if pf.dialog_open or p.is_dead:
+		return []
+	if p.is_recharging:
+		return ["HINT_BREATH_RHYTHM"]
+	if p.breath_charges > 0 and p.held_by_cramp == -1:
+		return ["HINT_BREATH_ATTACK"]
+	if p.breath_charges == 0:
+		return ["HINT_BREATH_CHARGE"]
+	return []
 
 
 func _draw() -> void:
@@ -49,13 +103,20 @@ func _draw() -> void:
 		if Game.has_breathing:
 			_draw_breath(font)
 		return
+	if platformer.is_pms():
+		_draw_pms(font)
+		return
 	if platformer.is_climb():
 		_draw_climb(font)
 		return
 	# Iron: one big nut with the count in its middle (top-left, like the sun in level 2).
 	var r := draw_iron(self, font, Vector2(60, 58), Game.iron, _bounce, _spin)
 	if Game.has_breathing:
-		_draw_breath(font)
+		var br := _draw_breath(font)
+		if not platformer.is_summit():
+			# The hints follow the pill (under Kyra while she breathes / is held).
+			var follow := _breath_follows()
+			hints.draw(self, Vector2(br.get_center().x if follow else br.end.x, br.end.y), follow)
 	if platformer.is_summit():
 		_draw_upgrades(font, r.end.y + 8)
 		# Floor counter (Icy Tower) and the combo.
@@ -118,9 +179,16 @@ func _draw_upgrades(font: Font, y: float) -> void:
 		x += r.size.x + 6
 
 
-func _draw_breath(font: Font) -> void:
+## The pill sits under Kyra while she is held by a cramp or breathes to recharge.
+func _breath_follows() -> bool:
 	var p := platformer.p
-	var follow := p.held_by_cramp != -1 or (p.is_recharging and p.breath_charges == 0 and p.breathing_cooldown <= 0)
+	return p.held_by_cramp != -1 or (p.is_recharging and p.breath_charges == 0 and p.breathing_cooldown <= 0)
+
+
+## Draws the breath pill; returns its box.
+func _draw_breath(font: Font) -> Rect2:
+	var p := platformer.p
+	var follow := _breath_follows()
 	var pos := Vector2(size.x - 16 - PILL.x, 16)
 	if follow:
 		pos = Vector2(p.x + p.width / 2 - PILL.x / 2, p.y + p.height - platformer.camera_y + 49)
@@ -167,6 +235,7 @@ func _draw_breath(font: Font) -> void:
 				_reload_icon(c + Vector2(30, 0))
 			else:
 				draw_texture_rect(load("res://assets/ui/pad_red.png"), Rect2(c.x + 34, c.y - 10, 20, 20), false)
+	return rect
 
 
 func _key_hint(font: Font, c: Vector2, s: String, keyboard: bool) -> void:
@@ -280,15 +349,20 @@ func _draw_climb(font: Font) -> void:
 	var pf := platformer
 	var t := pf.time_ms
 	_draw_board(font, t)
+	# The transformation: the counters fade out (the casino winds down).
+	_alpha = 1.0 - pf.wind
+	if _alpha <= 0.01:
+		return
 	# Floor (top-left).
 	var fl := pf.floor_of(pf.p.y + pf.p.height)
 	var fmt := Text.plain(Text.t("CLIMB_FLOOR"))
 	var ft := fmt % fl if fmt.contains("%d") else "%s %d" % [fmt, fl]
 	var fw := font.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
 	var fr := Rect2(16, 16, fw + 28, 34)
-	Draw.panel(self, fr, BG, 17, Color("#fbbf24"), 2)
-	draw_string(font, Vector2(fr.position.x + 14, fr.position.y + 24), ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, INK)
-	_draw_powers(font, fr.end.y + 8)
+	Draw.panel(self, fr, _a(BG), 17, _a(Color("#fbbf24")), 2)
+	draw_string(font, Vector2(fr.position.x + 14, fr.position.y + 24), ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, _a(INK))
+	# Active power-ups: the shared ability hints in the top-right corner.
+	hints.draw(self, Vector2(1066 - 16, 16 - 6))
 	# WIN counter (top centre): rolls up towards the real value, the multiplier beside it.
 	var label := Text.plain(Text.t("CLIMB_WIN"))
 	var num := "%d" % int(_win_shown)
@@ -296,28 +370,28 @@ func _draw_climb(font: Font) -> void:
 	var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 	var wr := Rect2(1066 / 2 - (nw + lw + 52) / 2, 10, nw + lw + 52, 50)
 	var hot := _win_bump > 0
-	Draw.panel(self, wr, Color("#2e1065", 0.92), 25, Color("#fde047") if hot else Color("#fbbf24"), 3)
+	Draw.panel(self, wr, _a(Color("#2e1065", 0.92)), 25, _a(Color("#fde047") if hot else Color("#fbbf24")), 3)
 	for i in 14:
 		# Little bulbs around the counter.
 		var a := i * TAU / 14
 		var bp := wr.get_center() + Vector2(cos(a) * (wr.size.x / 2 + 2), sin(a) * (wr.size.y / 2 + 2))
-		var on := (i + int(t / 120.0)) % 2 == 0
-		draw_circle(bp, 3, Color("#fef08a") if on else Color("#b45309"))
-	draw_string(font, Vector2(wr.position.x + 18, wr.position.y + 31), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#fde68a"))
+		var on := (i + int(t / 120.0)) % 2 == 0 and pf.prerod_t < 0
+		draw_circle(bp, 3, _a(Color("#fef08a") if on else Color("#b45309")))
+	draw_string(font, Vector2(wr.position.x + 18, wr.position.y + 31), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, _a(Color("#fde68a")))
 	var s := 1.0 + 0.15 * _win_bump / 0.25
 	var np := Vector2(wr.position.x + 30 + lw, wr.position.y + 36)
 	draw_set_transform(np, 0, Vector2(s, s))
-	draw_string_outline(font, Vector2.ZERO, num, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, 5, Color("#78350f"))
-	draw_string(font, Vector2.ZERO, num, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color("#fef3c7"))
+	draw_string_outline(font, Vector2.ZERO, num, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, 5, _a(Color("#78350f")))
+	draw_string(font, Vector2.ZERO, num, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, _a(Color("#fef3c7")))
 	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	var mt := "x%d" % pf.climb_mult
 	var mw := font.get_string_size(mt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x
 	var mr := Rect2(wr.end.x + 10, 16, mw + 24, 38)
 	var mcol := Color("#e11d48") if pf.climb_mult >= 5 else (Color("#ea580c") if pf.climb_mult >= 2 else Color("#64748b"))
-	Draw.panel(self, mr, mcol, 19, Color("#fde047"), 2)
-	draw_string(font, Vector2(mr.position.x + 12, mr.position.y + 28), mt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
+	Draw.panel(self, mr, _a(mcol), 19, _a(Color("#fde047")), 2)
+	draw_string(font, Vector2(mr.position.x + 12, mr.position.y + 28), mt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, _a(Color.WHITE))
 	# The banner (JACKPOT!, SUPER JUMP! …).
-	if not pf.banner.is_empty():
+	if not pf.banner.is_empty() and pf.prerod_t < 0:
 		var bt: float = pf.banner.t
 		var k := clampf(bt / 0.2, 0, 1)
 		var fade := clampf((1.8 - bt) / 0.4, 0, 1)
@@ -329,22 +403,6 @@ func _draw_climb(font: Font) -> void:
 		draw_string_outline(font, Vector2(-tw / 2, 18), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 54, 10, Color(0.47, 0.2, 0.03, fade))
 		draw_string(font, Vector2(-tw / 2, 18), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 54, Color(1, 0.88, 0.3, fade))
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-
-
-## Active power-ups as pills with a draining bar.
-func _draw_powers(font: Font, y: float) -> void:
-	var x := 16.0
-	for k in platformer.climb_power.keys():
-		var left: float = platformer.climb_power[k]
-		var full := Platformer.ROCKET_TIME if k == "rocket" else Platformer.POWER_TIME
-		var label := Text.plain(Text.t("CLIMB_PU_" + String(k).to_upper())).trim_suffix("!")
-		var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-		var r := Rect2(x, y, tw + 24, 26)
-		Draw.panel(self, r, Color("#2e1065", 0.9), 13, Color("#fbbf24"), 2)
-		var fill := Rect2(r.position + Vector2(3, r.size.y - 7), Vector2((r.size.x - 6) * clampf(left / full, 0, 1), 4))
-		draw_rect(fill, Color("#fde047"))
-		draw_string(font, Vector2(r.position.x + 12, r.position.y + 17), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#fef3c7"))
-		x += r.size.x + 6
 
 
 ## The board: a dialog-box panel (Estrogenka on the left) with a casino marquee, the
@@ -365,6 +423,9 @@ func _draw_board(font: Font, t: float) -> void:
 		if sx > 1066 or sx + seg.w < 0:
 			continue
 		var col := Color("#b45309") if seg.event else INK
+		if pf.prerod_t >= 0:
+			_draw_loose_letters(font, seg, ty, col, pf.prerod_t)
+			continue
 		draw_string(font, Vector2(sx, ty), seg.text, HORIZONTAL_ALIGNMENT_LEFT, -1, Platformer.TICKER_FS, col)
 		var dx: float = sx + seg.w + Platformer.TICKER_GAP / 2
 		draw_colored_polygon(PackedVector2Array([Vector2(dx, ty - 15), Vector2(dx + 6, ty - 8), Vector2(dx, ty - 1), Vector2(dx - 6, ty - 8)]), Color("#f59e0b"))
@@ -392,12 +453,31 @@ func _draw_board(font: Font, t: float) -> void:
 	var chase := int(t / 110.0)
 	for i in n + 1:
 		var c := Vector2(8 + i * step, r.position.y + 9)
-		var on := (i + chase) % 3 == 0
+		var on := (i + chase) % 3 == 0 and pf.wind < 0.5
 		if on:
 			draw_circle(c, 7, Color(1, 0.85, 0.3, 0.35))
 		draw_circle(c, 3.5, Color("#fff7c2") if on else Color("#d97706"))
 	if not pf.slot_spin.is_empty() and not pf.dialog_open:
 		_draw_reels(font, t, Rect2(1066 - 16 - 236, r.position.y + 24, 236, r.size.y - 36))
+
+
+## The transformation: the stopped ticker's letters come loose one by one and drift up
+## and away (each its own delay, sway and spin), fading.
+func _draw_loose_letters(font: Font, seg: Dictionary, ty: float, col: Color, pt: float) -> void:
+	var x: float = seg.x
+	var text: String = seg.text
+	for i in text.length():
+		var ch := text[i]
+		var w := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, Platformer.TICKER_FS).x
+		var h := fposmod(sin((x + i * 7.3) * 12.9898) * 43758.5453, 1.0)
+		var k := clampf((pt - 0.15 - h * 0.7) / 1.4, 0, 1)
+		var e := k * k
+		if x > Platformer.TICKER_LEFT - 20 and x < 1066:
+			var pos := Vector2(x + sin(pt * 2.0 + h * 9.0) * 14.0 * e, ty - e * (90.0 + 160.0 * h))
+			draw_set_transform(pos, (h - 0.5) * 1.6 * e, Vector2.ONE)
+			draw_string(font, Vector2.ZERO, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, Platformer.TICKER_FS, Color(col, col.a * (1.0 - k)))
+			draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+		x += w
 
 
 ## The board dialog's line (wrapped, the largest size that fits) and its reading-time line.
@@ -446,3 +526,42 @@ func _draw_reels(font: Font, t: float, box: Rect2) -> void:
 	var blink: bool = spin.paid and int(t / 150.0) % 2 == 0
 	if lbl != "":
 		Draw.text_center(self, font, Vector2(box.get_center().x, box.end.y - 14), lbl, 16, Color("#fde047") if blink else Color("#fef3c7"))
+
+
+func _a(c: Color) -> Color:
+	return Color(c, c.a * _alpha)
+
+
+## The PMS maze (level 6): the three comfort items as slots (top-left, upright, filled when
+## found), the breath pill (top-right: fills while held, then the calm drains) and the hints.
+func _draw_pms(font: Font) -> void:
+	var pf := platformer
+	var t := pf.time_ms
+	var label := Text.plain(Text.t("PMS_ITEMS"))
+	var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+	var box := Rect2(16, 16, 24 + lw + 3 * 52, 56)
+	Draw.panel(self, box, BG, 18, Color("#b27c94", 0.5), 2)
+	draw_string(font, Vector2(box.position.x + 14, box.position.y + 33), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, INK)
+	for i in 3:
+		var c := Vector2(box.position.x + 24 + lw + 22 + i * 52, box.get_center().y)
+		var got: bool = pf.pms_found[i]
+		var pop: float = _slot_pop[i]
+		var sc := 1.0 + 0.35 * sin(clampf(pop / 0.45, 0, 1) * PI)
+		Draw.panel(self, Rect2(c - Vector2(21, 21), Vector2(42, 42)), Color("#f6e9ef") if got else Color("#e9e4ea"), 12, Color("#b27c94") if got else Color("#c9bccd"), 2)
+		if got:
+			Draw.radial_glow(self, c, 22, Color(1, 0.86, 0.7, 0.35))
+		PmsMaze.draw_item(self, PmsMaze.ITEMS[i], c + Vector2(0, 2), t, 0.95 * sc, 1.0 if got else 0.22)
+	# The breath pill (top-right), the ability hints under it.
+	var pill := Rect2(1066 - 16 - PILL.x, 16, PILL.x, PILL.y)
+	Draw.panel(self, pill, BG, 16)
+	var k := pf.calm_t / Platformer.CALM_TIME if pf.calm_t > 0 else pf.calm_charge
+	if k > 0:
+		_progress_outline(pill, k, Color("#8b6fa8") if pf.calm_t > 0 else TEAL)
+	var bc := pill.get_center()
+	var rr := 9.0 + 7.0 * (pf.steady if pf.calm_t > 0 else pf.calm_charge)
+	draw_circle(bc, rr + 4, Color("#b9a3cc", 0.35))
+	draw_circle(bc, rr, Color("#8b6fa8") if pf.calm_t > 0 else Color(TEAL, 0.8))
+	_wind_icon(bc + Vector2(-44, 0), INK)
+	draw_arc(bc + Vector2(44, 0), 9, 0, TAU, 24, Color(INK, 0.6), 2.0, true)
+	draw_arc(bc + Vector2(44, 0), 4 + 4 * sin(t / 600.0) * (1.0 - pf.steady), 0, TAU, 16, Color(INK, 0.6), 2.0, true)
+	hints.draw(self, Vector2(pill.end.x, pill.end.y))

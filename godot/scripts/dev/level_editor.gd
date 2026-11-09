@@ -122,9 +122,14 @@ func upward() -> bool:
 	return is_runner() or Game.LEVEL_DIRS.get(level_id, "down") == "up"
 
 
-## Cell width on screen.
+## Cell width on screen (a wider vertical level, the jackpot climb's CLIMB_COLS, gets
+## narrower cells so its whole width fits beside the sidebar without scrolling sideways).
 func cw() -> float:
-	return 96.0 if is_runner() else CELL_W
+	if is_runner():
+		return 96.0
+	if horizontal():
+		return CELL_W
+	return minf(CELL_W, floorf((1066 - SIDEBAR - 4 - 14) / maxf(1, cols())))
 
 
 ## The level as text (the forest run keeps its legend as a header).
@@ -192,7 +197,8 @@ func select_level(id: int) -> void:
 		# A browser opened for the previous level must not add to this one.
 		bg_panel.close_browser()
 		bg_panel.refresh()
-	_toast_msg("Editing %s (%s)" % [Game.LEVEL_NAMES[id], _level_file()])
+	_toast_msg("Editing %s (%s)%s" % [Game.LEVEL_NAMES[id], _level_file(),
+		"  ·  shown unrotated here, drawn upside down in the game" if id == Game.PMS_ID else ""])
 
 
 func _resize_grid() -> void:
@@ -271,6 +277,13 @@ const GROUPS := [
 		["0", "flag-triangle-right", "Jackpot row (0): a jackpot + checkpoint"],
 		["~", "wind", "Updraft (~)"],
 		["E", "flag", "The top / level end (E)"],
+	]},
+	{"id": "pms", "name": "PMS maze (level 4; drawn upside down in the game)", "items": [
+		["W", "brick-wall", "Wall (W): solid from every side"],
+		["&", "coffee", "Comfort item (&): tea, hot-water bottle, blanket (by order)"],
+		["D", "door-open", "Door (D): opens when all three items are found"],
+		["P", "map-pin", "Spawn point (P)"],
+		["=", "rectangle-horizontal", "Platform (=): one-way, from above"],
 	]},
 	{"id": "garden", "name": "Summit (old level 3)", "items": [
 		["@", "circle", "Bubble platform (@)"],
@@ -611,6 +624,15 @@ func _draw_grid() -> void:
 						var yy := cell.position.y + 6 + k * 8
 						ci.draw_line(Vector2(mid.x - 2, yy + 6), Vector2(mid.x - 2, yy), Color("#fef08a", 0.8), 2.0)
 						ci.draw_line(Vector2(mid.x + 8, yy + 8), Vector2(mid.x + 8, yy + 2), Color("#fef08a", 0.5), 2.0)
+				"W":
+					ci.draw_rect(cell, Color("#6d5a80"))
+					ci.draw_rect(cell.grow(-1), Color("#a78bfa", 0.35), false, 1.0)
+				"&":
+					ci.draw_circle(mid, 11, Color("#f9a8d4", 0.35))
+					ci.draw_circle(mid, 6, Color("#fbcfe8"))
+				"D":
+					ci.draw_rect(Rect2(cell.position.x + 6, cell.position.y + 3, cell.size.x - 12, cell.size.y - 3), Color("#3b2f4b"))
+					ci.draw_rect(Rect2(cell.position.x + 9, cell.position.y + 6, cell.size.x - 18, cell.size.y - 6), Color("#fde68a", 0.8))
 				"N":
 					ci.draw_rect(Rect2(mid - Vector2(12, 9), Vector2(24, 18)), Color("#e2e8f0"))
 					ci.draw_circle(mid + Vector2(10, -8), 4, Color("#ef4444"))
@@ -648,6 +670,9 @@ func _draw_grid() -> void:
 			Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "“Add 20 rows” adds them at the top (the end)", 11, Color("#64748b"))
 			return
 		Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "END OF LEVEL  ·  %d rows" % rows.size(), 13, Color(frame_col, 0.9))
+		if level_id == Game.PMS_ID:
+			Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "World coordinates: the game draws this maze rotated 180° (upside down, the arrows feel reversed)", 11, Color("#64748b"))
+			return
 		Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "add more with “Add 20 rows” in the header", 11, Color("#64748b"))
 
 
@@ -880,8 +905,8 @@ func _new_level() -> void:
 			rows.append(" ".repeat(cols()))
 	else:
 		for i in 100:
-			rows.append(" ".repeat(LevelData.COLS))
-		rows[99] = "=".repeat(LevelData.COLS)
+			rows.append(" ".repeat(cols()))
+		rows[99] = "=".repeat(cols())
 	_resize_grid()
 	_autosave()
 
@@ -1089,9 +1114,18 @@ func _start_runner_test() -> void:
 	hud_layer.add_child(back)
 
 
+## Frees the test's layer; renamed first, so a test restarted right away (call_deferred,
+## before the old one is gone) gets the name "TestLayer" again.
+func _free_test_layer() -> void:
+	var l := get_node_or_null("TestLayer")
+	if l:
+		l.name = "TestLayerOld"
+		l.queue_free()
+
+
 func stop_test() -> void:
 	if _test_run:
-		get_node("TestLayer").queue_free()
+		_free_test_layer()
 		_test_run = null
 		for c in [self, _scroll, _grid]:
 			c.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -1100,7 +1134,7 @@ func stop_test() -> void:
 		return
 	Audio.stop_all_loops()
 	Audio.set_bgm_volume(0.5)
-	get_node("TestLayer").queue_free()
+	_free_test_layer()
 	_test = null
 	for c in [self, _scroll, _grid]:
 		c.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -1121,6 +1155,14 @@ func _on_test_trigger(name: String) -> void:
 		return
 	if name == "jackpot":
 		_toast_msg("JACKPOT row (checkpoint)")
+		return
+	if name.begins_with("pms_item_"):
+		_toast_msg("Comfort item %s of 3 found" % name.right(1))
+		return
+	if name == "pms_done":
+		_toast_msg("The door: the maze is done — restarting test")
+		stop_test()
+		start_test.call_deferred()
 		return
 	if name == "wave_lost":
 		_toast_msg("The LH wave caught you — restarting test")

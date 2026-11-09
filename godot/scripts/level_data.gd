@@ -36,8 +36,16 @@ extends RefCounted
 ##   ?      slot box (spins the reels on the board, always pays out a power-up)
 ##   0      jackpot row (a JACKPOT and a checkpoint) — whole row
 ##   (~ updraft and E the top are shared with the old summit)
+## The PMS maze (level 4 of the game, level_id 6; authored in world coordinates, the game
+## draws it rotated 180°: Platformer.view_flip) adds:
+##   W      wall (solid from every side; consecutive W in a row merge into one block)
+##   &      comfort item (by order in the map: warm tea, hot-water bottle, soft blanket)
+##   D      the door (opens when all three items are found; touching it ends the level)
 
 const COLS := 25
+## The jackpot climb is wider (drawn zoomed out, Platformer.CLIMB_ZOOM = COLS / CLIMB_COLS):
+## the cell width stays CELL_W, the world is CLIMB_COLS × CELL_W wide.
+const CLIMB_COLS := 36
 const ROW_H := 120.0
 const CELL_W := 1066.0 / COLS
 ## Horizontal levels: square-ish cells, 10 rows = one screen.
@@ -52,6 +60,7 @@ const PALETTE := {
 	"6": "Minigame: iron plate", "7": "Minigame: rhythm", "8": "Minigame: body signals",
 	"9": "LH wave", "E": "Summit / top",
 	"!": "Spring (boost)", "$": "Chip", "?": "Slot box", "0": "Jackpot row",
+	"W": "Wall (PMS maze)", "&": "Comfort item", "D": "Door (PMS maze)",
 	"#": "River", "Y": "Light seed", "K": "Minigame: memory", "M": "Minigame: catch", "Q": "Minigame: pairs", "G": "Gate",
 }
 
@@ -80,7 +89,7 @@ class Plat:
 
 class Ent:
 	var id: int
-	var type: String # iron | spike | enemy | trigger | text | updraft | seed | spring | chip | slot
+	var type: String # iron | spike | enemy | trigger | text | updraft | seed | spring | chip | slot | comfort | door
 	var x: float
 	var y: float
 	var w: float
@@ -108,6 +117,8 @@ class Ent:
 
 
 var platforms: Array[Plat] = []
+## Solid blocks (W, the PMS maze): one rect per run of W in a row.
+var walls: Array[Rect2] = []
 var entities: Array[Ent] = []
 var spawn := Vector2(-1, -1)
 var rows := PackedStringArray()
@@ -140,12 +151,26 @@ static func build(level_rows: PackedStringArray, rh := ROW_H, horizontal := fals
 		L.cols = 0
 		for row in level_rows:
 			L.cols = maxi(L.cols, row.length())
+	elif level_rows.size() > 0:
+		# Vertical levels: as wide as their rows (25 columns, the jackpot climb CLIMB_COLS).
+		L.cols = 0
+		for row in level_rows:
+			L.cols = maxi(L.cols, row.length())
 	L.row_h = rh
 	var next_id := 0
 	var seeds: Array[Ent] = []
+	var comforts := 0
 	for r in level_rows.size():
 		var row := level_rows[r]
 		var y := r * rh
+		var wall_from := -1
+		for c in range(row.length() + 1):
+			var wall := c < row.length() and row[c] == "W"
+			if wall and wall_from < 0:
+				wall_from = c
+			elif not wall and wall_from >= 0:
+				L.walls.append(Rect2(wall_from * CELL_W, y, (c - wall_from) * CELL_W, rh))
+				wall_from = -1
 		var start := -1.0
 		var kind := ""
 		for c in range(row.length() + 1):
@@ -200,6 +225,13 @@ static func build(level_rows: PackedStringArray, rh := ROW_H, horizontal := fals
 					e = _ent("spring", x + CELL_W / 2 - 18, y + rh - 22, 36, 22)
 				"$":
 					e = _ent("chip", x + CELL_W / 2 - 12, y + rh / 2 - 12, 24, 24)
+				"&":
+					# A comfort item resting on the ground below it (tier = which one, by order).
+					e = _ent("comfort", x + CELL_W / 2 - 18, y + rh - 52, 36, 40)
+					e.tier = comforts
+					comforts += 1
+				"D":
+					e = _ent("door", x + CELL_W / 2 - 26, y + rh - 104, 52, 104)
 				"?":
 					e = _ent("slot", x + CELL_W / 2 - 20, y + rh - 70, 40, 40)
 				"#":
@@ -216,7 +248,7 @@ static func build(level_rows: PackedStringArray, rh := ROW_H, horizontal := fals
 						# Spans the whole column.
 						e = _ent("trigger", x - 40, 0, CELL_W + 80, level_rows.size() * rh)
 					else:
-						e = _ent("trigger", 0, y - 100, 1066, 200)
+						e = _ent("trigger", 0, y - 100, L.width(), 200)
 					e.trigger_type = tkind
 				_:
 					if ch >= "a" and ch <= "z":

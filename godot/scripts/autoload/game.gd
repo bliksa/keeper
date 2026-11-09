@@ -13,15 +13,17 @@ const CUSTOM_LEVEL_PATH := "user://custom_level.txt"
 ## horizontal), 3 the summit (ovulation, up). dir: "down" | "right" | "up" | "left".
 ## 4 = the forest run (level 2 of the game, a top-down map for ForestRunner);
 ## 5 = the jackpot climb (level 3 of the game, ovulation, up with the board);
+## 6 = the PMS maze (level 4 of the game, luteal phase; drawn upside down, see Platformer.view_flip);
 ## 2 = the old meadow and 3 = the old summit (developer menu only).
 ## The dict order is the level editor's picker order.
 const CLIMB_ID := 5
-const LEVELS := {1: "res://data/levels/cave.txt", 4: "res://data/levels/forest_run.txt", 5: "res://data/levels/climb.txt", 2: "res://data/levels/meadow.txt", 3: "res://data/levels/garden.txt"}
-const LEVEL_NAMES := {1: "Cave", 4: "Forest run", 5: "Jackpot climb", 2: "Meadow (old)", 3: "Summit (old)"}
-const LEVEL_DIRS := {1: "down", 4: "forward", 5: "up", 2: "right", 3: "up"}
+const PMS_ID := 6
+const LEVELS := {1: "res://data/levels/cave.txt", 4: "res://data/levels/forest_run.txt", 5: "res://data/levels/climb.txt", 6: "res://data/levels/pms.txt", 2: "res://data/levels/meadow.txt", 3: "res://data/levels/garden.txt"}
+const LEVEL_NAMES := {1: "Cave", 4: "Forest run", 5: "Jackpot climb", 6: "PMS maze", 2: "Meadow (old)", 3: "Summit (old)"}
+const LEVEL_DIRS := {1: "down", 4: "forward", 5: "up", 6: "down", 2: "right", 3: "up"}
 ## Prefix of the dialogs of each level (data/dialogs.json): 2C = level 2, dialog C.
 ## "0" is the prologue in the forest (no level map). The old summit (id 3) uses "S".
-const DIALOG_LEVEL := {1: "1", 4: "2", 5: "3", 2: "M", 3: "S"}
+const DIALOG_LEVEL := {1: "1", 4: "2", 5: "3", 6: "4", 2: "M", 3: "S"}
 
 ## "keyboard" or "gamepad" — decides which <KB>/<GP> hint text is shown.
 var control_mode := "keyboard":
@@ -40,7 +42,7 @@ var intro_done := false
 ## Checkpoint index: 0 = level start (first run), 1 = cave start,
 ## 2..4 = after minigame N, 5 = boss (level 2: the LH wave).
 var checkpoint := 0
-## Current level: 1 cave, 4 forest run, 5 jackpot climb (2 old meadow, 3 old summit).
+## Current level: 1 cave, 4 forest run, 5 jackpot climb, 6 PMS maze (2 old meadow, 3 old summit).
 var level := 1
 ## Level 3 power-ups earned in the minigames: "jump", "dash", "double".
 var upgrades := {}
@@ -99,6 +101,8 @@ func level_rows(id: int) -> PackedStringArray:
 static func level_cols(id: int) -> int:
 	if is_horizontal(id):
 		return -1
+	if id == CLIMB_ID:
+		return LevelData.CLIMB_COLS
 	return ForestRunner.COLS if id == ForestRunner.LEVEL_ID else LevelData.COLS
 
 

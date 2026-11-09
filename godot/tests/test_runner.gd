@@ -137,8 +137,24 @@ func _run() -> void:
 			top_y = minf(top_y, e.y)
 	check(top_y < 600, "the climb's top (E) is near the top")
 	check(c5.get("spring", 0) > 0 and c5.get("chip", 0) > 0 and c5.get("slot", 0) > 0 and c5.get("jackpot", 0) == 3, "the climb has springs, chips, slot boxes and 3 jackpot rows")
-	check(LevelData.parse_text(LevelData.to_text(rows5)) == rows5, "climb text round-trips")
+	check(LevelData.parse_text(LevelData.to_text(rows5), LevelData.CLIMB_COLS) == rows5, "climb text round-trips")
 	check(LevelData.PALETTE.has("!") and LevelData.PALETTE.has("$") and LevelData.PALETTE.has("?") and LevelData.PALETTE.has("0"), "the climb's legend has labels")
+	# The PMS maze (level 4 of the game, id 6): a spawn, three comfort items, one door, walls.
+	var rows6: PackedStringArray = Game.level_rows(Game.PMS_ID)
+	var L6 := LevelData.build(rows6)
+	var c6 := {}
+	for e in L6.entities:
+		c6[e.type] = int(c6.get(e.type, 0)) + 1
+	check(rows6.size() >= 20 and rows6[0].length() == 25 and L6.has_spawn() and L6.spawn.y < 400, "the PMS maze: %d rows of 25, the spawn at the top" % rows6.size())
+	check(c6.get("comfort", 0) == 3 and c6.get("door", 0) == 1 and L6.walls.size() > 10, "the maze has 3 comfort items, a door and %d wall blocks" % L6.walls.size())
+	var tiers6: Array = L6.entities.filter(func(e): return e.type == "comfort").map(func(e): return e.tier)
+	check(tiers6 == [0, 1, 2], "the items are tea, hot-water bottle, blanket by order %s" % str(tiers6))
+	var reach6 := PmsMaze.check(rows6)
+	check(reach6.ok, "every item and the door can be reached with single / double jumps, no soft lock (unreachable %s, traps %d)" % [str(reach6.unreachable), reach6.traps.size()])
+	var blocked := rows6.duplicate()
+	blocked[rows6.size() - 2] = "W".repeat(25)
+	check(not PmsMaze.check(blocked).ok, "the reachability check notices a walled-in door")
+	check(LevelData.parse_text(LevelData.to_text(rows6)) == rows6 and Game.LEVELS.keys().find(Game.PMS_ID) == Game.LEVELS.keys().find(Game.CLIMB_ID) + 1, "maze text round-trips; it comes after the climb in the level list")
 
 	step("pipes layouts are solvable")
 	_check_pipe_layouts()
@@ -239,6 +255,7 @@ func _run() -> void:
 	step("cave physics")
 	await seconds(1.0)
 	check(pf.p.is_grounded, "player stands on a platform")
+	check(pf.view_zoom == 1.0 and pf._world.scale == Vector2.ONE and pf.level.cols == 25 and pf.level_w == Platformer.W, "the cave is not zoomed: 25 columns, one screen wide")
 	var y0 := pf.p.y
 	_key(KEY_SPACE, true)
 	await frames(2)
@@ -256,9 +273,19 @@ func _run() -> void:
 	var enemy := _teleport_to_entity(pf, "enemy")
 	await frames(3)
 	check(pf.p.held_by_cramp == enemy.id, "held by a cramp")
+	if not pf.dialog_open:
+		check(pf.hud.hint_lines() == ["HINT_BREATH_RHYTHM"], "held: the hint under the pill shows the breathing rhythm %s" % str(pf.hud.hint_lines()))
 	await _do_recharge()
 	check(pf.p.held_by_cramp == -1, "breathing cycle freed the player")
 	check(pf.p.breath_charges == 3, "breath charges refilled")
+	await frames(2)
+	check(pf.hud.hint_lines() == ["HINT_BREATH_ATTACK"], "breath charged: the hint says the breath attacks %s" % str(pf.hud.hint_lines()))
+	pf.p.breath_charges = 0
+	await frames(2)
+	check(pf.hud.hint_lines() == ["HINT_BREATH_CHARGE"], "breath used up: the hint says to charge it %s" % str(pf.hud.hint_lines()))
+	pf.p.breath_charges = 3
+	for hk in ["HINT_BREATH_ATTACK", "HINT_BREATH_CHARGE", "HINT_BREATH_RHYTHM", "HINT_RUN_FOCUS", "HINT_RUN_DOUBLE", "HINT_CLIMB_SUPER_JUMP", "HINT_CLIMB_TRIPLE", "HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET"]:
+		check(Text.LANGUAGES.all(func(lang): return Text._strings.get(lang, {}).has(hk)), "ability hint %s exists in sk / en / pt" % hk)
 
 	step("minigame 2 – chocolate")
 	await _go_trigger(pf, "mg2")
@@ -468,6 +495,19 @@ func _run() -> void:
 	await frames(3)
 	check(not rn.slow, "no slow-down without water")
 	Input.action_release("slow_time")
+	# The ability hints under the water pill: only what the drops allow right now.
+	rn.reload_t = 0
+	rn.drops = 0
+	await frames(2)
+	check(rn.hint_lines().is_empty(), "no drops: no ability hints %s" % str(rn.hint_lines()))
+	rn.drops = 1
+	await frames(2)
+	check(rn.hint_lines() == ["HINT_RUN_FOCUS"], "one drop: the focus hint %s" % str(rn.hint_lines()))
+	rn.drops = 4
+	await frames(2)
+	check(rn.hint_lines() == ["HINT_RUN_FOCUS", "HINT_RUN_DOUBLE"], "two drops or more: focus and the double jump %s" % str(rn.hint_lines()))
+	rn.drops = 0
+	rn.water = 0
 	# The magazine: a double jump costs two drops; empty, it reloads from the bar.
 	rn.objects.clear()
 	rn.py = 0
@@ -653,6 +693,11 @@ func _run() -> void:
 	check(not pf.on_board and pf.climb_mult == 1 and pf.climb_win == 0 and pf.ticker.size() > 0 and pf.hud.visible, "the board's ticker runs, she starts just above the board at x1")
 	check(pf.board_y() > pf.p.y + pf.p.height and pf.board_y() - (pf.p.y + pf.p.height) < 120, "the board's top edge is right below her feet")
 	check(not node_box().is_open() and not pf.board_talking(), "no dialog at the start of the climb")
+	# Wider and zoomed out: 36 columns, drawn at CLIMB_ZOOM so the whole width fits the screen.
+	check(absf(pf.view_zoom - Platformer.CLIMB_ZOOM) < 0.001 and absf(pf.view_zoom - 0.7) < 0.02 and pf._world.scale.is_equal_approx(Vector2.ONE * pf.view_zoom) and pf._bg.scale.is_equal_approx(pf._world.scale) and pf._player_layer.scale.is_equal_approx(pf._world.scale), "the climb is drawn zoomed out (%.3f): world, background and player layers" % pf.view_zoom)
+	check(pf.level.cols == LevelData.CLIMB_COLS and LevelData.CLIMB_COLS == 36 and Game.level_cols(Game.CLIMB_ID) == 36 and absf(pf.level_w - 36 * LevelData.CELL_W) < 0.01, "the climb's map has 36 columns (%.0f px wide)" % pf.level_w)
+	check(absf(pf.view_w() - pf.level_w) < 1.0 and absf(pf.level_w * pf.view_zoom - Platformer.W) < 1.0, "the level's side walls are the screen's edges")
+	check(absf((pf.board_y() - pf.camera_y) * pf.view_zoom - (Platformer.H - Platformer.BOARD_H)) < 0.5 and pf.hud.scale == Vector2.ONE, "the board stays at the bottom of the screen (screen space, not zoomed)")
 	# No dialog letters and no minigames in the climb's map.
 	check(not pf.level.entities.any(func(e): return e.type == "trigger" and (e.trigger_type == "dialog" or e.trigger_type.begins_with("mg") or e.trigger_type in ["end", "wave", "gate"])), "the climb's map has no dialog letters and no minigame triggers")
 	# A letter painted in the editor anyway talks on the board, never in the dialog box;
@@ -680,7 +725,7 @@ func _run() -> void:
 	# Caught: the board rises past her feet → she stands on it, sits, x1, a calm line.
 	pf.rise_wait = 0.0
 	pf.rise = 2.0
-	pf.camera_y = pf.p.y + pf.p.height - (Platformer.H - Platformer.BOARD_H) - 40
+	pf.camera_y = pf.p.y + pf.p.height - (Platformer.H - Platformer.BOARD_H) / pf.view_zoom - 40
 	pf.p.vy = 0
 	await frames(3)
 	check(pf.on_board and pf.p.is_grounded and absf(pf.p.y + pf.p.height - pf.board_y()) < 2, "the rising board catches her: she stands on its top edge")
@@ -732,7 +777,7 @@ func _run() -> void:
 	# A dialog on the board doesn't stop anything: the board keeps rising, landing on it
 	# is a catch (x1), there is no dialog box and nothing to press.
 	_climb_put(pf, 500, from.base_y - 60)
-	pf.camera_y = from.base_y - 60 - (Platformer.H - Platformer.BOARD_H) + 30
+	pf.camera_y = from.base_y - 60 - (Platformer.H - Platformer.BOARD_H) / pf.view_zoom + 30
 	pf.climb_mult = 4
 	var talked: Array = []
 	pf.board_dialog_done.connect(func(id): talked.append(id))
@@ -797,11 +842,16 @@ func _run() -> void:
 	check(pf._jump_force() < jf * 1.25 and pf.banner.get("text", "") == Text.plain(Text.t("CLIMB_PU_SUPER_JUMP")), "super jump: jumps 30 % higher, a banner")
 	check(pf.board_talk.get("id", "") == "3A" and not node_box().is_open() and not pf.dialog_open, "the first super jump: 3A talks on the board (no dialog box, no buttons)")
 	var sj_left: float = pf.climb_power.get("super_jump", 0.0)
+	await frames(2)
+	check(pf.hud.hint_lines() == ["HINT_CLIMB_SUPER_JUMP"], "the super jump's hint shows top-right while it lasts %s" % str(pf.hud.hint_lines()))
 	await frames(30)
 	check(pf.board_talking("3A") and absf(float(pf.climb_power.get("super_jump", 0.0)) - sj_left) < 0.001, "the super jump doesn't run out while 3A explains it")
 	pf.climb_power.clear()
+	await frames(2)
+	check(pf.hud.hint_lines().is_empty(), "expired: no power-up hint")
 	pf.grant_power("triple")
 	await frames(3)
+	check(pf.hud.hint_lines() == ["HINT_CLIMB_TRIPLE"], "the triple jump's hint %s" % str(pf.hud.hint_lines()))
 	check(pf._max_jumps() == 3 and pf.p.jumps_left == 3, "triple jump: three jumps")
 	check(pf.board_talking("3B") and pf.board_queue.has("3B"), "the first triple jump: 3B waits for 3A on the board")
 	for i in 3:
@@ -810,6 +860,32 @@ func _run() -> void:
 		_key(KEY_SPACE, false)
 		await frames(5)
 	check(pf.p.jumps_left == 0 and pf.p.vy < 0, "three jumps in a row")
+	# A full triple-jump stack (each jump at the top of the last, with the super jump) stays
+	# below the top of the visible area: the camera follows.
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	pf.rise_wait = 30.0
+	pf.grant_power("super_jump")
+	pf.grant_power("triple")
+	await frames(3)
+	var top_gap := 9999.0
+	for i in 3:
+		_key(KEY_SPACE, true)
+		await frames(1)
+		_key(KEY_SPACE, false)
+		var guard := 0
+		while pf.p.vy < 0 and guard < 200:
+			top_gap = minf(top_gap, (pf.p.y - pf.camera_y) * pf.view_zoom)
+			await frames(1)
+			guard += 1
+	check(top_gap > 20 and pf.p.jumps_left == 0, "a triple-jump stack stays below the top of the screen (%.0f px at the closest)" % top_gap)
+	# The side walls are the level's edges: she runs into them, at the screen's edge.
+	_climb_put(pf, pf.level_w - 60, stand.base_y)
+	pf.p.y = stand.base_y - 400
+	Input.action_press("move_right")
+	await frames(40)
+	Input.action_release("move_right")
+	check(absf(pf.p.x - (pf.level_w - pf.p.width)) < 0.5 and (pf.p.x + pf.p.width - pf.camera_x) * pf.view_zoom <= Platformer.W + 0.5 and (pf.p.x + pf.p.width - pf.camera_x) * pf.view_zoom > Platformer.W - 2, "the right wall is the level's edge, at the screen's right edge")
+	pf.rise_wait = 0.0
 	pf.climb_power.clear()
 	await frames(60)
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
@@ -869,16 +945,49 @@ func _run() -> void:
 	check(end_talk and not node_box().is_open() and not pf.dialog_open and main.state == "platformer", "at the top 3E talks on the board (no dialog box, no buttons)")
 	var end_speakers: Array = []
 	var guard5 := 0
-	while is_instance_valid(pf) and main.platformer == pf and guard5 < 20:
+	while is_instance_valid(pf) and main.platformer == pf and pf.prerod_t < 0 and guard5 < 20:
 		guard5 += 1
 		if pf.board_talking():
 			if not end_speakers.has(pf.board_talk.speaker):
 				end_speakers.append(pf.board_talk.speaker)
 			pf.board_talk.t = pf.board_talk.dur
 		await frames(3)
-	await frames(5)
 	check(end_speakers.has("Kyra") and end_speakers.has("Estrogenka"), "3E's parts show their speakers on the board %s" % str(end_speakers))
-	check(main.state == "title" and Game.level == 1, "after 3E on the board: back to the title")
+
+	step("the transformation (the climb's end → the PMS maze)")
+	check(pf.prerod_t >= 0 and pf.hold_input and main.platformer == pf, "after 3E the transformation starts (no control)")
+	var tick0: float = pf.ticker[0].x if not pf.ticker.is_empty() else 0.0
+	await seconds(1.0)
+	check(pf.ticker.is_empty() or is_equal_approx(pf.ticker[0].x, tick0), "the board's ticker stops")
+	await seconds(0.7)
+	check(pf.wind >= 1.0 and pf.view_flip < 0.05, "the casino winds down first (wind %.2f), then it turns" % pf.wind)
+	check(pf._world.modulate.b > pf._world.modulate.g and pf._world.modulate.r < 0.9, "the gold drains out of the colours (dusky violet)")
+	var mid_flip := await until(func(): return pf.view_flip > 0.4 and pf.view_flip < 0.6, 3)
+	check(mid_flip and pf.hud.modulate.a < 0.05 and absf(pf._world.rotation - PI / 2) < 0.4, "halfway the view is turned ~90° (%.2f rad), the HUD is gone" % pf._world.rotation)
+	var turned := await until(func(): return not is_instance_valid(pf) or pf.view_flip >= 1.0, 3)
+	check(turned and is_instance_valid(pf) and absf(pf._world.rotation - PI) < 0.05 and absf(pf._bg.rotation - PI) < 0.05 and absf(pf._player_layer.rotation - PI) < 0.05, "the whole view (background, world, Kyra) turns 180°")
+	var maze_on := await until(func(): return main.platformer != null and main.platformer != pf and main.platformer.is_pms(), 2)
+	check(maze_on and Game.level == Game.PMS_ID and main.state == "platformer", "the PMS maze (level 6) comes in")
+	var pms: Platformer = main.platformer
+	check(pms.view_flip == 1.0 and pms.modulate.a < 0.5, "the maze is already upside down and fades in over the climb")
+	await finish_dialog("4A")
+	check(not is_instance_valid(pf), "the climb is gone after the crossfade")
+	check(pms.modulate.a == 1.0 and not pms.hold_input and pms.p.is_grounded, "Kyra settled onto her platform; control is back after 4A")
+
+	step("level 4 – the PMS maze")
+	await _pms_play(pms)
+	check(main.state == "title" and Game.level == 1, "after 4E: back to the title")
+	main._dev_action("checkpoint6", 2)
+	var door_dev := await until(func(): return main.state == "platformer" and main.platformer != null and main.platformer.is_pms() and main.platformer.pms_items == 3, 8)
+	await frames(3)
+	check(door_dev and main.platformer.pms_items == 3 and main.platformer.door_open > 0 and not node_box().is_open(), "the developer menu opens the maze with the door open")
+	main._quit_to_title()
+	await frames(3)
+	main._dev_action("pms_transform", 0)
+	var dev_top := await until(func(): return main.platformer != null and main.platformer.is_climb() and main.platformer.climb_won, 8)
+	check(dev_top, "the developer menu's Transformation starts at the climb's top")
+	main._quit_to_title()
+	await frames(3)
 
 	main._dev_action("checkpoint5", 5)
 	var near_top := await until(func(): return main.state == "platformer" and Game.level == Game.CLIMB_ID and main.platformer != null, 8)
@@ -1360,6 +1469,8 @@ func _run() -> void:
 	if token0 != "":
 		GitHubSave.set_token(token0)
 	var dev: DevMenu = main._menu
+	var pms_btns: Array = dev.find_children("*", "Button", true, false).filter(func(b): return b.text in ["Transformation", "Door open"])
+	check(pms_btns.size() == 2 and pms_btns.all(func(b): return not b.disabled), "the developer menu's column 4 (PMS maze) is playable")
 	dev._show("level")
 	await frames(3)
 	var ed: LevelEditor = dev._editor
@@ -1398,6 +1509,21 @@ func _run() -> void:
 	DirAccess.remove_absolute(LevelEditor.AUTOSAVE_FMT % Game.CLIMB_ID)
 	if FileAccess.file_exists(LevelEditor.AUTOSAVE_FMT % ForestRunner.LEVEL_ID):
 		DirAccess.remove_absolute(LevelEditor.AUTOSAVE_FMT % ForestRunner.LEVEL_ID)
+	# The PMS maze: its tools; test play is upside down; the door ends a test.
+	if FileAccess.file_exists(LevelEditor.AUTOSAVE_FMT % Game.PMS_ID):
+		DirAccess.remove_absolute(LevelEditor.AUTOSAVE_FMT % Game.PMS_ID)
+	ed.select_level(Game.PMS_ID)
+	await frames(3)
+	check(not ed.upward() and ed.cols() == 25 and ed.rows == Game.level_rows(Game.PMS_ID) and ["W", "&", "D"].all(func(ch): return ed._tool_info.has(ch)), "editor switches to the PMS maze and has its tools (W, &, D)")
+	ed.start_test()
+	await frames(5)
+	check(ed._test != null and ed._test.is_pms() and ed._test.view_flip == 1.0 and absf(ed._test._world.rotation - PI) < 0.05, "test play of the maze is upside down")
+	ed._test.dev_all_comforts()
+	ed._test._pms_done()
+	await frames(3)
+	check(ed._test != null and ed._test.is_pms() and ed._toast.text.contains("door"), "the door in a test restarts it with a toast")
+	ed.stop_test()
+	await frames(2)
 	ed.select_level(ForestRunner.LEVEL_ID)
 	await frames(3)
 	check(ed.is_runner() and ed.cols() == ForestRunner.COLS and ed.rows.size() == Game.level_rows(ForestRunner.LEVEL_ID).size() and ed._tool_info.has("+") and ed._tool_info.has("<"), "editor shows the forest run as a top-down map with its tools")
@@ -1466,7 +1592,7 @@ func _run() -> void:
 	var bp: BackgroundPanel = ed.bg_panel
 	check(bp != null and bp.layers().size() == 5 and not ed.bg_dirty(), "the background panel shows the cave's 5 layers")
 	check(ed.bg_edit.is_empty() and not FileAccess.file_exists(LevelEditor.BG_AUTOSAVE), "just looking at a background stores nothing")
-	check(Platformer.bg_origin_for(3, 28200) == Vector2(0, 27600) and Platformer.bg_origin_for(Game.CLIMB_ID, 20000) == Vector2(0, 19400) and Platformer.bg_origin_for(1, 28200) == Vector2.ZERO, "summit and climb layers are anchored to their start at the bottom")
+	check(Platformer.bg_origin_for(3, 28200) == Vector2(0, 27600) and Platformer.bg_origin_for(Game.CLIMB_ID, 20000).is_equal_approx(Vector2(0, 20000 - 600 / Platformer.CLIMB_ZOOM)) and Platformer.bg_origin_for(1, 28200) == Vector2.ZERO, "summit and climb layers are anchored to their start at the bottom")
 	bp.open_browser(-1)
 	await frames(30)
 	var br: AssetBrowser = bp.browser
@@ -1714,6 +1840,7 @@ func _run() -> void:
 	check(de != null and de.ids_in("2") == ["2A", "2B", "2C", "2E"] and de.ids_in("0").size() == 4, "the Dialogs tab lists each level's dialogs (2A–2E, 0A–0D)")
 	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", Game.CLIMB_ID) == "3B" and Text.dialog_for_letter("b", 3) == "SB" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
 	check(de.ids_in("mg").has("mg8_start") and not DialogEditor.is_story("mg8_start"), "minigame talk is listed apart, under its own names")
+	check(de.ids_in("4") == ["4A", "4B", "4C", "4D", "4E", "4F"] and Text.dialog_for_letter("a", Game.PMS_ID) == "4A" and DialogEditor.BY_GAME.has("4A") and DialogEditor.BY_GAME.has("4E") and DialogEditor.BY_GAME.has("4F"), "the PMS maze's dialogs 4A–4F are listed (started by the game)")
 	# Saving the files as they are changes nothing (same format as in the repo).
 	var bundled := {"godot/data/dialogs.json": FileAccess.get_file_as_string("res://data/dialogs.json"),
 		"godot/data/characters.json": FileAccess.get_file_as_string("res://data/characters.json")}
@@ -1907,6 +2034,110 @@ func _climb_ent(pf: Platformer, type: String) -> LevelData.Ent:
 	return best
 
 
+## The PMS maze from its start (4A finished): reversed on screen, walls, the breath, the
+## items, the door, the end.
+func _pms_play(pf: Platformer) -> void:
+	var events: Array = []
+	pf.trigger.connect(func(n): events.append(n))
+	check(absf(pf._world.rotation - PI) < 0.05 and pf.view_flip == 1.0, "the maze's world is drawn rotated 180°")
+	# Right moves her right in the world, which is left on screen.
+	var xf := pf._player_layer.get_transform()
+	var sx0 := (xf * Vector2(pf.p.x, pf.p.y)).x
+	var wx0 := pf.p.x
+	Input.action_press("move_right")
+	await frames(20)
+	Input.action_release("move_right")
+	xf = pf._player_layer.get_transform()
+	var sx1 := (xf * Vector2(pf.p.x, pf.p.y)).x
+	check(pf.p.x > wx0 + 20 and sx1 < sx0 - 20, "pressing right: world x up (%d → %d), screen x down (%d → %d)" % [wx0, pf.p.x, sx0, sx1])
+	# A wall blocks from the side (the low block in the top corridor).
+	var cw := LevelData.CELL_W
+	var block := Rect2()
+	for r in pf.level.walls:
+		if is_equal_approx(r.position.y, 240.0) and r.position.x > 300 and r.end.x < 1000:
+			block = r
+	check(block.size.x > 0, "the top corridor has a low wall block")
+	pf.p.x = block.position.x - pf.p.width - 30
+	pf.p.y = block.end.y - pf.p.height
+	pf.p.vx = 0
+	pf.p.vy = 0
+	Input.action_press("move_right")
+	await frames(30)
+	Input.action_release("move_right")
+	check(pf.p.x + pf.p.width <= block.position.x + 0.6, "a wall stops her from the side")
+	# … and from below: jumping up into a wall's underside bumps her head.
+	var floor3 := Rect2()
+	for r in pf.level.walls:
+		if is_equal_approx(r.position.y, 360.0) and r.size.x > 300:
+			floor3 = r
+	pf.p.x = floor3.position.x + 200
+	pf.p.y = floor3.end.y + 5
+	pf.p.vy = -12
+	pf.p.is_grounded = false
+	var through := false
+	for i in 12:
+		await frames(1)
+		through = through or pf.p.y < floor3.end.y - 1
+	check(not through and pf.p.y >= floor3.end.y - 0.5, "a wall stops her from below")
+	# The breath: hold to breathe in, then the world is calm a while (steady).
+	await frames(30)
+	check(pf.hud.hint_lines() == ["HINT_PMS_BREATHE"], "the maze's ability hint: hold to breathe %s" % str(pf.hud.hint_lines()))
+	Input.action_press("breathe")
+	await seconds(Platformer.CALM_FILL + 0.2)
+	Input.action_release("breathe")
+	check(pf.calm_t > 0 and pf.calm_charge == 0.0, "a full breath calms the world")
+	await seconds(1.3)
+	check(pf.steady > 0.95 and absf(pf.view_angle() - PI) < 0.002 and pf.hud.hint_lines().has("HINT_PMS_CALM"), "while calm the view stops swaying (steady %.2f)" % pf.steady)
+	pf.calm_t = 0.01
+	await frames(3)
+	# The door is closed until all three items are found.
+	var door: LevelData.Ent = null
+	var items: Array = []
+	for e in pf.level.entities:
+		if e.type == "door":
+			door = e
+		elif e.type == "comfort":
+			items.append(e)
+	pf.p.x = door.x + door.w / 2 - pf.p.width / 2
+	pf.p.y = door.y + door.h - pf.p.height - 2
+	pf.p.vy = 0
+	await frames(20)
+	check(pf.door_open == 0.0 and not events.has("pms_done") and not pf._pms_done_sent, "the door stays closed without the items")
+	# Out of map order (the tea's pocket is off the obvious route): each item still gets its
+	# own tip and its own HUD slot; the last one, whichever it is, opens the door (4F).
+	var pick_order := [1, 2, 0]
+	for n in pick_order.size():
+		var tier: int = pick_order[n]
+		var it: LevelData.Ent = null
+		for e in items:
+			if e.tier == tier:
+				it = e
+		pf.p.x = it.x + it.w / 2 - pf.p.width / 2
+		pf.p.y = it.y + it.h - pf.p.height
+		pf.p.vy = 0
+		var did: String = PmsMaze.ITEM_DIALOGS[tier]
+		var got := await until(func(): return node_box().node_id() == did, 3)
+		var slots_ok := true
+		for k in 3:
+			slots_ok = slots_ok and pf.pms_found[k] == pick_order.slice(0, n + 1).has(k)
+		check(got and pf.pms_items == n + 1 and it.collected and slots_ok, "item %d picked (%s): dialog %s, its own slot filled %s" % [n + 1, PmsMaze.ITEMS[tier], did, pf.pms_found])
+		if n < 2:
+			check(pf.door_open == 0.0, "the door is still closed after %d item(s)" % (n + 1))
+		await finish_dialog(did)
+	check(pf.door_open > 0, "the third item opens the door")
+	var door_line := await until(func(): return node_box().node_id() == PmsMaze.DOOR_DIALOG, 3)
+	check(door_line, "after the third item, whichever it is: %s (the door is open)" % PmsMaze.DOOR_DIALOG)
+	await finish_dialog(PmsMaze.DOOR_DIALOG)
+	await seconds(0.8)
+	pf.p.x = door.x + door.w / 2 - pf.p.width / 2
+	pf.p.y = door.y + door.h - pf.p.height - 2
+	pf.p.vy = 0
+	var done := await until(func(): return events.has("pms_done"), 3)
+	check(done and pf.hold_input, "the open door ends the level (pms_done)")
+	await finish_dialog("4E")
+	await frames(5)
+
+
 func _go_trigger(pf: Platformer, kind: String) -> void:
 	for e in pf.level.entities:
 		if e.type == "trigger" and e.trigger_type == kind:
@@ -1916,7 +2147,7 @@ func _go_trigger(pf: Platformer, kind: String) -> void:
 				pf.p.y = 240
 				pf.camera_x = clampf(pf.p.x - 400, 0, pf.level_w - 1066)
 			else:
-				pf.p.x = 500
+				pf.p.x = pf.level_w / 2 - 15
 				pf.p.y = e.y + 60
 				pf.camera_y = e.y - 200
 			pf.p.vy = 0

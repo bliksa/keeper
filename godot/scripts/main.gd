@@ -5,7 +5,8 @@ extends Node
 ##   → mg2 chocolate → platformer → mg3 pipes → platformer → mg4 prices
 ##   → platformer → boss → level 2 (the forest run, runner): mg8 memory → mg9 catch
 ##   → mg10 pairs → 2E → level 3 (the jackpot climb, id 5, up with the board)
-##   → climb_top → 3E (on the board) → title
+##   → climb_top → 3E (on the board) → the transformation (the view turns upside down)
+##   → level 4 (the PMS maze, id 6): 4A, three comfort items (4B–4D), the door → 4E → title
 ## Old levels (developer menu only): the meadow (id 2) → the old summit (id 3:
 ## mg5 iron plate → mg6 rhythm → mg7 body signals → LH wave chase → summit → title).
 ## plus the developer menu ("dev").
@@ -81,8 +82,30 @@ func _ready() -> void:
 			_dev_runner_hits.call_deferred()
 		# ?climb=1: the jackpot climb from its start; ?climb=top: just below the top.
 		var cq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('climb') || ''")
-		if cq is String and cq != "":
+		if cq is String and cq == "end":
+			# ?climb=end: the climb's top → 3E on the board → the transformation.
+			_dev_action.call_deferred("pms_transform", 0)
+		elif cq is String and cq != "":
 			_dev_action.call_deferred("checkpoint5", 5 if cq == "top" else 1)
+			if cq == "power":
+				_dev_climb_powers.call_deferred()
+		# ?pms=1: the PMS maze from its start (?pms=door: all three items found).
+		var pq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('pms') || ''")
+		if pq is String and pq != "":
+			_dev_action.call_deferred("checkpoint6", 2 if pq == "door" else 1)
+		# ?cave=N: the cave from checkpoint N (with breathing; its ability hints).
+		var vq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('cave') || ''")
+		if vq is String and vq != "":
+			_dev_action.call_deferred("checkpoint", clampi(int(vq), 0, 4))
+
+
+## ?climb=power: the climb with a super jump and the magnet (their hints top-right).
+func _dev_climb_powers() -> void:
+	await get_tree().create_timer(2.0).timeout
+	if platformer and platformer.is_climb():
+		platformer.powers_explained = {"super_jump": true, "magnet": true}
+		platformer.grant_power("super_jump")
+		platformer.grant_power("magnet")
 
 
 func _dev_boss_win() -> void:
@@ -163,7 +186,11 @@ func _set_state(s: String) -> void:
 	_panel_box.at_top = _node_box.at_top
 	match s:
 		"intro", "mg1": Audio.play_bgm("forest.mp3", 0.4)
-		"platformer": Audio.play_bgm("chamber.mp3" if Game.level == 1 else "forest.mp3", 0.5)
+		"platformer":
+			if Game.level == Game.PMS_ID:
+				Audio.play_bgm("menu.mp3", 0.4)
+			else:
+				Audio.play_bgm("chamber.mp3" if Game.level == 1 else "forest.mp3", 0.5)
 		"runner": Audio.play_bgm("forest.mp3", 0.55)
 		"mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10": Audio.play_bgm("minihra.mp3", 0.5)
 		"title": Audio.play_bgm("menu.mp3", 0.5)
@@ -319,6 +346,18 @@ func _dev_action(name: String, value: int) -> void:
 			Game.has_breathing = true
 			Game.intro_done = true
 			_start_climb(value)
+		"checkpoint6":
+			# The PMS maze: 1 start, 2 the door open (all three items found).
+			Game.reset_run()
+			Game.has_breathing = true
+			Game.intro_done = true
+			_start_pms(value)
+		"pms_transform":
+			# The climb's top: the jackpot, 3E on the board, then the transformation.
+			Game.reset_run()
+			Game.has_breathing = true
+			Game.intro_done = true
+			_dev_climb_end()
 		"checkpoint3":
 			# Old summit checkpoints: 1 start, 2..4 after its minigames, 5 the LH wave.
 			Game.reset_run()
@@ -426,6 +465,85 @@ func _start_climb(checkpoint := 1, fade := true) -> void:
 	await _start_level(Game.CLIMB_ID, checkpoint, Game.iron, fade)
 
 
+## (Re)start the PMS maze (level 4 of the game, id 6): 1 start, 2 the door open (all
+## three comfort items found; developer menu). 4A when it shows.
+func _start_pms(checkpoint := 1, fade := true) -> void:
+	var run := _run_id
+	await _start_level(Game.PMS_ID, mini(checkpoint, 1), Game.iron, fade)
+	if run != _run_id or platformer == null or not platformer.is_pms():
+		return
+	if checkpoint >= 2:
+		platformer.dev_all_comforts()
+		platformer.dev_near_door()
+	else:
+		await get_tree().create_timer(0.4).timeout
+		if run == _run_id and platformer != null and platformer.is_pms():
+			_dialog("4A")
+
+
+## The developer shortcut to the transformation: the climb near its top, then onto the top.
+func _dev_climb_end() -> void:
+	var run := _run_id
+	await _start_climb(5)
+	if run != _run_id or platformer == null:
+		return
+	await get_tree().create_timer(0.8).timeout
+	if run != _run_id or platformer == null or not platformer.is_climb():
+		return
+	platformer.dev_to_top()
+
+
+## A new Platformer for a level (not added to the tree yet), its signals connected.
+func _make_platformer(lvl: int, checkpoint: int) -> Platformer:
+	var pf := Platformer.new()
+	pf.setup(Game.current_level_rows(lvl), checkpoint, lvl)
+	pf.trigger.connect(_on_trigger)
+	pf.boss_defeated.connect(_on_boss_defeated)
+	pf.boss_lost.connect(_on_boss_lost)
+	return pf
+
+
+## The climb's end turns into the PMS maze: the casino winds down and the view turns upside
+## down (Platformer.start_prerod), then the maze (already upside down) fades in over it,
+## Kyra settles onto her platform (above her on screen) and 4A opens.
+func _into_pms(old: Platformer) -> void:
+	var run := _run_id
+	old.start_prerod()
+	# (Polled, not a timer: the pause menu can stop the transformation half way.)
+	while old.view_flip < 1.0:
+		await get_tree().process_frame
+		if run != _run_id or not is_instance_valid(old):
+			return
+	Game.level = Game.PMS_ID
+	Game.checkpoint = 1
+	Game.upgrades = {}
+	var pf := _make_platformer(Game.PMS_ID, 1)
+	pf.hold_input = true
+	_world_layer.add_child(pf)
+	platformer = pf
+	# She comes in a little above (in the world) her platform and settles onto it.
+	pf.p.y -= 70
+	pf.set_fade(0.0)
+	_set_state("platformer")
+	var tw := create_tween()
+	tw.tween_method(func(a: float):
+		if is_instance_valid(pf):
+			pf.set_fade(a)
+		if is_instance_valid(old):
+			old.set_fade(1.0 - a), 0.0, 1.0, 1.0)
+	_fade_tws.append(tw)
+	await tw.finished
+	if is_instance_valid(old):
+		old.queue_free()
+	if run != _run_id or platformer != pf:
+		return
+	await get_tree().create_timer(0.6).timeout
+	if run != _run_id or platformer != pf:
+		return
+	pf.hold_input = false
+	_dialog("4A")
+
+
 func _start_level(lvl: int, checkpoint: int, iron: int, fade := true) -> void:
 	var run := _run_id
 	if fade:
@@ -440,11 +558,7 @@ func _start_level(lvl: int, checkpoint: int, iron: int, fade := true) -> void:
 	Game.checkpoint = checkpoint
 	Game.iron = iron
 	Game.has_breathing = Game.has_breathing or checkpoint >= 1 or Game.intro_done
-	platformer = Platformer.new()
-	platformer.setup(Game.current_level_rows(lvl), checkpoint, lvl)
-	platformer.trigger.connect(_on_trigger)
-	platformer.boss_defeated.connect(_on_boss_defeated)
-	platformer.boss_lost.connect(_on_boss_lost)
+	platformer = _make_platformer(lvl, checkpoint)
 	_world_layer.add_child(platformer)
 	_set_state("platformer")
 	if fade:
@@ -569,9 +683,26 @@ func _on_trigger(name: String) -> void:
 			var pf := platformer
 			pf.board_dialog_done.connect(func(id: String):
 				if id == "3E" and run5 == _run_id and platformer == pf:
-					Game.reset_run()
-					_go_title())
+					# The transformation into the last level (the PMS maze).
+					_into_pms(pf))
 			pf.board_dialog("3E")
+		"pms_item_1", "pms_item_2", "pms_item_3":
+			# The PMS maze: each comfort item has its self-care tip (4B, 4C, 4D; by which
+			# item, in any order); after the third one, whichever it is, 4F: the door is open.
+			var pf6 := platformer
+			_dialog(PmsMaze.ITEM_DIALOGS[int(name.right(1)) - 1], func():
+				if platformer == pf6 and pf6 != null and pf6.pms_items >= PmsMaze.ITEMS.size():
+					_dialog(PmsMaze.DOOR_DIALOG))
+		"pms_done":
+			# The open door: the cycle comes round (4E), then the title.
+			Game.checkpoint = 5
+			var run6 := _run_id
+			await get_tree().create_timer(0.8).timeout
+			if run6 != _run_id:
+				return
+			_dialog("4E", func():
+				Game.reset_run()
+				_go_title())
 		"jackpot":
 			# A jackpot row in the climb is a checkpoint (2..4 = the 1st..3rd row).
 			var reached := 0
@@ -604,6 +735,9 @@ func _restart_cave() -> void:
 	_set_dim(false)
 	if Game.level == Game.CLIMB_ID:
 		_start_climb(maxi(1, mini(Game.checkpoint, 4)))
+		return
+	if Game.level == Game.PMS_ID:
+		_start_pms(1)
 		return
 	if Game.level == 3:
 		_start_summit(maxi(1, mini(Game.checkpoint, 4)), 5)
@@ -846,9 +980,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	match event.physical_keycode:
 		KEY_1, KEY_2, KEY_3, KEY_4:
+			if Game.level == Game.PMS_ID:
+				_start_pms(1)
+				return
 			_start_level(Game.level, event.physical_keycode - KEY_0, Game.iron)
 		KEY_5:
-			if Game.level == Game.CLIMB_ID:
+			if Game.level == Game.PMS_ID:
+				# The maze: all three items found, the door opens.
+				platformer.dev_all_comforts()
+			elif Game.level == Game.CLIMB_ID:
 				_start_climb(5)
 			elif Game.level == 3:
 				_start_summit(5, maxi(Game.iron, 5))

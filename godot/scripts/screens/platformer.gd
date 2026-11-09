@@ -21,12 +21,18 @@ extends Node2D
 ## a win counter with a multiplier and jackpots; caught by the board she sits, no death.
 ## The board never stops rising; the climb has no dialog boxes or minigames: the
 ## power-ups' dialogs play on the board itself (board_dialog).
+## Level 6 (the PMS maze, level 4 of the game) is drawn upside down: the physics stay normal,
+## the whole view is rotated 180° around the screen centre (view_flip), so on screen she
+## walks on the ceiling and the arrows feel reversed. Walls (W) are solid from every side;
+## three comfort items open the door (PmsMaze). The climb's end turns into it (start_prerod).
 
 signal trigger(name: String)
 signal boss_defeated
 signal boss_lost
 ## The climb: a dialog played on the board (board_dialog) has said all its parts.
 signal board_dialog_done(id: String)
+## The climb's end: the transformation has turned the view upside down (start_prerod).
+signal prerod_turned
 
 const W := 1066.0
 const H := 600.0
@@ -82,6 +88,9 @@ const RISE_MAX := 2.6
 ## At the start / a checkpoint the board waits this long (s) before it starts rising;
 ## after that it never stops (a catch only resets its speed to RISE_START).
 const RISE_GRACE := 1.0
+## The climb is drawn zoomed out (world, background and player scaled; HUD and board not):
+## the screen shows 1 / CLIMB_ZOOM more world, exactly its CLIMB_COLS columns across.
+const CLIMB_ZOOM := float(LevelData.COLS) / LevelData.CLIMB_COLS
 ## Following her up keeps at least this much (px) above her head (boosts, the rocket).
 const CLIMB_TOP_MARGIN := 70.0
 ## Spring launch: v² / (2 · GRAVITY) ≈ 550 px; the rocket ≈ 900 px.
@@ -114,6 +123,17 @@ const BOARD_READ_MAX := 8.0
 ## The dialog that explains a power-up, said on the board the first time it is won.
 const POWER_DIALOG := {"super_jump": "3A", "triple": "3B", "magnet": "3C", "rocket": "3D"}
 
+# --- the transformation (the climb's end) and the PMS maze (level 6) -------------------
+## The transformation: the casino winds down, then the view turns upside down.
+const PREROD_WIND := 1.5
+const PREROD_TURN := 2.5
+## The maze's breath: hold the ability to fill it, then the world is calm a while.
+const CALM_FILL := 2.0
+const CALM_TIME := 6.0
+## Blob wobble (px) and view sway (radians) in the maze, both calmed by the breath.
+const PMS_WOBBLE := 4.0
+const PMS_SWAY := 0.022
+
 
 ## Updated by Main.
 var active := false
@@ -125,6 +145,8 @@ var level: LevelData
 var level_h := 0.0
 var level_w := W
 var camera_x := 0.0
+## Screen px per world px (CLIMB_ZOOM in the climb, 1 elsewhere); see _apply_view().
+var view_zoom := 1.0
 ## Level 2 state.
 var last_ground := Vector2.ZERO
 ## Wading through the river right now.
@@ -160,6 +182,32 @@ const EXIT_GROW := 0.8
 var walk_to_x := -1.0
 ## 1 = the cave (down, cramps, boss), 2 = the garden (up, bubbles, LH wave).
 var level_id := 1
+## The view's rotation: 0 = upright, 1 = upside down (180° around the screen centre). The
+## PMS maze keeps 1; the climb's end turns it 0 → 1 (start_prerod). Physics never turn.
+var view_flip := 0.0
+## The transformation's clock (-1 = not started) and the casino's wind-down 0..1.
+var prerod_t := -1.0
+var wind := 0.0
+var _prerod_sent := false
+## The casino lights' own clock (it slows down while the casino winds down).
+var _light_t := 0.0
+## No control (the transformation, the maze's settling and its end).
+var hold_input := false
+## The maze: comfort items found (0..3), the door's open time, the breath (charge 0..1,
+## calm seconds left) and how steady the world is now (0..1).
+var pms_items := 0
+## Which comfort items (by tier = PmsMaze.ITEMS index) are found; any order is possible.
+var pms_found: Array[bool] = [false, false, false]
+var door_open := 0.0
+var _pms_done_sent := false
+var calm_charge := 0.0
+var calm_t := 0.0
+var steady := 0.0
+var deco: Array = []
+## Tops of the walls, landed on like platforms (built in setup).
+var wall_tops: Array[LevelData.Plat] = []
+## The walls as drawn: runs of the same width stacked in a column merged into one blob.
+var wall_blobs: Array[Rect2] = []
 ## The LH wave (level 2): rises from below once triggered; reach the summit first.
 var wave := {"active": false, "y": 0.0, "speed": 0.0, "lost": false, "won": false}
 ## Seconds since the summit was reached (egg release animation).
@@ -232,8 +280,12 @@ var background := {}
 var _font: Font
 var _shake := Vector2.ZERO
 
+## An unrotated backdrop under the background (the corners while the view turns).
+var _backdrop: Node2D
 var _bg: Node2D
 var _world: Node2D
+## Screen-space veil over the world (the transformation's vignette, the maze's haze).
+var _veil: Node2D
 var _player_layer: Node2D
 var _player_canvas: CanvasLayer
 var hud: PlatformerHud
@@ -249,8 +301,22 @@ var player_layer := 9
 func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
 	level = LevelData.build(rows, LevelData.ROW_H, Game.is_horizontal(lvl))
 	level_h = level.height()
-	level_w = level.width() if level.horizontal else W
+	level_w = level.width()
 	level_id = lvl
+	view_zoom = CLIMB_ZOOM if is_climb() else 1.0
+	view_flip = 1.0 if is_pms() else 0.0
+	wall_tops.clear()
+	for r in level.walls:
+		var top := LevelData.Plat.new()
+		top.x = r.position.x
+		top.y = r.position.y
+		top.base_y = r.position.y
+		top.w = r.size.x
+		top.kind = "wall"
+		wall_tops.append(top)
+	if is_pms():
+		deco = PmsMaze.deco_spots(level)
+		wall_blobs = PmsMaze.merge_columns(level.walls)
 	last_landing_y = level_h
 	if is_climb():
 		# The jackpot climb's E row is its top, not the old summit.
@@ -260,7 +326,7 @@ func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
 			elif e.trigger_type == "dialog":
 				# Dialog letters span their whole row here: she flies past them.
 				e.x = 0
-				e.w = W
+				e.w = level_w
 	for e in level.entities:
 		if e.trigger_type == "gate":
 			e.base_x = e.x
@@ -276,6 +342,8 @@ func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
 		ticker.clear()
 		ticker_queue.clear()
 		_update_ticker(0.0)
+	if is_pms():
+		last_ground = Vector2(p.x, p.y)
 
 
 func is_summit() -> bool:
@@ -297,14 +365,144 @@ func is_meadow() -> bool:
 	return level_id == 2
 
 
+## The PMS maze (level 4 of the game, id Game.PMS_ID): drawn upside down.
+func is_pms() -> bool:
+	return level_id == Game.PMS_ID
+
+
+## The view's angle: view_flip turned into radians, plus the maze's slow sway and the
+## transformation's wobble (the calm breath steadies it).
+func view_angle() -> float:
+	var a := PI * view_flip
+	if is_pms():
+		a += sin(time_ms / 2300.0) * PMS_SWAY * (1.0 - steady)
+	a += sin(time_ms / 420.0) * 0.035 * _turning()
+	return a
+
+
+## 0..1..0 while the transformation turns the view (its wobble / melt).
+func _turning() -> float:
+	if prerod_t < 0:
+		return 0.0
+	return sin(PI * clampf((prerod_t - PREROD_WIND) / PREROD_TURN, 0, 1))
+
+
+## The visible area in world px (the screen / view_zoom).
+func view_w() -> float:
+	return W / view_zoom
+
+
+func view_h() -> float:
+	return H / view_zoom
+
+
+## World y of a screen y (the HUD / board are drawn in screen space).
+func world_y(screen_y: float) -> float:
+	return camera_y + screen_y / view_zoom
+
+
+## Places the drawn layers (background, world, player) for the camera, the zoom, the
+## rotation and the shake: v = (world - camera) · zoom is the upright screen position, then
+## screen = C + R(angle) · (melt ⊙ (v - C)) + shake, C = the screen centre (the PMS maze
+## and the climb's end turn it; melt is the transformation's soft squash). The one place
+## the view is set.
+func _apply_view() -> void:
+	var cam := Vector2(camera_x, camera_y)
+	var a := view_angle()
+	var tk := _turning()
+	var melt := Vector2(1.0 + 0.035 * tk * sin(time_ms / 330.0), 1.0 - 0.035 * tk * sin(time_ms / 330.0))
+	# A little zoom out while it turns (calmer, and more of the world to see).
+	melt *= 1.0 - 0.08 * tk
+	var c := Vector2(W, H) / 2
+	var sc := melt * view_zoom
+	_bg.position = c - (melt * c).rotated(a) + _shake
+	_bg.rotation = a
+	_bg.scale = melt * view_zoom
+	_world.position = c - (melt * (cam * view_zoom + c)).rotated(a) + _shake
+	_world.rotation = a
+	_world.scale = sc
+	_player_layer.position = c - (melt * (cam * view_zoom + c)).rotated(a) + (_shake if shake_timer > 0 else Vector2.ZERO)
+	_player_layer.rotation = a
+	_player_layer.scale = sc
+
+
+## The transformation's clock: the casino winds down (wind), then the view turns upside
+## down (view_flip, ease-in-out); the HUD goes, the colours drain to dusk.
+func _update_view(dt: float) -> void:
+	if prerod_t < 0:
+		return
+	prerod_t += dt
+	wind = clampf(prerod_t / PREROD_WIND, 0, 1)
+	_light_t += dt * 1000.0 * (1.0 - 0.85 * wind)
+	var k := clampf((prerod_t - PREROD_WIND) / PREROD_TURN, 0, 1)
+	view_flip = 0.5 - 0.5 * cos(PI * k)
+	hud.modulate.a = 1.0 - clampf((prerod_t - PREROD_WIND) / 0.6, 0, 1)
+	var tint := Color.WHITE.lerp(Color(0.8, 0.7, 0.88), wind)
+	_bg.modulate = tint
+	_world.modulate = tint
+	_player_layer.modulate = Color(tint.r, tint.g, tint.b, _player_layer.modulate.a)
+	if k >= 1.0 and not _prerod_sent:
+		_prerod_sent = true
+		prerod_turned.emit()
+
+
+## The climb's end turns into the PMS maze: the casino winds down (PREROD_WIND s), then
+## the view turns upside down (PREROD_TURN s) and prerod_turned is emitted; Main then
+## crossfades into the maze. No control meanwhile.
+func start_prerod() -> void:
+	if prerod_t >= 0:
+		return
+	prerod_t = 0.0
+	_light_t = time_ms
+	hold_input = true
+	board_talk = {}
+	board_queue.clear()
+	slot_spin = {}
+	banner = {}
+	climb_power.clear()
+
+
+## Fades the whole level (world, Kyra, HUD, veil: the CanvasLayers don't inherit modulate).
+func set_fade(a: float) -> void:
+	modulate.a = a
+	_player_layer.modulate.a = a
+	hud.modulate.a = a if prerod_t < 0 else minf(a, hud.modulate.a)
+	_veil.modulate.a = a
+
+
+## Behind the rotating background: dusk filling the screen's corners while it turns.
+func _draw_backdrop() -> void:
+	if view_flip <= 0.0 and prerod_t < 0 and not is_pms():
+		return
+	_backdrop.draw_rect(Rect2(-20, -20, W + 40, H + 40), Color("#2a2238"))
+
+
+## Screen space over the world: the transformation's vignette, the maze's soft haze.
+func _draw_veil() -> void:
+	var screen := Rect2(0, 0, W, H)
+	if prerod_t >= 0:
+		var k := clampf(prerod_t / (PREROD_WIND + PREROD_TURN), 0, 1)
+		_veil.draw_rect(screen, Color(0.35, 0.22, 0.42, 0.16 * wind))
+		Draw.vignette(_veil, screen, Color(0.12, 0.06, 0.18, 0.55 * k), 0.35)
+	elif is_pms():
+		Draw.vignette(_veil, screen, Color(0.14, 0.08, 0.2, 0.5 - 0.25 * steady), 0.4)
+
+
 ## Camera where the level starts (background layers are anchored to it).
 func bg_origin() -> Vector2:
 	return bg_origin_for(level_id, level_h)
 
 
+## The visible world size of a level (the screen / its view zoom); the background panel previews with it.
+static func view_size_for(id: int) -> Vector2:
+	return Vector2(W, H) / (CLIMB_ZOOM if id == Game.CLIMB_ID else 1.0)
+
+
 static func bg_origin_for(id: int, lh: float) -> Vector2:
 	# The summit and the jackpot climb are climbed from the bottom.
-	return Vector2(0, maxf(0, lh - H)) if id in [3, Game.CLIMB_ID] else Vector2.ZERO
+	if id == Game.CLIMB_ID:
+		return Vector2(0, maxf(0, lh - view_size_for(id).y))
+	return Vector2(0, maxf(0, lh - H)) if id == 3 else Vector2.ZERO
 
 
 ## Snappier controls, coyote time, jump buffer and squash (levels 2 and 3).
@@ -343,9 +541,11 @@ func has_upgrade(name: String) -> bool:
 
 func _ready() -> void:
 	_font = Text.font_bold
+	_backdrop = Node2D.new()
 	_bg = Node2D.new()
 	_world = Node2D.new()
 	_player_layer = Node2D.new()
+	add_child(_backdrop)
 	add_child(_bg)
 	add_child(_world)
 	var pl := CanvasLayer.new()
@@ -353,12 +553,16 @@ func _ready() -> void:
 	pl.layer = player_layer
 	add_child(pl)
 	pl.add_child(_player_layer)
+	_backdrop.draw.connect(_draw_backdrop)
 	_bg.draw.connect(_draw_bg)
 	_world.draw.connect(_draw_world)
 	_player_layer.draw.connect(_draw_player)
 	var layer := CanvasLayer.new()
 	layer.layer = hud_layer
 	add_child(layer)
+	_veil = Node2D.new()
+	_veil.draw.connect(_draw_veil)
+	layer.add_child(_veil)
 	hud = PlatformerHud.new()
 	hud.platformer = self
 	layer.add_child(hud)
@@ -483,7 +687,7 @@ func _process(delta: float) -> void:
 			camera_y = lerpf(camera_y, p.y - H * 0.4, 1.0 - pow(0.88, f60))
 	if active:
 		_update(dt)
-		if active and not _initial_dialog_sent and _start_checkpoint <= 1 and not is_climb():
+		if active and not _initial_dialog_sent and _start_checkpoint <= 1 and not is_climb() and not is_pms():
 			_initial_dialog_sent = true
 			get_tree().create_timer(0.3).timeout.connect(_send_initial_dialog)
 	_shake = Vector2.ZERO
@@ -492,12 +696,13 @@ func _process(delta: float) -> void:
 		_shake = Vector2((randf() - 0.5) * s, (randf() - 0.5) * s)
 	elif p.held_by_cramp != -1:
 		_shake = Vector2((randf() - 0.5) * 4, (randf() - 0.5) * 4)
-	_bg.position = _shake
-	_world.position = _shake + Vector2(-camera_x, -camera_y)
-	_player_layer.position = (_shake if shake_timer > 0 else Vector2.ZERO) + Vector2(-camera_x, -camera_y)
+	_update_view(dt)
+	_apply_view()
+	_backdrop.queue_redraw()
 	_bg.queue_redraw()
 	_world.queue_redraw()
 	_player_layer.queue_redraw()
+	_veil.queue_redraw()
 	hud.queue_redraw()
 
 
@@ -534,7 +739,7 @@ func teleport_to_trigger(kind: String) -> void:
 ## Lands the player on the nearest platform below their feet (same column).
 func _settle_on_ground() -> void:
 	var best: LevelData.Plat = null
-	for pl in level.platforms:
+	for pl in level.platforms + wall_tops:
 		if not pl.solid() or pl.x > p.x + p.width or pl.x + pl.w < p.x:
 			continue
 		if pl.base_y >= p.y + p.height - 30 and (best == null or pl.base_y < best.base_y):
@@ -551,7 +756,7 @@ func _settle_on_ground() -> void:
 ## Puts the player in a trigger's row: in the garden on the nearest platform at
 ## or below it near the middle (the row's own platform), in the cave just inside it.
 func _stand_at_trigger(e: LevelData.Ent) -> void:
-	p.x = W / 2 - 15
+	p.x = level_w / 2 - 15
 	p.y = e.y + 100 - 30
 	if level.horizontal:
 		# The trigger column: stand on the highest ground there.
@@ -573,11 +778,11 @@ func _stand_at_trigger(e: LevelData.Ent) -> void:
 		for pl in level.platforms:
 			# The old summit: the row's own platform near the middle; the climb: the
 			# nearest platform below, wherever it is.
-			var near_mid := pl.x <= W / 2 + 60 and pl.x + pl.w >= W / 2 - 60
+			var near_mid := pl.x <= level_w / 2 + 60 and pl.x + pl.w >= level_w / 2 - 60
 			if pl.base_y >= e.y + below and (near_mid or is_climb()) and (best == null or pl.base_y < best.base_y):
 				best = pl
 		if best:
-			p.x = clampf(W / 2 - 15, best.x + 4, best.x + best.w - p.width - 4)
+			p.x = clampf(level_w / 2 - 15, best.x + 4, best.x + best.w - p.width - 4)
 			p.y = best.base_y - p.height
 	camera_y = maxf(0, p.y - H / 2)
 	if is_climb():
@@ -621,7 +826,7 @@ func _do_jump() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not active:
+	if not active or hold_input:
 		return
 	if is_meadow():
 		if event is InputEventMouseMotion:
@@ -668,7 +873,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			p.slow_timer = 0
 			Audio.play_sfx("breathoff.wav", 0.4)
 	elif event.is_action_pressed("breathe") and not event.is_echo():
-		if dialog_open or is_climb() or (is_summit() and has_upgrade("dash")):
+		if dialog_open or is_climb() or is_pms() or (is_summit() and has_upgrade("dash")):
 			return
 		# Toggle the recharge sequence when out of breath charges.
 		if p.breath_charges == 0 and Game.has_breathing and p.breathing_cooldown <= 0:
@@ -799,14 +1004,14 @@ func _update(dt: float) -> void:
 		right = d > 4
 		if not (left or right):
 			p.facing_right = true
-	if meadow_end > 0:
+	if meadow_end > 0 or hold_input:
 		left = false
 		right = false
-	var up := Input.is_action_pressed("move_up")
-	var down := Input.is_action_pressed("move_down")
+	var up := Input.is_action_pressed("move_up") and not hold_input
+	var down := Input.is_action_pressed("move_down") and not hold_input
 	# Shift is the level's one ability: on the summit, once the dash is earned,
 	# it dashes instead of breathing.
-	var breathe := Input.is_action_pressed("breathe") and not (is_summit() and has_upgrade("dash")) and not is_climb()
+	var breathe := Input.is_action_pressed("breathe") and not (is_summit() and has_upgrade("dash")) and not is_climb() and not hold_input
 	var breathe_pressed := breathe and not _prev_breathe
 	_prev_breathe = breathe
 
@@ -861,11 +1066,14 @@ func _update(dt: float) -> void:
 	if p.vx > max_speed: p.vx = maxf(max_speed, p.vx - accel * d60)
 	if p.vx < -max_speed: p.vx = minf(-max_speed, p.vx + accel * d60)
 	if absf(p.vx) < 0.1: p.vx = 0
+	var prev_x := p.x
 	p.x += p.vx * d60
 	if in_water:
 		p.x -= CURRENT * d60
 	var hit_wall := p.x < 0 or p.x > level_w - p.width
 	p.x = clampf(p.x, 0, level_w - p.width)
+	if not level.walls.is_empty():
+		_walls_x(prev_x)
 	# Level 3: the side walls bounce you back (Icy Tower) and let you kick off.
 	on_wall = is_summit() and not p.is_grounded and (p.x <= 0 or p.x >= level_w - p.width) and p.held_by_cramp == -1 and not p.is_recharging
 	if is_summit() and hit_wall and absf(p.vx) > 2:
@@ -874,14 +1082,17 @@ func _update(dt: float) -> void:
 		Audio.footstep(0.4)
 
 	for pl in level.platforms:
-		pl.y = pl.base_y + sin(time_ms / 500.0 + pl.x) * 5
+		# Platforms bob (not in the maze: its blobs only look soft, the rects stay put).
+		pl.y = pl.base_y + (0.0 if is_pms() else sin(time_ms / 500.0 + pl.x) * 5)
 		if pl.regrow > 0:
 			pl.regrow -= dt
 			if pl.regrow <= 0:
 				pl.pop_timer = 0
 
-	# --- breathing
-	if Game.has_breathing:
+	# --- breathing (the maze has its own calming breath)
+	if is_pms():
+		_update_calm(dt, breathe)
+	elif Game.has_breathing:
 		if breathe_pressed and p.breath_charges > 0 and p.breathing_cooldown <= 0 and not dialog_open:
 			p.is_breathing = 40
 			p.breath_charges -= 1
@@ -925,6 +1136,8 @@ func _update(dt: float) -> void:
 	p.y += p.vy * d60
 	var grounded := false
 	var solids: Array = [] if hide_platforms else level.platforms.duplicate()
+	if not hide_platforms:
+		solids.append_array(wall_tops)
 	if boss.active and boss.defeated_timer > 0:
 		var rise := maxf(0, 40 - boss.defeated_timer * 40)
 		var floor_pl := LevelData.Plat.new()
@@ -944,8 +1157,12 @@ func _update(dt: float) -> void:
 			grounded = true
 			p.jumps_left = _max_jumps()
 			stood_on = pl
+	if not level.walls.is_empty():
+		_walls_y()
 	if stood_on != null:
 		last_stand_y = stood_on.y
+		if is_pms():
+			last_ground = Vector2(p.x, p.y)
 	for pl in level.platforms:
 		if pl.kind != "pop" or pl.regrow > 0:
 			continue
@@ -967,8 +1184,8 @@ func _update(dt: float) -> void:
 				p.jumps_left = 2
 	var on_dialog_floor := false
 	# The top of the dialog box (and in the climb the board, always) is a floor.
-	if (dialog_open or boss.lost or is_climb()) and not level.horizontal:
-		var fy := camera_y + H - BOARD_H
+	if (dialog_open or boss.lost or is_climb()) and not level.horizontal and not is_pms():
+		var fy := board_y()
 		if p.vy >= 0 and prev_bottom <= fy + 20 and p.y + p.height >= fy - 10:
 			p.y = fy - p.height
 			p.vy = 0
@@ -1068,6 +1285,12 @@ func _camera(dt: float, d60: float, down: bool) -> void:
 		camera_y = p.y - H + 100
 	if boss.active:
 		camera_y = level_h
+	if is_pms() and (p.y > level_h + 200 or p.y < -400):
+		# Out of the maze (it is closed, but just in case): back where she last stood.
+		p.x = last_ground.x
+		p.y = last_ground.y
+		p.vx = 0
+		p.vy = 0
 	if not boss.active and p.y > level_h + 1000:
 		p.held_by_cramp = -1
 		p.is_recharging = false
@@ -1158,7 +1381,7 @@ func _update_entities(dt: float, d60: float) -> void:
 			e.x += e.vx * d60
 			e.y += e.vy * d60
 			e.vy += GRAVITY * 4 * d60
-			if e.y > camera_y + H + 100:
+			if e.y > camera_y + view_h() + 100:
 				e.knocked_back = false
 			continue
 		var touching := prect.intersects(e.rect())
@@ -1203,6 +1426,12 @@ func _update_entities(dt: float, d60: float) -> void:
 			"slot":
 				if touching and not p.is_dead:
 					_start_slot(e)
+			"comfort":
+				if touching and not p.is_dead:
+					_take_comfort(e)
+			"door":
+				if touching and door_open > 0.6 and not _pms_done_sent:
+					_pms_done()
 			"updraft":
 				if touching and not p.is_dead and not p.is_recharging and p.held_by_cramp == -1:
 					p.vy = maxf(p.vy - 1.1 * d60, -9.0)
@@ -1404,7 +1633,7 @@ func _update_particles(dt: float, d60: float) -> void:
 			q.life -= dt
 			if q.life <= 0:
 				particles.remove_at(i)
-		elif q.y > camera_y + H + 100:
+		elif q.y > camera_y + view_h() + 100:
 			particles.remove_at(i)
 
 
@@ -1655,19 +1884,22 @@ func _update_wave(dt: float, d60: float) -> void:
 func _draw_bg() -> void:
 	var ci := _bg
 	var cfg := background if not background.is_empty() else BackgroundData.for_level(level_id)
-	ci.draw_rect(Rect2(0, 0, W, H), Color.from_string(cfg.get("base", "#101018"), Color("#101018")))
+	var vs := Vector2(view_w(), view_h())
+	ci.draw_rect(Rect2(Vector2.ZERO, vs), Color.from_string(cfg.get("base", "#101018"), Color("#101018")))
 	if cfg.get("procedural", false):
-		if is_up():
+		if is_pms():
+			PmsMaze.draw_bg(ci, vs, time_ms, camera_y, level_h, steady)
+		elif is_up():
 			_draw_garden_bg()
 			if is_climb():
 				_draw_casino_lights()
 		elif is_meadow():
 			_draw_meadow_bg()
-	BackgroundData.draw_layers(ci, cfg, Vector2(camera_x, camera_y), Vector2(W, H), level.horizontal, bg_origin())
+	BackgroundData.draw_layers(ci, cfg, Vector2(camera_x, camera_y), vs, level.horizontal, bg_origin())
 	if cfg.get("tint", false) and not boss.active:
 		var pulse := sin(time_ms / 4000.0) * 0.5 + 0.5
-		Draw.h_gradient(ci, Rect2(0, 0, W * 0.8, H), Color(80 / 255.0, 5 / 255.0, 23 / 255.0, 0.15 + pulse * 0.05), Color(0, 0, 0, 0))
-		Draw.vignette(ci, Rect2(0, 0, W, H), Color(0, 0, 0, 0.3 + pulse * 0.1), 0.4)
+		Draw.h_gradient(ci, Rect2(0, 0, vs.x * 0.8, vs.y), Color(80 / 255.0, 5 / 255.0, 23 / 255.0, 0.15 + pulse * 0.05), Color(0, 0, 0, 0))
+		Draw.vignette(ci, Rect2(Vector2.ZERO, vs), Color(0, 0, 0, 0.3 + pulse * 0.1), 0.4)
 
 
 func _draw_world() -> void:
@@ -1676,16 +1908,20 @@ func _draw_world() -> void:
 	if not active:
 		return
 	if p.hit_timer > 0.8:
-		ci.draw_rect(Rect2(0, camera_y, W, H), Color(177 / 255.0, 88 / 255.0, 39 / 255.0, (p.hit_timer - 0.8) / 0.2 * 0.5))
-	var top := camera_y - 100
-	var bottom := camera_y + H + 100
-	var left := camera_x - 120
-	var right := camera_x + W + 120
+		ci.draw_rect(Rect2(camera_x, camera_y, view_w(), view_h()), Color(177 / 255.0, 88 / 255.0, 39 / 255.0, (p.hit_timer - 0.8) / 0.2 * 0.5))
+	# While the view turns, more of the world shows (its corners): draw a wider area.
+	var extra := 0.6 * view_w() if prerod_t >= 0 else 0.0
+	var top := camera_y - 100 - extra
+	var bottom := camera_y + view_h() + 100 + extra
+	var left := camera_x - 120 - extra
+	var right := camera_x + view_w() + 120 + extra
 	if hide_platforms:
 		return
 	if is_meadow():
 		_draw_meadow_back(ci, t, left, right)
-	for pl in level.platforms:
+	if is_pms():
+		_draw_pms_world(ci, t, Rect2(left, top, right - left, bottom - top))
+	for pl in ([] if is_pms() else level.platforms):
 		if pl.y < top or pl.y > bottom or pl.x + pl.w < left or pl.x > right:
 			continue
 		if pl.kind != "rock":
@@ -1728,6 +1964,14 @@ func _draw_world() -> void:
 				_draw_chip(ci, e, t)
 			"slot":
 				_draw_slot(ci, e, t)
+			"comfort":
+				# A little out of place: it drifts a few px around its real spot.
+				var cc := e.rect().get_center() + Vector2(sin(t / 1700.0 + e.id) * 5, -4 + sin(t / 650.0 + e.id) * 4)
+				Draw.radial_glow(ci, cc, 34, Color(1, 0.9, 0.75, 0.28))
+				ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+				PmsMaze.draw_item(ci, PmsMaze.ITEMS[clampi(e.tier, 0, 2)], cc, t, 1.15)
+			"door":
+				PmsMaze.draw_door(ci, e, t, pms_items, clampf(door_open / 0.6, 0, 1))
 			"trigger":
 				if e.trigger_type == "teleport":
 					ci.draw_rect(e.rect(), Color(190 / 255.0, 24 / 255.0, 93 / 255.0, 0.1))
@@ -1755,7 +1999,8 @@ func _draw_world() -> void:
 	for pp in pops:
 		var pk: float = clampf(1.0 - pp.t / pp.life, 0, 1)
 		var pos := Vector2(pp.x, pp.y)
-		var fs: int = pp.size
+		# Number pops keep their size on screen (the climb is drawn zoomed out).
+		var fs: int = roundi(float(pp.size) / view_zoom)
 		var tw := _font.get_string_size(pp.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		ci.draw_string_outline(_font, pos - Vector2(tw / 2, 0), pp.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 5, Color(0.3, 0.12, 0.02, pk))
 		ci.draw_string(_font, pos - Vector2(tw / 2, 0), pp.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(pp.col, pk))
@@ -1965,7 +2210,7 @@ func _draw_player() -> void:
 		ci.draw_circle(ap, 2, Color(1, 1, 0.8, 0.9 if focus else 0.5))
 	if not active:
 		return
-	var screen := Rect2(0, camera_y, W, H)
+	var screen := Rect2(camera_x, camera_y, view_w(), view_h())
 	if p.held_by_cramp != -1:
 		var k := p.breath_timer / 12.0
 		var a := maxf(0, 0.6 * (1 - k)) + sin(time_ms / 200.0) * 0.1
@@ -1978,11 +2223,14 @@ func _draw_player() -> void:
 
 ## Progress up the garden: 0 at the bottom (dusk), 1 at the top (morning).
 func _climb() -> float:
-	return clampf(1.0 - (camera_y + H / 2) / maxf(1, level_h), 0, 1)
+	return clampf(1.0 - (camera_y + view_h() / 2) / maxf(1, level_h), 0, 1)
 
 
 func _draw_garden_bg() -> void:
 	var ci := _bg
+	# Fills the visible area (larger than the screen in the zoomed-out climb).
+	var vw := view_w()
+	var vh := view_h()
 	var k := _climb()
 	# Dusk (dark indigo & pink) → dawn → spring morning.
 	var stops_top := [Color("#1c1533"), Color("#4a2a5e"), Color("#c76a8a"), Color("#8fd0c4")]
@@ -1992,14 +2240,17 @@ func _draw_garden_bg() -> void:
 	var u := f - i
 	var top_c: Color = stops_top[mini(i, 3)].lerp(stops_top[mini(i + 1, 3)], u)
 	var bot_c: Color = stops_bot[mini(i, 3)].lerp(stops_bot[mini(i + 1, 3)], u)
-	var bands := 16
+	# While the view turns (the climb's end) the sky reaches past the screen's corners.
+	var m := 0.6 * vw if prerod_t >= 0 else 0.0
+	var bands := 16 if m == 0.0 else 40
 	for b in bands:
-		var y0 := H * b / bands
-		ci.draw_rect(Rect2(0, y0, W, H / bands + 1), top_c.lerp(bot_c, (b + 0.5) / bands))
+		var y0 := -m + (vh + 2 * m) * b / bands
+		var u2 := clampf((y0 + (vh + 2 * m) / bands / 2) / vh, 0, 1)
+		ci.draw_rect(Rect2(-m, y0, vw + 2 * m, (vh + 2 * m) / bands + 1), top_c.lerp(bot_c, u2))
 	# Sun rising behind the summit.
 	if k > 0.45:
 		var sk := (k - 0.45) / 0.55
-		var sc := Vector2(W * 0.72, H * (1.1 - sk * 0.9))
+		var sc := Vector2(vw * 0.72, vh * (1.1 - sk * 0.9))
 		Draw.radial_glow(ci, sc, 220 + sk * 120, Color(1, 0.92, 0.6, 0.35 * sk), Color(1, 0.98, 0.85, 0.9 * sk))
 	# Vines along the edges (parallax) and drifting pollen.
 	var t := time_ms
@@ -2007,26 +2258,27 @@ func _draw_garden_bg() -> void:
 		var side := -1.0 if v % 2 == 0 else 1.0
 		var depth := 0.3 + 0.12 * v
 		var off := camera_y * depth
-		var x0 := (W / 2) + side * (W / 2 - 40 - v * 35)
+		var x0 := (vw / 2) + side * (vw / 2 - 40 - v * 35)
 		var pts := PackedVector2Array()
 		var yy := -40.0
-		while yy < H + 40:
+		while yy < vh + 40:
 			pts.append(Vector2(x0 + sin((yy + off) * 0.012 + v) * 18, yy))
 			yy += 24
 		var vc := Color(0.1, 0.35, 0.2, 0.25 + 0.06 * v).lerp(Color(0.2, 0.55, 0.3, 0.35), k)
+		vc.a *= 1.0 - 0.7 * wind
 		ci.draw_polyline(pts, vc, 3 + v, true)
 		var ly := fmod(-off * 0.5, 160.0)
-		while ly < H:
+		while ly < vh:
 			var lp := Vector2(x0 + sin((ly + off) * 0.012 + v) * 18, ly)
 			ci.draw_set_transform(lp, side * 0.6 + sin(t / 900.0 + ly) * 0.1, Vector2(1, 0.45))
 			ci.draw_circle(Vector2.ZERO, 12 + v, vc)
 			ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 			ly += 160
 	for i2 in 36:
-		var px := fmod(i2 * 173.0 + sin(t / 1500.0 + i2) * 30 + W, W)
-		var py := fmod(H - fmod(t * (0.02 + 0.01 * (i2 % 3)) + i2 * 97.0, H), H)
+		var px := fmod(i2 * 173.0 + sin(t / 1500.0 + i2) * 30 + vw, vw)
+		var py := fmod(vh - fmod(t * (0.02 + 0.01 * (i2 % 3)) + i2 * 97.0, vh), vh)
 		ci.draw_circle(Vector2(px, py), 1.5 + (i2 % 3) * 0.7, Color(1, 0.95, 0.7, 0.25 + 0.3 * k))
-	Draw.vignette(ci, Rect2(0, 0, W, H), Color(0, 0, 0, 0.35 - 0.2 * k), 0.45)
+	Draw.vignette(ci, Rect2(0, 0, vw, vh), Color(0, 0, 0, (0.35 - 0.2 * k) * (1.0 - wind)), 0.45)
 
 
 func _draw_garden_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
@@ -2135,9 +2387,11 @@ func _draw_wave(ci: CanvasItem, t: float) -> void:
 
 
 func _draw_summit_egg(ci: CanvasItem, t: float) -> void:
-	var k := clampf(summit_timer / 2.0, 0, 1)
-	var c := Vector2(W / 2, p.y - 60 - k * 120)
-	var r := 10 + 30 * k
+	# After ovulation the egg dims softly (the transformation's wind-down).
+	var g := clampf(summit_timer / 2.0, 0, 1)
+	var k := g * (1.0 - 0.6 * wind)
+	var c := Vector2(level_w / 2, p.y - 60 - g * 120)
+	var r := 10 + 30 * g
 	Draw.radial_glow(ci, c, r * 2.5 + sin(t / 200.0) * 4, Color(1, 0.9, 0.55, 0.6 * k), Color(1, 1, 0.9, 0.95 * k))
 	ci.draw_circle(c, r * 0.8, Color("#fff7df", k))
 	ci.draw_circle(c + Vector2(-r * 0.2, -r * 0.2), maxf(0.1, r * 0.3), Color("#f9a8d4", k))
@@ -2594,9 +2848,9 @@ func _draw_slot(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 func _draw_jackpot_row(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var y := e.y + e.h / 2
 	var a := 0.35 if e.collected else 0.6 + sin(t / 200.0) * 0.25
-	ci.draw_line(Vector2(0, y), Vector2(W, y), Color(250 / 255.0, 204 / 255.0, 21 / 255.0, a), 4)
+	ci.draw_line(Vector2(0, y), Vector2(level_w, y), Color(250 / 255.0, 204 / 255.0, 21 / 255.0, a), 4)
 	for i in 13:
-		var x := fposmod(i * W / 12.0 + t * 0.05, W)
+		var x := fposmod(i * level_w / 12.0 + t * 0.05, level_w)
 		ci.draw_circle(Vector2(x, y), 4, Color(1, 0.95, 0.6, a))
 
 
@@ -2605,7 +2859,7 @@ func _draw_jackpot_row(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 ## Camera with the board's top edge a little below her feet (start / checkpoints); the
 ## board waits RISE_GRACE before it starts rising.
 func _board_camera() -> void:
-	camera_y = maxf(0, p.y + p.height + 60 - (H - BOARD_H))
+	camera_y = maxf(0, p.y + p.height + 60 - (H - BOARD_H) / view_zoom)
 	last_stand_y = p.y + p.height
 	_reset_streak()
 	rise_wait = RISE_GRACE
@@ -2613,7 +2867,7 @@ func _board_camera() -> void:
 
 ## The board's top edge in world coordinates (she stands / sits on it).
 func board_y() -> float:
-	return camera_y + H - BOARD_H
+	return world_y(H - BOARD_H)
 
 
 ## A fresh streak (start, checkpoint, caught): x1 from the floor she is on, the board's
@@ -2647,7 +2901,7 @@ func _climb_camera(dt: float, d60: float) -> void:
 	# Follow her up to the middle, but don't lift the board past the platform she last
 	# stood on (it would catch every fall back from a boost or a missed jump) unless
 	# she would leave the top of the screen.
-	var follow := maxf(p.y - H / 2, last_stand_y - (H - BOARD_H))
+	var follow := maxf(p.y - view_h() / 2, last_stand_y - (H - BOARD_H) / view_zoom)
 	if follow < camera_y:
 		camera_y += (follow - camera_y) * (1.0 - pow(0.85, d60))
 	camera_y = minf(camera_y, p.y - CLIMB_TOP_MARGIN)
@@ -2715,7 +2969,8 @@ func _update_climb(dt: float, d60: float) -> void:
 		if pp.t >= pp.life:
 			pops.remove_at(i)
 	_update_board_talk(dt)
-	if board_talk.is_empty():
+	if board_talk.is_empty() and prerod_t < 0:
+		# (The transformation stops the ticker: its letters drift away, PlatformerHud.)
 		_update_ticker(dt)
 
 
@@ -2748,7 +3003,7 @@ func _sparkles(at: Vector2, n: int, kind := "glint") -> void:
 ## Gold coins rain from the top of the screen.
 func _coin_shower(n: int) -> void:
 	for i in n:
-		particles.append({"x": randf() * W, "y": camera_y - 20 - randf() * 200, "vx": (randf() - 0.5) * 3,
+		particles.append({"x": camera_x + randf() * view_w(), "y": camera_y - 20 - randf() * 200, "vx": (randf() - 0.5) * 3,
 			"vy": randf() * 3, "rot": randf() * TAU, "rot_speed": 0.15 + randf() * 0.2, "type": "coin",
 			"life": 2.6 + randf() * 0.8, "max_life": 3.4})
 
@@ -2978,14 +3233,25 @@ func _update_ticker(dt: float) -> void:
 func _draw_casino_lights() -> void:
 	var ci := _bg
 	var t := time_ms
-	# Twinkling lights drifting down slowly (parallax), gold and pink.
-	for i in 40:
-		var px := fmod(i * 263.0 + 17.0 * i * i, W)
-		var py := fposmod(i * 151.0 - camera_y * (0.08 + 0.02 * (i % 4)), H)
+	# Twinkling lights drifting down slowly (parallax), gold and pink. When the casino
+	# winds down (the transformation) they slow, fade and drip downwards.
+	var vw := view_w()
+	var vh := view_h()
+	if prerod_t >= 0:
+		t = _light_t
+	var drip_t := maxf(0.0, prerod_t) * wind
+	for i in int(40 * vw * vh / (W * H)):
+		var px := fmod(i * 263.0 + 17.0 * i * i, vw)
+		var py := fposmod(i * 151.0 - camera_y * (0.08 + 0.02 * (i % 4)), vh)
+		py += drip_t * drip_t * (14.0 + 9.0 * (i % 5))
 		var tw := 0.5 + 0.5 * sin(t / (220.0 + 13.0 * (i % 7)) + i)
 		var col := Color(1, 0.85, 0.35) if i % 3 else Color(1, 0.55, 0.8)
-		ci.draw_circle(Vector2(px, py), 1.5 + 2.0 * tw, Color(col, 0.25 + 0.5 * tw))
-		if tw > 0.92:
+		col = col.lerp(Color(0.85, 0.7, 0.95), wind)
+		var fade := 1.0 - 0.55 * wind
+		ci.draw_circle(Vector2(px, py), 1.5 + 2.0 * tw, Color(col, (0.25 + 0.5 * tw) * fade))
+		if wind > 0:
+			ci.draw_line(Vector2(px, py), Vector2(px, py - 4 - 10 * wind), Color(col, 0.25 * wind * fade), 2.0)
+		if tw > 0.92 and wind < 0.5:
 			ci.draw_line(Vector2(px - 6, py), Vector2(px + 6, py), Color(col, 0.6), 1.0)
 			ci.draw_line(Vector2(px, py - 6), Vector2(px, py + 6), Color(col, 0.6), 1.0)
 
@@ -2999,3 +3265,137 @@ func _draw_climb_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
 	for i in n:
 		var on := (i + int(t / 160.0)) % 3 == 0
 		ci.draw_circle(Vector2(r.position.x + 9 + i * 18, r.position.y + 9), 3, Color("#fef08a") if on else Color("#a78bfa", 0.7))
+
+
+# --- the PMS maze (level 6): walls, comfort items, the door, the calming breath ----------
+
+func _overlaps(r: Rect2) -> bool:
+	return p.x + p.width > r.position.x + 0.5 and p.x < r.end.x - 0.5 and p.y + p.height > r.position.y + 0.5 and p.y < r.end.y - 0.5
+
+
+## Walls stop her sideways (resolved before the vertical move).
+func _walls_x(prev_x: float) -> void:
+	for r in level.walls:
+		if not _overlaps(r):
+			continue
+		if prev_x + p.width <= r.position.x + 1.0:
+			p.x = r.position.x - p.width
+		elif prev_x >= r.end.x - 1.0:
+			p.x = r.end.x
+		else:
+			continue
+		p.vx = 0
+
+
+## Walls from below (a bump on the head) and anything still inside one (resolved after
+## the vertical move; landing on their tops is the platform code, wall_tops).
+func _walls_y() -> void:
+	for r in level.walls:
+		if not _overlaps(r):
+			continue
+		if p.vy < 0 or p.y + p.height / 2 > r.end.y:
+			p.y = r.end.y
+			p.vy = maxf(0.0, p.vy)
+		elif p.y + p.height - r.position.y < 24:
+			p.y = r.position.y - p.height
+
+
+## The maze's breath: hold the ability to breathe in (CALM_FILL s), then the world is calm
+## for CALM_TIME s: the blobs breathe slower, the view stops swaying, the haze lifts.
+func _update_calm(dt: float, breathe: bool) -> void:
+	if calm_t > 0:
+		calm_t = maxf(0.0, calm_t - dt)
+	elif breathe and not dialog_open:
+		calm_charge += dt / CALM_FILL
+		if calm_charge >= 1.0:
+			calm_charge = 0.0
+			calm_t = CALM_TIME
+			Audio.play_sfx("breathok.wav", 0.4)
+	else:
+		calm_charge = maxf(0.0, calm_charge - dt / CALM_FILL)
+	steady = move_toward(steady, 1.0 if calm_t > 0 else 0.0, dt / 1.2)
+	if door_open > 0:
+		door_open += dt
+
+
+func _take_comfort(e: LevelData.Ent) -> void:
+	e.collected = true
+	pms_items += 1
+	var tier := clampi(e.tier, 0, PmsMaze.ITEMS.size() - 1)
+	pms_found[tier] = true
+	var at := e.rect().get_center()
+	_sparkles(at, 12)
+	Audio.play_sfx("cink-%02d.wav" % (3 + pms_items * 2), 0.45)
+	# Keyed by which item it is (its tip, its HUD slot), not by how many were found.
+	trigger.emit("pms_item_%d" % (tier + 1))
+	if pms_items >= PmsMaze.ITEMS.size() and door_open <= 0:
+		door_open = 0.01
+		Audio.play_sfx("finished.wav", 0.5)
+
+
+## The open door: the level is over (Main plays 4E, then the title).
+func _pms_done() -> void:
+	_pms_done_sent = true
+	hold_input = true
+	p.vx = 0
+	trigger.emit("pms_done")
+
+
+## The maze's world: the out-of-place objects, then walls and platforms as soft blobs
+## (rims first, so neighbouring blobs melt into one shape).
+func _draw_pms_world(ci: CanvasItem, t: float, view: Rect2) -> void:
+	for d in deco:
+		if view.has_point(d.pos):
+			PmsMaze.draw_deco(ci, d, t, steady)
+	var amp := PMS_WOBBLE * (1.0 - 0.75 * steady)
+	var shown: Array = []
+	for r in wall_blobs:
+		if r.intersects(view):
+			shown.append([r.grow(3), true])
+	for pl in level.platforms:
+		var pr := Rect2(pl.x, pl.y, pl.w, pl.h)
+		if pr.intersects(view):
+			shown.append([pr, false])
+	for pass_i in 2:
+		for b in shown:
+			PmsMaze.draw_blob(ci, b[0], t, amp, b[1], pass_i)
+
+
+## Developer shortcut (the maze): all three comfort items found, the door open.
+func dev_all_comforts() -> void:
+	for e in level.entities:
+		if e.type == "comfort":
+			e.collected = true
+	pms_items = PmsMaze.ITEMS.size()
+	pms_found = [true, true, true]
+	door_open = maxf(door_open, 0.6)
+
+
+## Developer shortcut (the maze): stand a few cells beside the door.
+func dev_near_door() -> void:
+	for e in level.entities:
+		if e.type == "door":
+			p.x = maxf(e.x - 5 * LevelData.CELL_W, 0)
+			p.y = e.y + e.h - p.height - 2
+			p.vx = 0
+			p.vy = 0
+			camera_y = clampf(p.y - H / 3, 0, level_h)
+			last_ground = Vector2(p.x, p.y)
+
+
+## Developer shortcut (the climb): onto the platform under the top (E), which ends it.
+func dev_to_top() -> void:
+	for e in level.entities:
+		if e.trigger_type != "climb_top":
+			continue
+		var best: LevelData.Plat = null
+		for pl in level.platforms:
+			if pl.base_y > e.y + e.h / 2 and (best == null or pl.base_y < best.base_y or (is_equal_approx(pl.base_y, best.base_y) and absf(pl.x + pl.w / 2 - level_w / 2) < absf(best.x + best.w / 2 - level_w / 2))):
+				best = pl
+		if best:
+			p.x = clampf(level_w / 2 - p.width / 2, best.x + 4, best.x + best.w - p.width - 4)
+			p.y = best.base_y - p.height - 2
+			p.vx = 0
+			p.vy = 0
+			_board_camera()
+		return

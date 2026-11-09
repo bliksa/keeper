@@ -14,5 +14,6 @@
  },
  "2": {"base": "#bfe3df", "procedural": true, "tint": false, "layers": []},
  "3": {"base": "#1c1533", "procedural": true, "tint": false, "layers": []},
- "5": {"base": "#1c1533", "procedural": true, "tint": false, "layers": []}
+ "5": {"base": "#1c1533", "procedural": true, "tint": false, "layers": []},
+ "6": {"base": "#2a2238", "procedural": true, "tint": false, "layers": []}
 }
