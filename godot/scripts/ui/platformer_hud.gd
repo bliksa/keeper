@@ -556,40 +556,57 @@ func _draw_board_talk(talk: Dictionary, r: Rect2) -> void:
 ## another (a click each) on three bells / three jokers. The power-up's name goes to the
 ## board's ticker, not here.
 func _draw_reels(font: Font, t: float, box: Rect2) -> void:
+	# Three separate white cards with a soft shadow, no frame and no borders (like a
+	# phone slot machine); big symbols; a spin scrolls them down at a steady speed and
+	# the cards stop one after another.
 	var spin: Dictionary = platformer.slot_spin
 	var active := not spin.is_empty()
-	Draw.panel(self, box, _a(BG), 16, _a(Color(0.98, 0.75, 0.14, 0.3)), 2)
-	var gap := 6.0
-	var rw := (box.size.x - 16 - gap * 2) / 3.0
-	var rh := box.size.y - 12
-	var x0 := box.position.x + 8
-	var y0 := box.position.y + 6
+	var gap := 7.0
+	var rw := (box.size.x - gap * 2) / 3.0
+	var rh := box.size.y
 	var syms := ["heart", "joker", "bell", "heart", "bell", "joker"]
 	for i in 3:
-		var rr := Rect2(x0 + i * (rw + gap), y0, rw, rh)
-		Draw.panel(self, rr, _a(Color.WHITE), 8, _a(Color(0.39, 0.45, 0.55, 0.25)), 1)
+		var rr := Rect2(box.position.x + i * (rw + gap), box.position.y, rw, rh)
+		# Soft shadow: a few widening, fading rounded rects under the card.
+		for k in 4:
+			var g := 2.0 + k * 2.0
+			Draw.panel(self, Rect2(rr.position + Vector2(-g / 2, 3 + k), rr.size + Vector2(g, g / 2)), _a(Color(0, 0, 0, 0.05)), 12 + g / 2)
+		Draw.panel(self, rr, _a(Color.WHITE), 11)
+		var c := rr.get_center()
 		var stopped: bool = active and int(spin.stops) > i
 		if active and not stopped:
-			# Spinning: symbols sliding down through the window.
-			var off := fmod(t / 25.0 + i * 17.0, rh)
-			for j in 2:
-				var k := (int(t / 25.0 / rh) + j + i * 2) % syms.size()
-				var cy := rr.position.y + off - j * rh + rh / 2
-				if cy > rr.position.y + 10 and cy < rr.end.y - 10:
-					_reel_symbol(font, syms[k], Vector2(rr.get_center().x, cy))
+			# Spinning: a strip of symbols sliding down; near the card's edges they
+			# shrink (a drum), so nothing leaves the card.
+			var step := rh * 0.8
+			var pos := t / 1000.0 * 900.0 + i * 37.0
+			var off := fmod(pos, step)
+			var base := int(pos / step)
+			for j in range(-1, 2):
+				var dy := off - j * step
+				var k2 := clampf(1.0 - absf(dy) / (rh * 0.55), 0, 1)
+				if k2 <= 0.05:
+					continue
+				var sym: String = syms[(base + j + i * 2 + 60) % syms.size()]
+				_reel_symbol(font, sym, Vector2(c.x, c.y + dy * 0.85), k2)
 		else:
 			var rest: Array = spin.result if active else platformer.spin_rest
-			_reel_symbol(font, rest[i], rr.get_center())
+			# A little settle bounce right after a card stops.
+			var bounce := 0.0
+			if active:
+				var since: float = float(spin.t) - float(spin.get("stop_at", [0, 0, 0])[i]) if spin.has("stop_at") else 1.0
+				if since >= 0 and since < 0.25:
+					bounce = sin(since / 0.25 * PI) * 4.0
+			_reel_symbol(font, rest[i], c + Vector2(0, bounce), 1.0)
 
 
-func _reel_symbol(font: Font, sym: String, c: Vector2) -> void:
+func _reel_symbol(font: Font, sym: String, c: Vector2, k := 1.0) -> void:
 	match sym:
 		"heart":
-			SpriteArt.draw_heart(self, c, 11.0, 1.0, _alpha)
+			SpriteArt.draw_heart(self, c, 14.0 * k, 1.0, _alpha)
 		"bell":
-			SpriteArt.draw_bell(self, c, 10.0, 0.0, _alpha)
+			SpriteArt.draw_bell(self, c, 13.0 * k, 0.0, _alpha)
 		"joker":
-			SpriteArt.draw_joker(self, c, 30.0, 0.0, _alpha)
+			SpriteArt.draw_joker(self, c, 38.0 * k, 0.0, _alpha)
 		_:
 			Draw.text_center(self, font, c + Vector2(0, 12), sym, 34, _a(Color("#dc2626")))
 

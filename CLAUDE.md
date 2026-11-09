@@ -376,8 +376,8 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   `SUN_TOP_Y` (`SUN_R1`) with `sun_progress()` (0 at the start … 1 at the top). It turns with the view and dims
   in the transformation.
 - HUD (`PlatformerHud._draw_climb`, screen space, not zoomed): the spinner top-left (`_draw_reels` in
-  `SPINNER`: a light pill as high as the heart meter with three white windows, still when idle on
-  `spin_rest`; a bell or a joker spins it, clicks as each window stops; the power-up's name only on the
+  `SPINNER`: three separate white rounded cards with a soft shadow, no frame or borders, big symbols, as high as the heart meter; still when idle on
+  `spin_rest`; a bell or a joker spins it (a steady scroll, the symbols shrink near the card edges like a drum, each card stops with a small bounce), clicks as each card stops; the power-up's name only on the
   ticker), no floor counter (floors stay internal), the heart meter top-right (`draw_heart_pill`: four hearts, the bar as a line round the pill,
   `ForestRunner.progress_outline`) with the ability hints under it, the banner.
 - Map: `python3 tools/gen_climb.py` (seeded; reads GRAVITY / JUMP_FORCE / MAX_SPEED from
