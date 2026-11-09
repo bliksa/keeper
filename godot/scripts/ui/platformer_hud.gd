@@ -349,6 +349,8 @@ func _draw_powers(font: Font, y: float) -> void:
 
 ## The board: a dialog-box panel (Estrogenka on the left) with a casino marquee, the
 ## news ticker running right → left and the slot reels on the right while they spin.
+## A board dialog (Platformer.board_talk) replaces the ticker: the speaker's portrait
+## and name, the line wrapped in BOARD_TEXT and a thin line for its reading time.
 func _draw_board(font: Font, t: float) -> void:
 	var pf := platformer
 	var r := Rect2(0, 600 - Platformer.BOARD_H, 1066, Platformer.BOARD_H)
@@ -356,8 +358,9 @@ func _draw_board(font: Font, t: float) -> void:
 	draw_rect(r, DialogBox.PANEL_BG)
 	# The ticker (under the avatar / edge covers).
 	var ty := r.position.y + 96
+	var talk: Dictionary = pf.board_talk
 	# A story dialog covers the board (it is translucent): no ticker under it.
-	for seg in ([] if pf.dialog_open else pf.ticker):
+	for seg in ([] if pf.dialog_open or not talk.is_empty() else pf.ticker):
 		var sx: float = seg.x
 		if sx > 1066 or sx + seg.w < 0:
 			continue
@@ -371,13 +374,16 @@ func _draw_board(font: Font, t: float) -> void:
 	# Estrogenka, like in a dialog.
 	var av := Rect2(16, r.position.y + 18, Platformer.BOARD_H - 34, Platformer.BOARD_H - 34)
 	Draw.panel(self, av, DialogBox.PANEL_BG.darkened(0.06), 12, Color("#fbbf24"), 3)
-	var tex := SpriteArt.portrait("Estrogenka", t)
+	var speaker: String = talk.get("speaker", "Estrogenka") if not talk.is_empty() else "Estrogenka"
+	var tex := SpriteArt.portrait(speaker, t)
 	if tex:
 		var ts := tex.get_size()
 		var k := maxf((av.size.x - 8) / ts.x, (av.size.y - 8) / ts.y)
 		var src := Rect2((ts - (av.size - Vector2(8, 8)) / k) / 2, (av.size - Vector2(8, 8)) / k)
 		draw_texture_rect_region(tex, av.grow(-4), src)
-	draw_string(font, Vector2(Platformer.TICKER_LEFT, r.position.y + 44), Text.speaker_name("Estrogenka").to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#4a7d7b"))
+	draw_string(font, Vector2(Platformer.TICKER_LEFT, r.position.y + 44), Text.speaker_name(speaker).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#4a7d7b"))
+	if not talk.is_empty() and not pf.dialog_open:
+		_draw_board_talk(talk, r)
 	# Gold trim and the marquee: bulbs chasing along the top edge.
 	draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 4), Color("#f59e0b"))
 	draw_rect(Rect2(r.position.x, r.position.y + 14, r.size.x, 2), Color("#fbbf24", 0.8))
@@ -392,6 +398,22 @@ func _draw_board(font: Font, t: float) -> void:
 		draw_circle(c, 3.5, Color("#fff7c2") if on else Color("#d97706"))
 	if not pf.slot_spin.is_empty() and not pf.dialog_open:
 		_draw_reels(font, t, Rect2(1066 - 16 - 236, r.position.y + 24, 236, r.size.y - 36))
+
+
+## The board dialog's line (wrapped, the largest size that fits) and its reading-time line.
+func _draw_board_talk(talk: Dictionary, r: Rect2) -> void:
+	var text := Platformer.board_line(talk.get("key", ""))
+	var size := Platformer.board_text_size(text)
+	if size < 0:
+		size = DialogBox.TEXT_SIZES[-1]
+	var area := Rect2(r.position + Platformer.BOARD_TEXT.position, Platformer.BOARD_TEXT.size)
+	var f: Font = Text.font_dialog
+	var a := clampf(float(talk.t) / 0.2, 0, 1)
+	draw_multiline_string(f, Vector2(area.position.x, area.position.y + f.get_ascent(size)), text, HORIZONTAL_ALIGNMENT_LEFT, area.size.x, size, -1, Color(INK, a))
+	var k := clampf(float(talk.t) / maxf(0.1, float(talk.dur)), 0, 1)
+	var ly := r.end.y - 8
+	draw_line(Vector2(area.position.x, ly), Vector2(area.end.x, ly), Color("#fbbf24", 0.25), 2)
+	draw_line(Vector2(area.position.x, ly), Vector2(area.position.x + area.size.x * k, ly), Color("#f59e0b"), 2)
 
 
 ## Three reels; they stop one after another on 7-7-7 and show the power-up won.

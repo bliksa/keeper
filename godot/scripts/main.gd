@@ -5,7 +5,7 @@ extends Node
 ##   → mg2 chocolate → platformer → mg3 pipes → platformer → mg4 prices
 ##   → platformer → boss → level 2 (the forest run, runner): mg8 memory → mg9 catch
 ##   → mg10 pairs → 2E → level 3 (the jackpot climb, id 5, up with the board)
-##   → climb_top → 3E → title
+##   → climb_top → 3E (on the board) → title
 ## Old levels (developer menu only): the meadow (id 2) → the old summit (id 3:
 ## mg5 iron plate → mg6 rhythm → mg7 body signals → LH wave chase → summit → title).
 ## plus the developer menu ("dev").
@@ -559,15 +559,19 @@ func _on_trigger(name: String) -> void:
 				Game.reset_run()
 				_go_title())
 		"climb_top":
-			# The jackpot climb's top: the jackpot shows (platformer), then 3E, then the title.
+			# The jackpot climb's top: the jackpot shows (platformer), then 3E talks on the
+			# board (no dialog box, no buttons), then the title.
 			Game.checkpoint = 5
 			var run5 := _run_id
 			await get_tree().create_timer(2.0).timeout
-			if run5 != _run_id:
+			if run5 != _run_id or platformer == null or not platformer.is_climb():
 				return
-			_dialog("3E", func():
-				Game.reset_run()
-				_go_title())
+			var pf := platformer
+			pf.board_dialog_done.connect(func(id: String):
+				if id == "3E" and run5 == _run_id and platformer == pf:
+					Game.reset_run()
+					_go_title())
+			pf.board_dialog("3E")
 		"jackpot":
 			# A jackpot row in the climb is a checkpoint (2..4 = the 1st..3rd row).
 			var reached := 0

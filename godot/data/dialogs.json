@@ -1,5 +1,5 @@
 {
- "_comment": "Dialogs. Story dialogs are named <level><letter> (0 = the prologue in the forest, 1 cave, 2 forest run, 3 jackpot climb, M the old meadow, S the old summit) and their lines <level><letter><n>, e.g. 2C3 = level 2, dialog C, line 3; the line's text key in data/i18n/<lang>.json is the same name. A lowercase letter in a level map starts the dialog of that level with that letter (c in level 2 = 2C); A is said when the level starts. Minigame talk (mg*_start / _after / ...) is not a story dialog and keeps its own names. Edit in Developer mode > Dialogs. Voice file = voice_overrides[key] or <key>.wav in assets/audio.",
+ "_comment": "Dialogs. Story dialogs are named <level><letter> (0 = the prologue in the forest, 1 cave, 2 forest run, 3 jackpot climb, M the old meadow, S the old summit) and their lines <level><letter><n>, e.g. 2C3 = level 2, dialog C, line 3; the line's text key in data/i18n/<lang>.json is the same name. A lowercase letter in a level map starts the dialog of that level with that letter (c in level 2 = 2C); A is said when the level starts (except the jackpot climb, where 3A..3D explain the power-ups on the board and 3E ends it there, without buttons). Minigame talk (mg*_start / _after / ...) is not a story dialog and keeps its own names. Edit in Developer mode > Dialogs. Voice file = voice_overrides[key] or <key>.wav in assets/audio.",
  "voice_overrides": {
   "0A1": "Kyra-001.wav",
   "0A2": "Kyra-002.wav",
@@ -265,24 +265,13 @@
   "3A": {
    "parts": [
     {
-     "speaker": "Kyra",
+     "speaker": "Estrogenka",
      "text": "3A1"
     },
     {
      "speaker": "Estrogenka",
      "text": "3A2"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "3A3"
-    },
-    {
-     "speaker": "Estrogenka",
-     "text": "3A4"
     }
-   ],
-   "buttons": [
-    "BTN_LETS_CLIMB"
    ]
   },
   "3B": {
@@ -291,9 +280,6 @@
      "speaker": "Estrogenka",
      "text": "3B1"
     }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
    ]
   },
   "3C": {
@@ -301,14 +287,7 @@
     {
      "speaker": "Estrogenka",
      "text": "3C1"
-    },
-    {
-     "speaker": "Kyra",
-     "text": "3C2"
     }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
    ]
   },
   "3D": {
@@ -316,10 +295,11 @@
     {
      "speaker": "Estrogenka",
      "text": "3D1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "3D2"
     }
-   ],
-   "buttons": [
-    "BTN_GOT_IT"
    ]
   },
   "3E": {
@@ -340,9 +320,6 @@
      "speaker": "Estrogenka",
      "text": "3E4"
     }
-   ],
-   "buttons": [
-    "BTN_BACK_MENU"
    ]
   },
   "MA": {

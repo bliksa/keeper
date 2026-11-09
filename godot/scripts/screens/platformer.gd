@@ -19,10 +19,14 @@ extends Node2D
 ## Level 5 (the jackpot climb, level 3 of the game) is climbed up with the board at the
 ## bottom edge rising behind her (ticker, slot reels): springs, chips, slot-box power-ups,
 ## a win counter with a multiplier and jackpots; caught by the board she sits, no death.
+## The board never stops rising; the climb has no dialog boxes or minigames: the
+## power-ups' dialogs play on the board itself (board_dialog).
 
 signal trigger(name: String)
 signal boss_defeated
 signal boss_lost
+## The climb: a dialog played on the board (board_dialog) has said all its parts.
+signal board_dialog_done(id: String)
 
 const W := 1066.0
 const H := 600.0
@@ -75,7 +79,8 @@ const BOARD_H := 150.0
 const RISE_START := 0.7
 const RISE_ACCEL := 0.04
 const RISE_MAX := 2.6
-## After she jumps off the board it waits this long (s) before rising again.
+## At the start / a checkpoint the board waits this long (s) before it starts rising;
+## after that it never stops (a catch only resets its speed to RISE_START).
 const RISE_GRACE := 1.0
 ## Following her up keeps at least this much (px) above her head (boosts, the rocket).
 const CLIMB_TOP_MARGIN := 70.0
@@ -99,6 +104,15 @@ const TICKER_GAP := 70.0
 const MULT_FLOORS := 5
 const MULT_MAX := 10
 const STREAK_JACKPOT := 25
+## Dialogs on the board (the climb has no dialog box): the text area relative to the
+## board's top-left corner, and each part's reading time (s) from its length.
+const BOARD_TEXT := Rect2(158, 50, 644, 88)
+const BOARD_READ_BASE := 2.5
+const BOARD_READ_CHAR := 0.05
+const BOARD_READ_MIN := 3.0
+const BOARD_READ_MAX := 8.0
+## The dialog that explains a power-up, said on the board the first time it is won.
+const POWER_DIALOG := {"super_jump": "3A", "triple": "3B", "magnet": "3C", "rocket": "3D"}
 
 
 ## Updated by Main.
@@ -183,6 +197,11 @@ var _chip_note := 0
 var ticker: Array[Dictionary] = []
 var ticker_queue: Array[String] = []
 var _tick_next := 0
+## The dialog on the board ({id, part, t, dur, speaker, key}; empty = the ticker runs),
+## the ones waiting after it, and the power-ups already explained in this climb.
+var board_talk := {}
+var board_queue: Array[String] = []
+var powers_explained := {}
 var _rest_ms := -1e9
 ## Level 3: touching a side wall in the air (wall jump), combo of higher landings.
 var on_wall := false
@@ -464,7 +483,7 @@ func _process(delta: float) -> void:
 			camera_y = lerpf(camera_y, p.y - H * 0.4, 1.0 - pow(0.88, f60))
 	if active:
 		_update(dt)
-		if active and not _initial_dialog_sent and _start_checkpoint <= 1:
+		if active and not _initial_dialog_sent and _start_checkpoint <= 1 and not is_climb():
 			_initial_dialog_sent = true
 			get_tree().create_timer(0.3).timeout.connect(_send_initial_dialog)
 	_shake = Vector2.ZERO
@@ -965,8 +984,7 @@ func _update(dt: float) -> void:
 				on_dialog_floor = true
 				p.jumps_left = _max_jumps()
 	if is_climb():
-		# Also while a dialog talks (she can jump in the climb's dialogs): a landing on
-		# the board is a catch, or it would slip past once the dialog closes.
+		# Landing on the board (or the board reaching her feet) is a catch.
 		if on_dialog_floor and not on_board and not climb_won:
 			_caught()
 		on_board = on_dialog_floor
@@ -1014,6 +1032,9 @@ func _update(dt: float) -> void:
 	# --- camera (the summit is climbed, so keep more of the screen above the player)
 	if is_climb():
 		_climb_camera(dt, d60)
+		if on_board and p.vy >= 0:
+			# The board rose this frame: she rides on it (no sinking into its edge).
+			p.y = board_y() - p.height
 	else:
 		_camera(dt, d60, down)
 
@@ -1303,8 +1324,19 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 		p.vx = 0
 		p.vy = 0
 		return
+	if is_climb() and not e.trigger_type in ["dialog", "jackpot", "climb_top"]:
+		# Nothing interrupts the climb: minigame (and cramp / boss / wave / gate / summit)
+		# triggers painted in the editor do nothing here.
+		e.collected = true
+		return
 	e.collected = true
 	if e.trigger_type == "dialog":
+		if is_climb():
+			# The climb has no dialog box: a painted letter talks on the board.
+			var did := Text.dialog_for_letter(e.dialog_id, level_id)
+			if did != "":
+				board_dialog(did)
+			return
 		trigger.emit("dialog_" + e.dialog_id)
 		return
 	if e.trigger_type == "jackpot":
@@ -2570,11 +2602,13 @@ func _draw_jackpot_row(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 
 # --- the jackpot climb (level 5): the board, wins, springs, chips, slot boxes ---------
 
-## Camera with the board's top edge a little below her feet (start / checkpoints).
+## Camera with the board's top edge a little below her feet (start / checkpoints); the
+## board waits RISE_GRACE before it starts rising.
 func _board_camera() -> void:
 	camera_y = maxf(0, p.y + p.height + 60 - (H - BOARD_H))
 	last_stand_y = p.y + p.height
 	_reset_streak()
+	rise_wait = RISE_GRACE
 
 
 ## The board's top edge in world coordinates (she stands / sits on it).
@@ -2582,31 +2616,33 @@ func board_y() -> float:
 	return camera_y + H - BOARD_H
 
 
-## A fresh streak (start, checkpoint, caught): x1 from the floor she is on.
+## A fresh streak (start, checkpoint, caught): x1 from the floor she is on, the board's
+## rise back to its starting speed (it doesn't stop).
 func _reset_streak() -> void:
 	streak_floor0 = floor_of(p.y + p.height)
 	streak_top = streak_floor0
 	_streak_jackpots = 0
 	climb_mult = 1
 	rise = RISE_START
-	rise_wait = RISE_GRACE
 	on_board = false
 
 
-## The board caught her: she sits down, the multiplier goes back to x1, the board waits.
+## The board caught her: she sits down and rides it up, the multiplier goes back to x1,
+## the board slows down to RISE_START but keeps rising.
 func _caught() -> void:
 	var was := climb_mult
 	_reset_streak()
 	on_board = true
-	# Hopping on the board doesn't repeat the calm line (or the sound) every time; under a
-	# dialog (which covers the board) only when the streak was actually lost.
-	if was > 1 or (time_ms - _rest_ms > 8000.0 and not dialog_open):
+	# Hopping on the board doesn't repeat the calm line (or the sound) every time.
+	if was > 1 or time_ms - _rest_ms > 8000.0:
 		_rest_ms = time_ms
 		Audio.play_sfx("breathok.wav", 0.25)
 		ticker_say(Text.plain(Text.t("CLIMB_REST")))
 
 
 ## The camera rises on its own (the board chases her) and follows her up; never down.
+## The rise never pauses (she sits on the board, a board dialog talks …), except for
+## the short wait at the start / a checkpoint (rise_wait) and after the top.
 func _climb_camera(dt: float, d60: float) -> void:
 	# Follow her up to the middle, but don't lift the board past the platform she last
 	# stood on (it would catch every fall back from a boost or a missed jump) unless
@@ -2615,7 +2651,7 @@ func _climb_camera(dt: float, d60: float) -> void:
 	if follow < camera_y:
 		camera_y += (follow - camera_y) * (1.0 - pow(0.85, d60))
 	camera_y = minf(camera_y, p.y - CLIMB_TOP_MARGIN)
-	if not dialog_open and not on_board and not climb_won and camera_y > 0:
+	if not climb_won and camera_y > 0:
 		if rise_wait > 0:
 			rise_wait -= dt
 		else:
@@ -2627,9 +2663,12 @@ func _climb_camera(dt: float, d60: float) -> void:
 func _update_climb(dt: float, d60: float) -> void:
 	if boost_t > 0:
 		boost_t -= dt
-	# Timed power-ups (paused while a dialog talks).
+	# Timed power-ups (paused while a dialog talks, and while the board explains the
+	# power-up or it waits to, so it never runs out before its explanation is over).
 	if not dialog_open:
 		for k in climb_power.keys():
+			if k != "rocket" and board_talking(str(POWER_DIALOG.get(k, "-"))):
+				continue
 			climb_power[k] -= dt
 			if climb_power[k] <= 0:
 				climb_power.erase(k)
@@ -2641,7 +2680,11 @@ func _update_climb(dt: float, d60: float) -> void:
 				"type": "flame" if flame else "glint", "life": 0.4, "max_life": 0.4})
 	# The streak: floors climbed since the last catch → multiplier and streak jackpots.
 	floor_now = floor_of(p.y + p.height)
-	if not on_board and not climb_won:
+	if on_board:
+		# Carried up by the board: those floors aren't climbed (the streak starts here).
+		streak_floor0 = floor_now
+		streak_top = floor_now
+	elif not climb_won:
 		streak_top = maxi(streak_top, floor_now)
 		var climbed := streak_top - streak_floor0
 		var m := mini(MULT_MAX, 1 + climbed / MULT_FLOORS)
@@ -2671,7 +2714,9 @@ func _update_climb(dt: float, d60: float) -> void:
 		pp.y -= 45.0 * dt
 		if pp.t >= pp.life:
 			pops.remove_at(i)
-	_update_ticker(dt)
+	_update_board_talk(dt)
+	if board_talk.is_empty():
+		_update_ticker(dt)
 
 
 ## Adds a win (× the multiplier) and pops the number where it happened.
@@ -2769,6 +2814,11 @@ func _next_power() -> String:
 	if _power_bag.is_empty():
 		_power_bag = POWERS.duplicate()
 		_power_bag.shuffle()
+		if not powers_explained.has("super_jump"):
+			# The first box of a climb pays the super jump: its explanation (3A) also
+			# introduces the slot boxes.
+			_power_bag.erase("super_jump")
+			_power_bag.append("super_jump")
 	return _power_bag.pop_back()
 
 
@@ -2813,6 +2863,83 @@ func grant_power(name: String) -> void:
 	_say_banner(label)
 	_sparkles(p.center(), 20)
 	ticker_say(label)
+	if POWER_DIALOG.has(name) and not powers_explained.has(name):
+		# The first time in this climb: the board explains it.
+		powers_explained[name] = true
+		board_dialog(POWER_DIALOG[name])
+
+
+## Plays a dialogs.json node on the board (the climb has no dialog box): each part with
+## its speaker's portrait for a reading time, then the next, then the ticker again. Not
+## modal, no buttons; play and the rise go on. A newer one waits for the current one.
+## board_dialog_done(id) when its last part is over.
+func board_dialog(id: String) -> void:
+	if not Text.dialogs.has(id):
+		push_warning("Unknown dialog " + id)
+		return
+	if board_talk.get("id", "") == id or board_queue.has(id):
+		return
+	if board_talk.is_empty():
+		_board_part(id, 0)
+	else:
+		board_queue.append(id)
+
+
+## Is a dialog (this one, or any with "") talking on the board or waiting for it?
+func board_talking(id := "") -> bool:
+	if id == "":
+		return not board_talk.is_empty()
+	return board_talk.get("id", "") == id or board_queue.has(id)
+
+
+## The board dialog's next part now (tests; the reading time does it in play).
+func board_next() -> void:
+	if not board_talk.is_empty():
+		_board_part(board_talk.id, int(board_talk.part) + 1)
+
+
+## Reading time (s) of a board dialog line.
+static func board_read_time(text: String) -> float:
+	return clampf(BOARD_READ_BASE + text.length() * BOARD_READ_CHAR, BOARD_READ_MIN, BOARD_READ_MAX)
+
+
+## The text of a dialog line as the board shows it (plain, this language and control mode).
+static func board_line(key: String) -> String:
+	return Text.plain(Text.t(key))
+
+
+## The largest DialogBox.TEXT_SIZES size at which a line fits the board's text area
+## (-1 = it doesn't fit even at the smallest).
+static func board_text_size(text: String) -> int:
+	for size in DialogBox.TEXT_SIZES:
+		var h := Text.font_dialog.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, BOARD_TEXT.size.x, size).y
+		if h <= BOARD_TEXT.size.y:
+			return size
+	return -1
+
+
+func _board_part(id: String, part: int) -> void:
+	var node: Dictionary = Text.dialogs.get(id, {})
+	var parts: Array = node.get("parts", [])
+	if part >= parts.size():
+		board_talk = {}
+		board_dialog_done.emit(id)
+		if board_talk.is_empty() and not board_queue.is_empty():
+			_board_part(board_queue.pop_front(), 0)
+		return
+	var pd: Dictionary = parts[part]
+	var key: String = pd.get("text", "")
+	board_talk = {"id": id, "part": part, "t": 0.0, "dur": board_read_time(board_line(key)),
+		"speaker": str(pd.get("speaker", "")), "key": key}
+	Audio.play_voice(Text.voice_file(key))
+
+
+func _update_board_talk(dt: float) -> void:
+	if board_talk.is_empty():
+		return
+	board_talk.t += dt
+	if board_talk.t >= board_talk.dur:
+		board_next()
 
 
 ## Puts an event line on the board's ticker (it comes next, the ticker hurries to it).

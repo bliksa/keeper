@@ -40,13 +40,14 @@ tools/                     setup_godot.sh, test.sh, export_web.sh, gen_climb.py 
   `^` spike, `S/F/J/C` cramps, `P` spawn, `2/3/4` minigames, `5` boss, `a–z`
   dialogs; level 2: `@` bubble, `%` popping bubble, `~` updraft, `N` distraction,
   `6/7/8` minigames, `9` LH wave, `E` summit; the jackpot climb: `!` spring, `$` chip,
-  `?` slot box, `0` jackpot row, `E` the top). Keep 25 columns. Minigame / boss /
+  `?` slot box, `0` jackpot row, `E` the top; no letters / minigames there). Keep 25 columns. Minigame / boss /
   wave / summit triggers span the whole row. `Game.LEVELS` maps level id → file.
 - **Dialogs**: story dialogs are named `<level><letter>` (0 = prologue in the forest,
   1 cave, 2 forest run, 3 jackpot climb (level id 5), M old meadow, S old summit (level id 3);
   `Game.DIALOG_LEVEL` maps level ids),
   their lines `<level><letter><n>`: `2C3` = level 2, dialog C, line 3 (also the text
-  key in `data/i18n/*.json`). Each level starts with its dialog A. Minigame talk
+  key in `data/i18n/*.json`). Each level starts with its dialog A (not the jackpot climb:
+its 3A..3E play on the board, see below). Minigame talk
   (`mg*_start` / `_after` …) is not a story dialog and keeps its own names. Edit them in
   **Developer mode > Dialogs** (`scripts/dev/dialog_editor.gd`, `DialogEditor`:
   lines in SK / EN / PT, speaker, buttons, a fit check, Play, Use in game, Save to repo
@@ -97,7 +98,7 @@ tools/export_web.sh   # builds build/web (serve with: python3 -m http.server -d 
 `tests/test_runner.gd` so the new path is played through. For visual changes, export
 and look at the page in Chromium (Playwright is preinstalled in cloud sessions).
 
-The exported page checks for a newer deploy (`tools/web_update_check.js`, injected by `export_web.sh`, compares `version.json` with its own build on load, every minute and when the tab comes back): a chime, then it reloads by itself on the boot / title screens (`window.keeperState`, `main._report_state`; once per new build) and shows a Reload bar elsewhere.
+The exported page checks for a newer deploy (`tools/web_update_check.js`, injected by `export_web.sh`, compares `version.json` with its own build on load, every minute and when the tab comes back): a chime and a card "New version" listing in a few words the commits newer than the page's build (`version.json` `changes`, the last 40 commit subjects), with a link to `changelog.html` (the log of all commit subjects by day, generated at export; CI checks out 400 commits for it); on the boot / title screens it reloads by itself after 6 s (`window.keeperState`, `main._report_state`; once per new build), elsewhere it waits for the Reload button.
 
 After push, GitHub Actions deploys to `https://bliksa.github.io/keeper/`
 (original prototype at `/original/`).
@@ -264,9 +265,11 @@ entity `spring`, `$` `chip`, `?` `slot`, `0` trigger `jackpot` (whole row, a che
 `~` updraft; E becomes trigger `climb_top` in `setup` (sets `climb_won`). Checkpoints
 `LevelData.PROGRESS[5]` = jackpot ×3 + climb_top (`_place_at_checkpoint` takes the n-th
 row of a repeated kind, from the bottom; 5 = a few rows below the top). Flow in
-`main.gd`: `_runner_done` → 2E → `_start_climb(1)`; dialog 3A at the start (jumps
-allowed), letters b/c/d → 3B/3C/3D; `jackpot` → `Game.checkpoint`; `climb_top` → 2 s →
-3E → `reset_run` → title. Dev menu column "3 · Jackpot climb" (`checkpoint5`), web
+`main.gd`: `_runner_done` → 2E → `_start_climb(1)` (no dialog at the start: the climb
+never opens the DialogBox and has no minigames); `jackpot` → `Game.checkpoint`;
+`climb_top` → 2 s → 3E on the board → `board_dialog_done("3E")` → `reset_run` → title
+(`_run_id` guarded). The map has no dialog letters; one painted in the editor plays on
+the board (`_hit_trigger`), painted `mg*` / boss / wave / gate triggers do nothing here. Dev menu column "3 · Jackpot climb" (`checkpoint5`), web
 `?climb=1` / `?climb=top`. Strings `CLIMB_*`.
 
 Mechanics (all level 5 only, constants at the top of `platformer.gd`):
@@ -275,14 +278,35 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   chasing bulbs, the news ticker `Platformer.ticker` scrolling `CLIMB_TICK_1..8` right →
   left at `TICKER_SPEED`, event lines via `ticker_say()` come next and the ticker hurries;
   the slot reels on its right). Its top edge (`board_y()`) is always a floor (the dialog
-  floor code in `_update`); a story dialog covers it exactly. Kyra is on layer 9 above it.
+  floor code in `_update`). Kyra is on layer 9 above it.
+- **Board dialogs** (`board_dialog(id)`, no DialogBox, no buttons, not modal:
+  `dialog_open` stays false, play and the rise go on): the node's parts replace the ticker
+  (paused meanwhile) in `board_talk` ({id, part, t, dur, speaker, key}): the speaker's
+  portrait and name in the avatar slot, the line (`board_line`) wrapped in `BOARD_TEXT` at
+  the largest `DialogBox.TEXT_SIZES` size that fits (`board_text_size`), each part for
+  `board_read_time` (2.5 s + 0.05 s/char, 3…8 s) with a thin progress line
+  (`PlatformerHud._draw_board_talk`), its voice if `Text.voice_file` has one; then
+  `board_dialog_done(id)` and the next one from `board_queue`. `board_talking(id)`,
+  `board_next()` (tests). The first grant of each power-up in a climb (`grant_power`,
+  `powers_explained`, `POWER_DIALOG`) explains it: 3A super jump (+ slot boxes always
+  pay), 3B triple, 3C magnet, 3D rocket (the LH surge); 3E = the end. A timed
+  power-up's clock stops while its explanation talks or waits on the board, so it never
+  runs out mid-explanation; the first box of a climb always pays the super jump (3A
+  introduces the boxes). In the climb `_hit_trigger` ignores every trigger except
+  `dialog` (→ board), `jackpot` and `climb_top` (no cramp dialog, minigame, wave …). All Estrogenka
+  (3E: Kyra too), no buttons. The test checks every 3* line fits the board in all
+  languages and both control modes; the dialog editor's fit mark checks the board for
+  3* (`DialogEditor.on_board`).
 - **Auto-rise** (`_climb_camera`): the camera rises by `rise` (`RISE_START` →
-  `RISE_ACCEL` → `RISE_MAX`), follows her up, never scrolls down; paused while a dialog
-  is open, while she is `on_board`, after the top. Climb dialogs (3*) allow jumping.
+  `RISE_ACCEL` → `RISE_MAX`), follows her up, never scrolls down. It never stops (she
+  sits on the board, a board dialog talks …): only `rise_wait` = `RISE_GRACE` at the
+  start / a checkpoint (`_board_camera`) and after the top.
 - **Caught** (`_caught`): standing on the board (fell, or the edge reached her feet; a
-  clamp keeps her above it even on frame spikes) → x1, `CLIMB_REST` on the ticker, she
-  sits when idle; a jump leaves any time, the rise restarts after `RISE_GRACE`. No death:
-  `_hurt` only knocks her back, cramps don't grab, no breathing.
+  clamp keeps her above it even on frame spikes, and after the camera moves she is
+  snapped onto it, so she rides it up sitting) → x1, `rise` back to `RISE_START`,
+  `CLIMB_REST` on the ticker, she sits when idle; floors carried up don't count for the
+  streak; a jump leaves any time. No death: `_hurt` only knocks her back, cramps don't
+  grab, no breathing.
 - **Springs** `!` (`_spring`: `SPRING_FORCE` ≈ 550 px, jumps refilled, BOOST!, `boost_t`
   keeps a released jump key from cutting the flight), **chips** `$` (`_take_chip`: +10),
   **slot boxes** `?` (`_start_slot` → `slot_spin` reels, `SLOT_STOPS`, pays at `SLOT_SPIN`
@@ -297,8 +321,9 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
 - HUD (`PlatformerHud._draw_climb`): FLOOR top-left with the power-up pills under it,
   the WIN counter rolling up (`_win_shown`) with the multiplier top-centre, the banner.
 - Map: `python3 tools/gen_climb.py` (seeded; reads GRAVITY / JUMP_FORCE / MAX_SPEED from
-  `platformer.gd` and asserts every row is one normal jump from the one below; `--check`
-  checks the current file). Editor saves drop its header comment.
+  `platformer.gd` and asserts every row is one normal jump from the one below, and that
+  there are no dialog letters and no minigame / boss / wave digits; `--check` checks the
+  current file). Editor saves drop its header comment.
 
 ## Old level 3: the summit (ovulation; dev menu only)
 

@@ -33,7 +33,9 @@ const BY_GAME := {
 	"0D": "the end of the breathing minigame", "1A": "the start of the cave", "1B": "the first cramp (X in the cave)",
 	"1C": "the boss fight (start)", "1D": "the boss defeated (then the corridor)", "1E": "the boss lost",
 	"2A": "the start of the forest run", "2E": "the full sun (end of level 2)",
-	"3A": "the start of the jackpot climb", "3E": "the top of the jackpot climb (end of level 3)",
+	"3A": "the jackpot climb's first super jump (on the board)", "3B": "the jackpot climb's first triple jump (on the board)",
+	"3C": "the jackpot climb's first chip magnet (on the board)", "3D": "the jackpot climb's first rocket (on the board)",
+	"3E": "the top of the jackpot climb (end of level 3, on the board)",
 	"MA": "the start of the old meadow", "MF": "the locked gate", "MG": "the open gate (end)",
 	"SA": "the start of the old summit", "SF": "the LH wave (old summit)", "SG": "the old summit (end)",
 }
@@ -397,10 +399,18 @@ func next_id(g: String) -> String:
 	return ""
 
 
-## Does a line fit the dialog box at the smallest text size?
-func fits(text: String) -> bool:
+## Does a line fit the dialog box at the smallest text size? board: the jackpot climb's
+## dialogs (3*) talk on the board, whose text area is smaller: it must fit there too.
+func fits(text: String, board := false) -> bool:
 	_measure.text = Text.glyphs_to_bb(_filter_both(text))
-	return _measure.get_content_height() <= DialogBox.text_area().y
+	if _measure.get_content_height() > DialogBox.text_area().y:
+		return false
+	return not board or Platformer.board_text_size(Text.plain(_filter_both(text))) > 0
+
+
+## Dialogs of the jackpot climb play on its board (Platformer.board_dialog).
+static func on_board(id: String) -> bool:
+	return id.begins_with("3")
 
 
 ## The longer of the keyboard / gamepad versions of a line.
@@ -1161,14 +1171,14 @@ func _mark_fit(mark: Label, text: String) -> void:
 		mark.text = "empty"
 		mark.add_theme_color_override("font_color", Color("#f59e0b"))
 		mark.tooltip_text = "Empty: the dialog would show nothing in this language."
-	elif fits(text):
+	elif fits(text, on_board(current)):
 		mark.text = "fits"
 		mark.add_theme_color_override("font_color", Color("#34d399"))
-		mark.tooltip_text = "Fits the dialog box."
+		mark.tooltip_text = "Fits the board." if on_board(current) else "Fits the dialog box."
 	else:
 		mark.text = "too long"
 		mark.add_theme_color_override("font_color", Color("#f87171"))
-		mark.tooltip_text = "Too long: it doesn't fit the dialog box even at the smallest size. Split it into two lines."
+		mark.tooltip_text = "Too long: it doesn't fit the %s even at the smallest size. Split it into two lines." % ("board" if on_board(current) else "dialog box")
 
 
 func _say(s: String) -> void:

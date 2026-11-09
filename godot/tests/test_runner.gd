@@ -174,6 +174,28 @@ func _run() -> void:
 	Text.language = lang0
 	Audio.stop_voice()
 	check(too_long.is_empty(), "every dialog fits its box with OpenDyslexic (smallest size %d) %s" % [smallest, str(too_long)])
+	# The jackpot climb's dialogs (3*) talk on the board: they must fit its text area too,
+	# in both control modes, and have no buttons (nothing to press on the board).
+	var board_long := []
+	var board_smallest := 99
+	var mode0: String = Game.control_mode
+	for lang in ["en", "sk", "pt"]:
+		Text.language = lang
+		for mode in ["keyboard", "gamepad"]:
+			Game.control_mode = mode
+			for id in Text.dialogs:
+				if not DialogEditor.on_board(id):
+					continue
+				var parts: Array = Text.dialogs[id].get("parts", [])
+				for i in parts.size():
+					var sz := Platformer.board_text_size(Platformer.board_line(parts[i].get("text", "")))
+					board_smallest = mini(board_smallest, sz if sz > 0 else 99)
+					if sz < 0:
+						board_long.append("%s/%s:%s#%d" % [lang, mode, id, i])
+	Text.language = lang0
+	Game.control_mode = mode0
+	check(board_long.is_empty(), "every board dialog (3A..3E) fits the board's text area (smallest size %d) %s" % [board_smallest, str(board_long)])
+	check(["3A", "3B", "3C", "3D", "3E"].all(func(id): return Text.dialogs.has(id) and not Text.dialogs[id].has("buttons")), "the climb's dialogs have no buttons")
 
 	step("forest intro")
 	main._menu.start_pressed.emit()
@@ -518,6 +540,8 @@ func _run() -> void:
 	await finish_dialog("2E")
 	var climb := await until(func(): return main.state == "platformer" and Game.level == Game.CLIMB_ID and main.platformer != null, 6)
 	check(climb, "the jackpot climb (level 3) starts after the forest run")
+	await seconds(0.8)
+	check(not node_box().is_open() and not main.platformer.dialog_open and not main.platformer.board_talking(), "the climb starts without a dialog (no 3A at the start, no dialog box)")
 
 	step("forest run – a repeat is laid out behind what she sees")
 	var lmap: Array = []
@@ -616,7 +640,9 @@ func _run() -> void:
 	er.queue_free()
 
 	step("level 3 – the jackpot climb")
-	await finish_dialog("3A")
+	# It kept running during the steps above: start it again from the bottom.
+	await main._start_climb(1, false)
+	await frames(2)
 	pf = main.platformer
 	check(pf.is_climb() and pf.is_up() and not pf.is_summit() and pf.p.y > pf.level_h - 500, "the jackpot climb starts at the bottom")
 	check(not pf.wave.active and pf.camera_y > pf.level_h - 1200, "no LH wave; the camera starts at the bottom")
@@ -626,16 +652,23 @@ func _run() -> void:
 	pf.trigger.connect(func(n): climb_events.append(n))
 	check(not pf.on_board and pf.climb_mult == 1 and pf.climb_win == 0 and pf.ticker.size() > 0 and pf.hud.visible, "the board's ticker runs, she starts just above the board at x1")
 	check(pf.board_y() > pf.p.y + pf.p.height and pf.board_y() - (pf.p.y + pf.p.height) < 120, "the board's top edge is right below her feet")
-	# Dialog letters span their row: 3B (slot boxes), 3C (LH surge), 3D (almost there).
-	for letter in ["b", "c", "d"]:
-		var dlg_ent: LevelData.Ent = null
-		for e in pf.level.entities:
-			if e.trigger_type == "dialog" and e.dialog_id == letter:
-				dlg_ent = e
-		check(dlg_ent != null and dlg_ent.w >= 1000, "dialog letter %s spans its row" % letter)
-		if dlg_ent:
-			_climb_put(pf, 300, dlg_ent.y + 60)
-			await finish_dialog("3" + letter.to_upper())
+	check(not node_box().is_open() and not pf.board_talking(), "no dialog at the start of the climb")
+	# No dialog letters and no minigames in the climb's map.
+	check(not pf.level.entities.any(func(e): return e.type == "trigger" and (e.trigger_type == "dialog" or e.trigger_type.begins_with("mg") or e.trigger_type in ["end", "wave", "gate"])), "the climb's map has no dialog letters and no minigame triggers")
+	# A letter painted in the editor anyway talks on the board, never in the dialog box;
+	# a painted minigame does nothing.
+	var painted := LevelData.Ent.new()
+	painted.type = "trigger"
+	painted.trigger_type = "dialog"
+	painted.dialog_id = "c"
+	pf._hit_trigger(painted)
+	var painted_mg := LevelData.Ent.new()
+	painted_mg.type = "trigger"
+	painted_mg.trigger_type = "mg5"
+	pf._hit_trigger(painted_mg)
+	await frames(3)
+	check(pf.board_talking("3C") and not node_box().is_open() and not pf.dialog_open and main.state == "platformer" and main.minigame == null, "a painted letter plays its dialog on the board; a painted minigame doesn't open")
+	_board_flush(pf)
 	# The multiplier: floors climbed without being caught.
 	var base: LevelData.Plat = _climb_plat(pf, pf.level_h - 300)
 	_climb_put(pf, base.x + base.w / 2, base.base_y)
@@ -645,17 +678,20 @@ func _run() -> void:
 	await frames(2)
 	check(pf.climb_mult >= 3 and pf.streak_top - pf.streak_floor0 >= 10, "10 floors without a catch: multiplier x%d" % pf.climb_mult)
 	# Caught: the board rises past her feet → she stands on it, sits, x1, a calm line.
+	pf.rise_wait = 0.0
+	pf.rise = 2.0
 	pf.camera_y = pf.p.y + pf.p.height - (Platformer.H - Platformer.BOARD_H) - 40
 	pf.p.vy = 0
 	await frames(3)
 	check(pf.on_board and pf.p.is_grounded and absf(pf.p.y + pf.p.height - pf.board_y()) < 2, "the rising board catches her: she stands on its top edge")
 	var rest := Text.plain(Text.t("CLIMB_REST"))
 	check(pf.climb_mult == 1 and (pf.ticker_queue.has(rest) or pf.ticker.any(func(sg): return sg.text == rest)), "caught: the multiplier is back to x1, the board says take a breath")
+	check(pf.rise <= Platformer.RISE_START + 0.05, "caught: the board slows back to its starting speed")
 	await seconds(0.4)
 	var cy := pf.camera_y
 	check(pf.p.is_sitting and not pf.p.is_dead, "on the board she sits down (no death)")
 	await seconds(0.5)
-	check(pf.camera_y == cy and pf.on_board, "the board stops rising while she sits on it")
+	check(pf.camera_y < cy - 5 and pf.on_board and pf.p.is_sitting and absf(pf.p.y + pf.p.height - pf.board_y()) < 1.5, "the board keeps rising while she sits on it and carries her up (%.0f px)" % (cy - pf.camera_y))
 	# Frame spike: even far below the board she ends up on it.
 	pf.p.y = pf.board_y() + 200
 	pf.p.vy = 14
@@ -666,15 +702,14 @@ func _run() -> void:
 	await frames(2)
 	_key(KEY_SPACE, false)
 	check(pf.p.vy < 0 and not pf.on_board and not pf.p.is_sitting, "a jump takes her off the board any time")
-	# Off the board (on a platform above it) the board rises again after RISE_GRACE.
+	# Off the board (on a platform above it) the board just goes on rising, no wait.
 	var hold: LevelData.Plat = _climb_plat(pf, pf.p.y - 400)
 	_climb_put(pf, hold.x + hold.w / 2, hold.base_y)
 	pf.camera_y = hold.base_y - 400
 	await frames(2)
-	check(not pf.on_board and pf.rise_wait > 0, "on a platform above the board it waits a moment")
 	cy = pf.camera_y
-	await seconds(Platformer.RISE_GRACE + 0.4)
-	check(pf.camera_y < cy - 5 and pf.rise >= Platformer.RISE_START, "then the board rises again (the camera climbs on its own)")
+	await seconds(0.4)
+	check(not pf.on_board and pf.rise_wait <= 0 and pf.camera_y < cy - 5 and pf.rise >= Platformer.RISE_START, "on a platform above the board it keeps rising (the camera climbs on its own)")
 	# Following her up never lifts the board past the platform she jumped from, so a
 	# missed jump (or the way down from a boost) lands on a platform, not the board.
 	var from: LevelData.Plat = _climb_plat(pf, pf.p.y - 600)
@@ -693,14 +728,24 @@ func _run() -> void:
 	peaked = await until(func(): return pf.p.vy > 0, 4)
 	var gap := pf.board_y() - (pf.p.y + pf.p.height)
 	check(peaked and gap > 250 and pf.p.y > pf.camera_y + 60, "a boost: at her highest the board is %d px below her (room for the rows under the peak), she stays on screen" % int(gap))
-	# Landing on the board while a climb dialog talks is a catch too (x1, the board waits).
+	pf.rise_wait = 0.0
+	# A dialog on the board doesn't stop anything: the board keeps rising, landing on it
+	# is a catch (x1), there is no dialog box and nothing to press.
 	_climb_put(pf, 500, from.base_y - 60)
 	pf.camera_y = from.base_y - 60 - (Platformer.H - Platformer.BOARD_H) + 30
 	pf.climb_mult = 4
-	main._dialog("3C")
+	var talked: Array = []
+	pf.board_dialog_done.connect(func(id): talked.append(id))
+	pf.board_dialog("3C")
 	var caught_in_dialog := await until(func(): return pf.on_board, 3)
-	check(caught_in_dialog and node_box().is_open() and pf.climb_mult == 1 and pf.rise_wait > Platformer.RISE_GRACE - 0.1, "caught under a dialog: the multiplier is back to x1 and the board waits")
-	await finish_dialog("3C")
+	check(caught_in_dialog and pf.board_talking("3C") and not node_box().is_open() and not pf.dialog_open and pf.climb_mult == 1, "caught while the board talks: x1, no dialog box")
+	cy = pf.camera_y
+	await seconds(0.4)
+	check(pf.camera_y < cy - 5 and pf.on_board and pf.board_talking("3C"), "the board keeps rising while its dialog talks")
+	check(pf.board_talk.speaker == "Estrogenka" and pf.board_talk.dur >= Platformer.BOARD_READ_MIN and pf.board_talk.dur <= Platformer.BOARD_READ_MAX and pf.ticker.size() > 0, "the board shows the line for its reading time (%.1f s)" % pf.board_talk.dur)
+	pf.board_talk.t = pf.board_talk.dur - 0.01
+	await frames(4)
+	check(talked == ["3C"] and not pf.board_talking(), "after its reading time the board dialog ends (board_dialog_done) and the ticker comes back")
 	await frames(3)
 	# A spring launches her.
 	var spring: LevelData.Ent = _climb_ent(pf, "spring")
@@ -725,8 +770,11 @@ func _run() -> void:
 	var all_powers: Array = Platformer.POWERS.duplicate()
 	all_powers.sort()
 	check(drawn == all_powers, "the slot bag holds every power-up once")
-	# A slot box spins the reels on the board and always pays a power-up.
+	# A slot box spins the reels on the board and always pays a power-up; the first one
+	# in a climb pays the super jump (3A also introduces the slot boxes).
 	pf.climb_power.clear()
+	pf.powers_explained.clear()
+	pf._power_bag.clear()
 	var slot: LevelData.Ent = _climb_ent(pf, "slot")
 	win0 = pf.climb_win
 	_climb_put(pf, slot.x + slot.w / 2, slot.y + slot.h + 25)
@@ -734,6 +782,11 @@ func _run() -> void:
 	check(slot.collected and not pf.slot_spin.is_empty() and not pf.slot_spin.paid, "a slot box spins the reels")
 	await seconds(Platformer.SLOT_SPIN + 0.2)
 	check(pf.slot_spin.get("paid", false) and pf.climb_power.size() > 0 and pf.climb_win >= win0 + 100, "the reels stop and pay a power-up (%s)" % pf.slot_spin.get("power", "?"))
+	check(pf.board_talking(Platformer.POWER_DIALOG.get(pf.slot_spin.get("power", ""), "?")) and not node_box().is_open(), "the first power-up from a slot box is explained on the board")
+	check(pf.slot_spin.get("power", "") == "super_jump" and pf.board_talking("3A"), "the first slot box of a climb pays the super jump (3A introduces the boxes)")
+	# Each power-up's first grant in a climb explains it on the board (3A..3D), once.
+	_board_flush(pf)
+	pf.powers_explained.clear()
 	# Each power-up works.
 	var stand: LevelData.Plat = _climb_plat(pf, pf.level_h - 1200)
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
@@ -742,10 +795,15 @@ func _run() -> void:
 	var jf := pf._jump_force()
 	pf.grant_power("super_jump")
 	check(pf._jump_force() < jf * 1.25 and pf.banner.get("text", "") == Text.plain(Text.t("CLIMB_PU_SUPER_JUMP")), "super jump: jumps 30 % higher, a banner")
+	check(pf.board_talk.get("id", "") == "3A" and not node_box().is_open() and not pf.dialog_open, "the first super jump: 3A talks on the board (no dialog box, no buttons)")
+	var sj_left: float = pf.climb_power.get("super_jump", 0.0)
+	await frames(30)
+	check(pf.board_talking("3A") and absf(float(pf.climb_power.get("super_jump", 0.0)) - sj_left) < 0.001, "the super jump doesn't run out while 3A explains it")
 	pf.climb_power.clear()
 	pf.grant_power("triple")
 	await frames(3)
 	check(pf._max_jumps() == 3 and pf.p.jumps_left == 3, "triple jump: three jumps")
+	check(pf.board_talking("3B") and pf.board_queue.has("3B"), "the first triple jump: 3B waits for 3A on the board")
 	for i in 3:
 		_key(KEY_SPACE, true)
 		await frames(2)
@@ -760,14 +818,33 @@ func _run() -> void:
 	var pull: LevelData.Ent = _climb_ent(pf, "chip")
 	pull.x = pf.p.x + 200
 	pull.y = pf.p.y
+	check(pf.board_talking("3C"), "the first magnet: 3C on the board")
 	var magnet_pulled := await until(func(): return pull.collected, 2)
 	check(magnet_pulled, "the magnet pulls a chip in")
 	pf.climb_power.clear()
 	var ry0 := pf.p.y
 	pf.grant_power("rocket")
-	check(pf.p.vy < -25, "the rocket fires her up")
+	check(pf.p.vy < -25 and pf.board_talking("3D"), "the rocket fires her up; 3D on the board")
 	await frames(40)
 	check(ry0 - pf.p.y > 500, "the rocket lifts her %d px" % int(ry0 - pf.p.y))
+	var said_powers: Array = []
+	pf.board_dialog_done.connect(func(id): said_powers.append(id))
+	_board_flush(pf)
+	check(said_powers == ["3A", "3B", "3C", "3D"], "the power-ups' dialogs play one after another %s" % str(said_powers))
+	pf.grant_power("super_jump")
+	pf.grant_power("magnet")
+	check(not pf.board_talking() and not node_box().is_open(), "a second super jump / magnet isn't explained again")
+	pf.climb_power.clear()
+	# Other triggers painted in the editor (a cramp's dialog, a minigame) do nothing here.
+	for tt in ["first_cramp", "mg5", "wave"]:
+		var stray := LevelData.Ent.new()
+		stray.type = "trigger"
+		stray.trigger_type = tt
+		stray.x = pf.p.x
+		stray.y = pf.p.y
+		pf._hit_trigger(stray)
+	await frames(3)
+	check(not climb_events.has("first_cramp") and not climb_events.has("mg5") and not node_box().is_open() and not pf.dialog_open and not pf.wave.active and main.state == "platformer", "a painted cramp / minigame / wave trigger is ignored in the climb")
 	# Hazards (if the editor places any) never end the run.
 	var iron0 := Game.iron
 	pf._hurt(pf.p.x)
@@ -788,9 +865,20 @@ func _run() -> void:
 	await _go_trigger(pf, "climb_top")
 	await frames(3)
 	check(pf.climb_won and pf.summit_timer > 0, "the top of the climb (E) is reached")
-	await finish_dialog("3E")
+	var end_talk := await until(func(): return pf.board_talking("3E"), 4)
+	check(end_talk and not node_box().is_open() and not pf.dialog_open and main.state == "platformer", "at the top 3E talks on the board (no dialog box, no buttons)")
+	var end_speakers: Array = []
+	var guard5 := 0
+	while is_instance_valid(pf) and main.platformer == pf and guard5 < 20:
+		guard5 += 1
+		if pf.board_talking():
+			if not end_speakers.has(pf.board_talk.speaker):
+				end_speakers.append(pf.board_talk.speaker)
+			pf.board_talk.t = pf.board_talk.dur
+		await frames(3)
 	await frames(5)
-	check(main.state == "title" and Game.level == 1, "back to the title after the jackpot climb")
+	check(end_speakers.has("Kyra") and end_speakers.has("Estrogenka"), "3E's parts show their speakers on the board %s" % str(end_speakers))
+	check(main.state == "title" and Game.level == 1, "after 3E on the board: back to the title")
 
 	main._dev_action("checkpoint5", 5)
 	var near_top := await until(func(): return main.state == "platformer" and Game.level == Game.CLIMB_ID and main.platformer != null, 8)
@@ -1791,6 +1879,14 @@ func _climb_put(pf: Platformer, cx: float, feet_y: float) -> void:
 	pf.camera_y = feet_y - 300
 	pf.last_stand_y = feet_y
 	pf.on_board = false
+
+
+## The climb: ends the board dialogs (the current one and the queue) right away.
+func _board_flush(pf: Platformer) -> void:
+	var guard := 0
+	while pf.board_talking() and guard < 40:
+		pf.board_next()
+		guard += 1
 
 
 ## The climb: the platform nearest to (above) y.
