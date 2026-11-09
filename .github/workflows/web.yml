@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 400   # version.json / changelog.html list the commits (what's new)
 
       - name: Cache Godot
         uses: actions/cache@v4
