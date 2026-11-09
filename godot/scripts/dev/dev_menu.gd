@@ -73,7 +73,10 @@ func _ready() -> void:
 		b.pressed.connect(_show.bind(t[0]))
 		add_child(b)
 		_tabs[t[0]] = b
-		x += t[2] + 4
+		# A name wider than planned grows the button: the next tab goes after it.
+		var w: float = maxf(t[2], b.get_combined_minimum_size().x)
+		b.size.x = w
+		x += w + 6
 	_content = Control.new()
 	_content.position = Vector2(0, BAR_H)
 	_content.size = Vector2(1066, 600 - BAR_H)
