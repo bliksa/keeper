@@ -164,3 +164,47 @@ static func fit_problem(name: String, font: Font, s: String, width: float, size:
 		return "" if w <= width else "%s (%d > %d px)" % [name, int(w), int(width)]
 	var n := line_count(font, s, width, size)
 	return "" if n <= max_lines else "%s (%d > %d lines)" % [name, n, max_lines]
+
+
+## HUD labels: a small word centred under an indicator (the cave's iron nut and breath
+## pill, the run's sun and water pill, the climb's heart meter, the maze's comfort slots
+## and breath pill), the same style everywhere: KeeperDyslexic, light text, a soft dark
+## outline. Never inside the pill; the ability hints go under it (`label_bottom`).
+const LABEL_FS := 12
+const LABEL_GAP := 3.0
+const LABEL_H := 16.0
+const LABEL_TEXT := Color("#f8f5ee")
+const LABEL_OUTLINE := Color("#1a1022", 0.75)
+
+
+## Where the label `s` sits under `box` (an indicator's drawn box).
+static func label_rect(box: Rect2, s: String) -> Rect2:
+	var w := Text.font_bold.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FS).x
+	return Rect2(box.get_center().x - w / 2, box.end.y + LABEL_GAP, w, LABEL_H)
+
+
+## Draws the label of i18n `key` under `box`; returns its rect.
+static func hud_label(ci: CanvasItem, box: Rect2, key: String, alpha := 1.0) -> Rect2:
+	var s := Text.plain(Text.t(key))
+	var r := label_rect(box, s)
+	if alpha > 0.01:
+		var f: Font = Text.font_bold
+		var base := Vector2(r.position.x, r.position.y + r.size.y / 2 + LABEL_FS * 0.36)
+		ci.draw_string_outline(f, base, s, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FS, 4, Color(LABEL_OUTLINE, LABEL_OUTLINE.a * alpha))
+		ci.draw_string(f, base, s, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_FS, Color(LABEL_TEXT, alpha))
+	return r
+
+
+## The y under an indicator and its label (where the ability hints start).
+static func label_bottom(box: Rect2) -> float:
+	return box.end.y + LABEL_GAP + LABEL_H
+
+
+## The bounds of a polygon (icon centring).
+static func bounds(pts: PackedVector2Array) -> Rect2:
+	if pts.is_empty():
+		return Rect2()
+	var r := Rect2(pts[0], Vector2.ZERO)
+	for q in pts:
+		r = r.expand(q)
+	return r

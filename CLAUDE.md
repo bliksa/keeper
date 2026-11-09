@@ -402,22 +402,40 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
 
 ## The transformation (the climb's end → the PMS maze)
 
-`Main._into_pms(old)` after 3E: `Platformer.start_prerod()` on the climb (`hold_input`, the
-board's talk / slot / banner / power-ups cleared), then `_update_view` runs its clock
-`prerod_t`: 0–`PREROD_WIND` (1.5 s) the casino winds down (`wind` 0→1: `_bg` / `_world` /
-`_player_layer` modulate to dusky violet, `_draw_casino_lights` slow (`_light_t`), fade and
-drip, the summit egg dims, `PlatformerHud` lets the stopped ticker's letters come loose and
-drift up (`_draw_loose_letters`) and fades the spinner / the heart meter (`_a()`)), then
-`PREROD_TURN` (2.5 s) the view turns (`view_flip` 0→1, ease-in-out; `_turning()` adds a small
-wobble, melt squash and zoom-out; the HUD fades; the garden sky is drawn wider so the corners
-stay sky; `_backdrop` fills the rest, `_veil` = a screen-space vignette). At `view_flip` 1
-(`prerod_turned`) Main makes the maze (`_make_platformer`, already upside down), puts Kyra
-70 px above her spawn and crossfades 1 s (`Platformer.set_fade`: the CanvasLayers don't
-inherit modulate), frees the climb, waits 0.6 s and opens 4A. The view is one transform:
+It tells the story: the sun (the follicle) opens and lets the egg go (ovulation), what stays
+behind becomes the yellow body (the corpus luteum, which makes progesterone) and Kyra is pulled
+into it; the maze is its inside. `Main._into_pms(old)` after 3E: `Platformer.start_prerod()` on
+the climb (`hold_input`, the board's talk / slot / banner / power-ups cleared; `_prerod_sun0` =
+`sun_screen()`), then `_update_view` runs its clock `prerod_t` in phases (`prerod_phase()`,
+`PREROD_T_*`, ≈ 10 s): **focus** (`PREROD_FOCUS`) the casino winds down (`wind` over
+`PREROD_WIND`: dusky violet modulate, slow dripping lights, the ticker's letters come loose,
+the HUD fades) while the sun leaves the sky and is drawn on `_veil_body` (a child of `_veil`)
+in screen space (`_draw_prerod_body`, `prerod_body()` = [centre, radius]; it fades in over the
+sky's sun in `PREROD_HAND`, `prerod_hand()`, while `_draw_climb_sun`'s glow fades out, no cut) moving to
+`LUTEUM_C` (the screen centre) and growing to `LUTEUM_R`; **egg** (`PREROD_EGG`) its 12 slices
+spread like petals (`prerod_open()`), the egg (the cave grain / summit egg art) comes out and
+floats off the top right (`prerod_egg()`, `egg_released` + a chime, caption `PREROD_EGG`);
+**luteum** the petals close into an amber hollow sphere with a dark opening
+(`prerod_luteum()`, `draw_opening`, caption `PREROD_LUTEUM`; captions: `prerod_caption()`,
+`prerod_caption_spans()`, `CAPTION_*`, `prerod_fit_problems()` checked by the test, and each
+stays on ≥ `CAPTION_READ` × `board_read_time`; the yellow body's runs until the iris); **pull** (`PREROD_PULL`) Kyra goes
+in a soft arc from where she stood to the opening (`_pull_from`, the climb camera stops),
+shrinking and spinning (`_pull_scale`, `_pull_spin` → PlayerArt `grow` / `spin`) and fades,
+while the view turns (`view_flip` 0→1, ease-in-out; `_turning()` wobble) and zooms in
+(`_pull_zoom`; the body to `LUTEUM_ZOOM` ×); **iris** (`PREROD_IRIS`) the opening fills the
+screen (dark amber → amber, never black). Then `prerod_turned` / `prerod_finished()`: Main
+makes the maze (`_make_platformer`, already upside down), Kyra 70 px above her spawn,
+`start_warm()` (no crossfade): its `_veil` draws the opening clearing from the middle
+(`WARM_IRIS`), Kyra and the HUD come in with it, the world starts tinted `WARM_TINT` (`warm`
+1 → 0 over `WARM_FADE`: the hormones drop) to the maze's dusk; the climb is freed, 4A opens
+after `WARM_IRIS + 0.5` s (a pausable timer). The climb's top no longer draws the summit egg.
+4A: Progesterónka greets her inside the corpus luteum. The view is one transform:
 `_apply_view()` sets position / rotation / scale of `_bg`, `_world`, `_player_layer` from the
-camera, `view_zoom`, `view_angle()` (= PI · `view_flip` + sway / wobble) and the melt, around
-the screen centre. Web `?climb=end` (the climb's top, 3E, the transformation), dev menu
-column 4 "Transformation" (`pms_transform`, `_dev_climb_end` → `Platformer.dev_to_top`).
+camera, `view_zoom`, `view_angle()` (= PI · `view_flip` + sway / wobble) and the melt (incl.
+the pull zoom), around the screen centre. Web `?climb=end` (the climb's top, 3E, the
+transformation), dev menu column 4 "Transformation" (`pms_transform`, `_dev_climb_end` →
+`Platformer.dev_to_top`). The test plays the phases in order, checks Main's fade stays 0 and
+that pause + Restart in the middle doesn't reach the new run.
 
 ## Level 4: the PMS maze (luteal phase)
 
@@ -472,6 +490,15 @@ player on the trigger row's platform (or column, in the meadow). Flow in
 `main.gd`: `_start_summit(1, iron)` after the meadow; `_mg5_done`…`_mg7_done`.
 Dialog letters b/c/d/e → SB..SE; SF = the LH wave starts (trigger `wave`), SG = the end
 (trigger `summit` → SG → title). Minigame talk `mg5_*`–`mg7_*` (strings `DIA_G*`, `MG5_*`–`MG7_*`).
+
+## HUD labels and centred icons
+
+Every HUD indicator has a small label under it (`Draw.hud_label` / `label_rect` / `label_bottom`: KeeperDyslexic
+12 px, light text, dark outline, centred; keys `HUD_LBL_IRON` / `_BREATH` / `_SUN` / `_WATER` / `_HEARTS` /
+`_COMFORT`); the ability hints start under the label (`Draw.label_bottom(pill)`). Icons are centred by their drawn
+bounds: `MeterHud.drop_at` / `heart_at` (`SpriteArt.heart_mid`, the outline's point included), `SpriteArt.bell_mid`,
+`PlatformerHud.icon_row_items` (the breath pill's text + icon row, text by its ink), `PmsMaze.item_bounds` +
+`PlatformerHud.pms_item_scale`, the reserve badge's `MeterHud.badge_layout`. The test `_hud_layout` checks both.
 
 ## Ability hints (one way to announce abilities)
 

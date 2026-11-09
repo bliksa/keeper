@@ -86,6 +86,8 @@ const END_GLIDE := 1.1
 const END_SUN_POS := Vector2(533, 200)
 const END_SUN_R := 96.0
 const WATER_HUD := Rect2(W - 16 - 150, 16, 150, 48)
+## The HUD's labels as last drawn: [{key, box, rect}] (tests).
+var hud_labels: Array = []
 
 const W := 1066.0
 const H := 600.0
@@ -878,7 +880,7 @@ func fly_target(kind: String, f := {}) -> Vector2:
 	if f.get("into", "") == "mag":
 		return MeterHud.slot_center(WATER_HUD, int(f.get("slot", 0)), int(DROPS_MAX))
 	if f.get("into", "") == "reserve":
-		return MeterHud.badge_icon(WATER_HUD)
+		return MeterHud.badge_icon(WATER_HUD, int(floorf(meter.reserve + MeterModel.EPS)))
 	return Vector2(WATER_HUD.position.x + 26, WATER_HUD.get_center().y)
 
 
@@ -1417,8 +1419,10 @@ func _draw_intro_hud() -> void:
 		if a < 1.0:
 			Draw.radial_glow(self, SUN_HUD, 90 * grow, Color(1, 0.9, 0.5, 0.5 * (1.0 - a)))
 		SpriteArt.draw_sun(self, SUN_HUD, 46 * maxf(0.05, grow), 0, 0.0, time)
+		Draw.hud_label(self, sun_box(), "HUD_LBL_SUN", a)
 	if e > INTRO_FALL_AT:
 		draw_water_pill(self, WATER_HUD, meter, false, time)
+		Draw.hud_label(self, WATER_HUD, "HUD_LBL_WATER")
 
 
 ## The controls, for a few seconds at the start (when Iskra's dialog is skipped).
@@ -1443,7 +1447,8 @@ func _draw_hud() -> void:
 	var grow := 1.0 + 0.18 * sin(clampf(sun_pulse / 0.45, 0, 1) * PI)
 	if sun_pulse > 0:
 		Draw.radial_glow(self, sc, 90 * grow, Color(1, 0.9, 0.5, 0.5 * sun_pulse / 0.45))
-	draw_arc(sc, 56 * grow, -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)
+	# The ring barely pulses: it stays above the "Sun" label under sun_box().
+	draw_arc(sc, SUN_RING_R * minf(grow, SUN_RING_PULSE), -PI / 2, -PI / 2 + TAU * stage_progress(), 48, Color(1, 1, 1, 0.75), 3.0, true)
 	if sun_lost > 0:
 		# The lost slice blinks red in its place a few times, the sun shakes.
 		var k := sun_lost / LOST_TIME
@@ -1466,7 +1471,26 @@ func _draw_hud() -> void:
 	draw_water_pill(self, wr, meter, slow, time, short_for if water_short > 0 else "")
 	if water_short > 0:
 		Draw.panel(self, wr.grow(2), Color(0, 0, 0, 0), 18, Color(0.94, 0.27, 0.27, water_short / 0.5), 3)
-	hints.draw(self, Vector2(WATER_HUD.end.x, WATER_HUD.end.y))
+	# The labels under the indicators, the ability hints under the water's label.
+	hud_labels = [{"key": "HUD_LBL_SUN", "box": sun_box(), "rect": Draw.hud_label(self, sun_box(), "HUD_LBL_SUN")},
+		{"key": "HUD_LBL_WATER", "box": WATER_HUD, "rect": Draw.hud_label(self, WATER_HUD, "HUD_LBL_WATER")}]
+	hints.draw(self, hint_anchor())
+
+
+## The stage ring round the HUD sun, and how much it may grow with the pulse (the sun
+## itself grows up to 1.18 · 46 px, inside the ring); the ring's stroke is 3 px.
+const SUN_RING_R := 56.0
+const SUN_RING_PULSE := 1.02
+
+
+## The sun's box in the HUD (its stage ring included): what its label sits under.
+static func sun_box() -> Rect2:
+	return Rect2(SUN_HUD - Vector2(SUN_RING_R, SUN_RING_R), Vector2(SUN_RING_R, SUN_RING_R) * 2)
+
+
+## Where the ability hints start: under the water pill's label, right-aligned to it.
+static func hint_anchor() -> Vector2:
+	return Vector2(WATER_HUD.end.x, Draw.label_bottom(WATER_HUD))
 
 
 ## The level's end: the whole sun glides to the middle of the sky, grows and glows warm
@@ -1506,7 +1530,10 @@ static func draw_water_pill(ci: CanvasItem, r: Rect2, m: MeterModel, slowing: bo
 		var empty := Color(0.58, 0.64, 0.72, 0.35)
 		if blink != "" and on and fill < 1.0 and (blink == "focus" or i < 2):
 			empty = Color(red, 0.75)
-		var pts := _drop_pts(c, 1.05 * (1.0 + MeterHud.slot_pop(m, i)))
+		var dk := 1.05 * (1.0 + MeterHud.slot_pop(m, i))
+		# The drop's bounds centred on the slot (its point is longer than its round).
+		var dc := MeterHud.drop_at(c, dk)
+		var pts := _drop_pts(dc, dk)
 		Draw.polygon_safe(ci, pts, empty)
 		if fill > 0.01:
 			var col := Color("#5fb3f0")
@@ -1516,11 +1543,11 @@ static func draw_water_pill(ci: CanvasItem, r: Rect2, m: MeterModel, slowing: bo
 				Draw.polygon_safe(ci, pts, col)
 			else:
 				# Only the part below the water line.
-				var top := c.y + 13.0 - 27.0 * fill
-				var below := PackedVector2Array([Vector2(c.x - 20, top), Vector2(c.x + 20, top), Vector2(c.x + 20, c.y + 20), Vector2(c.x - 20, c.y + 20)])
+				var top := dc.y + 12.0 * dk - 25.0 * dk * fill
+				var below := PackedVector2Array([Vector2(dc.x - 20, top), Vector2(dc.x + 20, top), Vector2(dc.x + 20, dc.y + 20), Vector2(dc.x - 20, dc.y + 20)])
 				for part in Geometry2D.intersect_polygons(pts, below):
 					Draw.polygon_safe(ci, part, col)
-			ci.draw_circle(c + Vector2(-3, 1) * 1.05, 2.5 * 1.05, Color(1, 1, 1, 0.8))
+			ci.draw_circle(dc + Vector2(-3, 1) * dk, 2.5 * dk, Color(1, 1, 1, 0.8))
 	# The reserve as a line round the pill (like the breath ring in the cave).
 	MeterHud.draw_reserve(ci, r, m, col_line, "drop", t)
 

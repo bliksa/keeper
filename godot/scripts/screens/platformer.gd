@@ -165,9 +165,50 @@ const POWER_DIALOG := {"super_jump": "3A", "triple": "3B", "magnet": "3C", "rock
 const RESERVE_DIALOG := "3F"
 
 # --- the transformation (the climb's end) and the PMS maze (level 6) -------------------
-## The transformation: the casino winds down, then the view turns upside down.
+## The transformation (start_prerod), one clock prerod_t in phases (s): FOCUS the casino
+## winds down (WIND) while the sun (the follicle) comes to the screen's middle and grows;
+## EGG it opens along its slices and the egg floats away (ovulation); LUTEUM it closes into
+## the yellow body (the corpus luteum: a hollow amber sphere with an opening); PULL Kyra is
+## drawn into the opening while the view turns 180° (view_flip) and zooms in; IRIS the
+## opening fills the screen (warm amber, never black). Then prerod_turned: Main starts the
+## maze inside it (start_warm).
 const PREROD_WIND := 1.5
-const PREROD_TURN := 2.5
+const PREROD_FOCUS := 2.0
+const PREROD_EGG := 2.2
+const PREROD_LUTEUM := 2.9
+const PREROD_PULL := 2.2
+const PREROD_IRIS := 0.7
+const PREROD_T_EGG := PREROD_FOCUS
+const PREROD_T_LUTEUM := PREROD_T_EGG + PREROD_EGG
+const PREROD_T_PULL := PREROD_T_LUTEUM + PREROD_LUTEUM
+const PREROD_T_IRIS := PREROD_T_PULL + PREROD_PULL
+const PREROD_T_END := PREROD_T_IRIS + PREROD_IRIS
+## The sky's sun (in _bg, behind the platforms) hands over to the follicle on the veil
+## (over the world): the veil's body fades in over this long, the sky sun's glow out.
+const PREROD_HAND := 0.5
+## When the egg leaves the opened sun (s after the EGG phase starts) and how long it floats.
+const EGG_OUT := 0.45
+const EGG_FLY := 2.2
+## The yellow body in the middle of the screen (screen px; the view turns around it) and
+## its radius there; its opening's share of the radius; how far the zoom goes (radius ×).
+const LUTEUM_C := Vector2(533, 300)
+const LUTEUM_R := 130.0
+const LUTEUM_HOLE := 0.38
+const LUTEUM_ZOOM := 14.0
+## Inside the opening: dark amber in the middle, brighter towards its rim.
+const LUTEUM_IN := Color(0.5, 0.25, 0.09)
+const LUTEUM_RIM := Color(0.86, 0.52, 0.17)
+## The transformation's captions (PREROD_EGG, PREROD_LUTEUM): size, width, baseline.
+const CAPTION_FS := 24
+const CAPTION_W := 820.0
+## The least share of board_read_time each caption stays on (the sequence can't wait).
+const CAPTION_READ := 0.6
+const CAPTION_Y := 516.0
+## The maze's first look from inside the yellow body: the opening clears (s), then the
+## warm amber tint fades to the maze's dusk (s) as the hormones drop.
+const WARM_IRIS := 1.1
+const WARM_FADE := 4.0
+const WARM_TINT := Color(1.0, 0.8, 0.5)
 ## The maze's breath: hold the ability to fill it, then the world is calm a while.
 const CALM_FILL := 2.0
 const CALM_TIME := 6.0
@@ -230,6 +271,14 @@ var view_flip := 0.0
 var prerod_t := -1.0
 var wind := 0.0
 var _prerod_sent := false
+## The transformation: the sun on screen when it started [centre, radius], the egg is out,
+## where Kyra was when the pull began (INF = not yet).
+var _prerod_sun0: Array = [Vector2(533, 120), 90.0]
+var egg_released := false
+var _pull_from := Vector2.INF
+## The maze's warm start (start_warm): seconds since (-1 = none) and the tint left (1 → 0).
+var warm_t := -1.0
+var warm := 0.0
 ## The casino lights' own clock (it slows down while the casino winds down).
 var _light_t := 0.0
 ## No control (the transformation, the maze's settling and its end).
@@ -356,6 +405,9 @@ var _bg: Node2D
 var _world: Node2D
 ## Screen-space veil over the world (the transformation's vignette, the maze's haze).
 var _veil: Node2D
+## On the veil: the transformation's follicle / yellow body and its captions (its own
+## node, so it fades in over the world at the start: PREROD_HAND).
+var _veil_body: Node2D
 var _player_layer: Node2D
 var _player_canvas: CanvasLayer
 var hud: PlatformerHud
@@ -446,7 +498,7 @@ func view_angle() -> float:
 	var a := PI * view_flip
 	if is_pms():
 		a += sin(time_ms / 2300.0) * PMS_SWAY * (1.0 - steady)
-	a += sin(time_ms / 420.0) * 0.035 * _turning()
+	a += sin(time_ms / 420.0) * 0.025 * _turning()
 	return a
 
 
@@ -454,7 +506,56 @@ func view_angle() -> float:
 func _turning() -> float:
 	if prerod_t < 0:
 		return 0.0
-	return sin(PI * clampf((prerod_t - PREROD_WIND) / PREROD_TURN, 0, 1))
+	return sin(PI * _pk(PREROD_T_PULL, PREROD_PULL))
+
+
+## 0..1 through a part of the transformation (from its start, `dur` s long).
+func _pk(from: float, dur: float) -> float:
+	return clampf((prerod_t - from) / dur, 0, 1)
+
+
+static func _smooth(k: float) -> float:
+	return k * k * (3 - 2 * k)
+
+
+## The transformation's phase now: "" (none), focus, egg, luteum, pull, iris, done.
+func prerod_phase() -> String:
+	if prerod_t < 0:
+		return ""
+	if prerod_t < PREROD_T_EGG:
+		return "focus"
+	if prerod_t < PREROD_T_LUTEUM:
+		return "egg"
+	if prerod_t < PREROD_T_PULL:
+		return "luteum"
+	if prerod_t < PREROD_T_IRIS:
+		return "pull"
+	if prerod_t < PREROD_T_END:
+		return "iris"
+	return "done"
+
+
+func prerod_finished() -> bool:
+	return _prerod_sent
+
+
+## The extra zoom into the yellow body's opening while she is pulled in (the world too).
+func _pull_zoom() -> float:
+	return 1.0 + 0.5 * _smooth(_pk(PREROD_T_PULL, PREROD_PULL)) if prerod_t >= 0 else 1.0
+
+
+## Kyra's size while she is pulled in (on screen, the zoom divided out) and her slow spin.
+func _pull_scale() -> float:
+	if prerod_t < PREROD_T_PULL:
+		return 1.0
+	return (1.0 - 0.85 * _smooth(clampf(_pk(PREROD_T_PULL, PREROD_PULL) / 0.85, 0, 1))) / _pull_zoom()
+
+
+func _pull_spin() -> float:
+	if prerod_t < PREROD_T_PULL:
+		return 0.0
+	var k := _pk(PREROD_T_PULL, PREROD_PULL)
+	return 2.4 * k * k
 
 
 ## The visible area in world px (the screen / view_zoom).
@@ -481,8 +582,8 @@ func _apply_view() -> void:
 	var a := view_angle()
 	var tk := _turning()
 	var melt := Vector2(1.0 + 0.035 * tk * sin(time_ms / 330.0), 1.0 - 0.035 * tk * sin(time_ms / 330.0))
-	# A little zoom out while it turns (calmer, and more of the world to see).
-	melt *= 1.0 - 0.08 * tk
+	# Zooming into the yellow body's opening while she is pulled in.
+	melt *= _pull_zoom()
 	var c := Vector2(W, H) / 2
 	var sc := melt * view_zoom
 	_bg.position = c - (melt * c).rotated(a) + _shake
@@ -496,33 +597,55 @@ func _apply_view() -> void:
 	_player_layer.scale = sc
 
 
-## The transformation's clock: the casino winds down (wind), then the view turns upside
-## down (view_flip, ease-in-out); the HUD goes, the colours drain to dusk.
+## The transformation's clock (see PREROD_*): the casino winds down (wind), the sun opens,
+## the egg leaves, the yellow body forms, Kyra is pulled into it while the view turns upside
+## down (view_flip, ease-in-out) and zooms in; the HUD goes, the colours drain to dusk.
+## In the maze: its warm start (warm_t).
 func _update_view(dt: float) -> void:
+	if warm_t >= 0:
+		_update_warm(dt)
 	if prerod_t < 0:
 		return
 	prerod_t += dt
 	wind = clampf(prerod_t / PREROD_WIND, 0, 1)
 	_light_t += dt * 1000.0 * (1.0 - 0.85 * wind)
-	var k := clampf((prerod_t - PREROD_WIND) / PREROD_TURN, 0, 1)
+	var k := _pk(PREROD_T_PULL, PREROD_PULL)
 	view_flip = 0.5 - 0.5 * cos(PI * k)
-	hud.modulate.a = 1.0 - clampf((prerod_t - PREROD_WIND) / 0.6, 0, 1)
+	hud.modulate.a = 1.0 - _pk(1.0, 0.8)
 	var tint := Color.WHITE.lerp(Color(0.8, 0.7, 0.88), wind)
 	_bg.modulate = tint
 	_world.modulate = tint
 	_player_layer.modulate = Color(tint.r, tint.g, tint.b, _player_layer.modulate.a)
-	if k >= 1.0 and not _prerod_sent:
+	if not egg_released and prerod_t >= PREROD_T_EGG + EGG_OUT:
+		# Ovulation: the egg leaves the opened follicle.
+		egg_released = true
+		Audio.play_sfx("cink-08.wav", 0.55)
+	if prerod_t >= PREROD_T_PULL:
+		# Drawn into the yellow body: from where she stands to the opening (the screen's
+		# middle, where the view turns), in a soft arc; she shrinks, spins and goes in.
+		if _pull_from == Vector2.INF:
+			_pull_from = p.center()
+			Audio.play_sfx("breathok.wav", 0.4)
+		var target := Vector2(camera_x, camera_y) + LUTEUM_C / view_zoom
+		var kk := _smooth(clampf(k / 0.85, 0, 1))
+		var c := _pull_from.lerp(target, kk) + Vector2(0, -70.0 * sin(PI * kk))
+		p.x = c.x - p.width / 2
+		p.y = c.y - p.height / 2
+		p.vx = 0
+		p.vy = 0
+		_player_layer.modulate.a = 1.0 - _pk(PREROD_T_PULL + PREROD_PULL * 0.7, PREROD_PULL * 0.25)
+	if prerod_t >= PREROD_T_END and not _prerod_sent:
 		_prerod_sent = true
 		prerod_turned.emit()
 
 
-## The climb's end turns into the PMS maze: the casino winds down (PREROD_WIND s), then
-## the view turns upside down (PREROD_TURN s) and prerod_turned is emitted; Main then
-## crossfades into the maze. No control meanwhile.
+## The climb's end turns into the PMS maze (see PREROD_*): no control meanwhile; at its end
+## prerod_turned is emitted and Main starts the maze from inside the yellow body.
 func start_prerod() -> void:
 	if prerod_t >= 0:
 		return
 	prerod_t = 0.0
+	_prerod_sun0 = sun_screen()
 	_light_t = time_ms
 	hold_input = true
 	thrusting = false
@@ -531,6 +654,33 @@ func start_prerod() -> void:
 	slot_spin = {}
 	banner = {}
 	climb_power.clear()
+
+
+## The maze seen first from inside the yellow body: the opening clears (WARM_IRIS), Kyra
+## appears with it, and the warm amber fades to the maze's dusk (WARM_FADE).
+func start_warm() -> void:
+	warm_t = 0.0
+	warm = 1.0
+	_update_view(0.0)
+	_apply_view()
+
+
+func _update_warm(dt: float) -> void:
+	warm_t += dt
+	warm = 1.0 - _smooth(clampf((warm_t - WARM_IRIS * 0.6) / WARM_FADE, 0, 1))
+	var tint := Color.WHITE.lerp(WARM_TINT, warm)
+	_bg.modulate = tint
+	_world.modulate = tint
+	# Kyra and the maze's HUD come in as the opening clears.
+	var ik := _smooth(clampf(warm_t / WARM_IRIS, 0, 1))
+	_player_layer.modulate = Color(tint.r, tint.g, tint.b, ik)
+	hud.modulate.a = ik
+	if warm <= 0.0:
+		hud.modulate.a = 1.0
+		warm_t = -1.0
+		_bg.modulate = Color.WHITE
+		_world.modulate = Color.WHITE
+		_player_layer.modulate = Color.WHITE
 
 
 ## Fades the whole level (world, Kyra, HUD, veil: the CanvasLayers don't inherit modulate).
@@ -574,16 +724,43 @@ func _draw_backdrop() -> void:
 func _draw_veil() -> void:
 	var screen := Rect2(0, 0, W, H)
 	if prerod_t >= 0:
-		var k := clampf(prerod_t / (PREROD_WIND + PREROD_TURN), 0, 1)
+		# The world steps back, the follicle comes forward (in screen space, over the world;
+		# Kyra's layer stays above it).
+		var f := _smooth(_pk(0.0, PREROD_FOCUS))
 		_veil.draw_rect(screen, Color(0.35, 0.22, 0.42, 0.16 * wind))
-		Draw.vignette(_veil, screen, Color(0.12, 0.06, 0.18, 0.55 * k), 0.35)
+		_veil.draw_rect(screen, Color(0.09, 0.05, 0.14, 0.42 * f))
+		Draw.vignette(_veil, screen, Color(0.12, 0.06, 0.18, 0.55 * f), 0.35)
 	elif is_pms():
 		Draw.vignette(_veil, screen, Color(0.14, 0.08, 0.2, 0.5 - 0.25 * steady), 0.4)
+		if warm > 0:
+			# Inside the yellow body: warm amber at first, then the maze's dusk.
+			_veil.draw_rect(screen, Color(1, 0.62, 0.2, 0.2 * warm))
+			Draw.vignette(_veil, screen, Color(0.8, 0.42, 0.1, 0.55 * warm), 0.35)
+		if warm_t >= 0 and warm_t < WARM_IRIS:
+			# Through the opening: its amber inside clears from the middle outwards.
+			var ik := _smooth(warm_t / WARM_IRIS)
+			var r_open := LUTEUM_R * LUTEUM_ZOOM * LUTEUM_HOLE * (1.0 + 1.5 * ik)
+			draw_opening(_veil, LUTEUM_C, r_open, 720.0 * ik, 1.0)
 	if sun_glow > 0:
 		# The forest run's sun melts into the climb's morning light.
 		var g := sun_glow * sun_glow * (3 - 2 * sun_glow)
 		_veil.draw_rect(screen, Color(1, 0.84, 0.5, 0.22 * g))
 		Draw.radial_glow(_veil, SUN_MELT_POS, 170.0 + 320.0 * (1.0 - g), Color(1, 0.82, 0.4, 0.8 * g), Color(1, 0.97, 0.82, 0.95 * g))
+
+
+## The transformation's follicle / yellow body and captions, over the world: it fades in
+## (PREROD_HAND) where the sky's sun is, so the sun comes forward without a cut.
+func _draw_veil_body() -> void:
+	if prerod_t < 0:
+		return
+	_veil_body.modulate.a = prerod_hand()
+	_draw_prerod_body(_veil_body)
+	_draw_prerod_caption(_veil_body)
+
+
+## 0..1: the follicle on the veil has taken over from the sky's sun (PREROD_HAND).
+func prerod_hand() -> float:
+	return _smooth(_pk(0.0, PREROD_HAND)) if prerod_t >= 0 else 0.0
 
 
 ## Camera where the level starts (background layers are anchored to it).
@@ -661,6 +838,9 @@ func _ready() -> void:
 	_veil = Node2D.new()
 	_veil.draw.connect(_draw_veil)
 	layer.add_child(_veil)
+	_veil_body = Node2D.new()
+	_veil_body.draw.connect(_draw_veil_body)
+	_veil.add_child(_veil_body)
 	hud = PlatformerHud.new()
 	hud.platformer = self
 	layer.add_child(hud)
@@ -806,6 +986,7 @@ func _process(delta: float) -> void:
 	_world.queue_redraw()
 	_player_layer.queue_redraw()
 	_veil.queue_redraw()
+	_veil_body.queue_redraw()
 	hud.queue_redraw()
 
 
@@ -1367,8 +1548,10 @@ func _update(dt: float) -> void:
 		_update_meadow(dt, d60)
 	# --- camera (the summit is climbed, so keep more of the screen above the player)
 	if is_climb():
-		_climb_camera(dt, d60)
-		if on_board and p.vy >= 0:
+		# (Still while she is pulled into the yellow body.)
+		if prerod_t < PREROD_T_PULL:
+			_climb_camera(dt, d60)
+		if on_board and p.vy >= 0 and prerod_t < PREROD_T_PULL:
 			# The board rose this frame: she rides on it (no sinking into its edge).
 			p.y = board_y() - p.height
 	else:
@@ -2118,7 +2301,8 @@ func _draw_world() -> void:
 				ci.draw_string(_font, Vector2(e.x, e.y + e.h / 2 + 8), Text.plain(Text.t(e.text)), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1, 1, 1, 0.8))
 	if boss.active:
 		_draw_arena(ci, t, top, bottom)
-	if summit_timer > 0:
+	if summit_timer > 0 and not is_climb():
+		# (The climb's egg comes out of its sun in the transformation: _draw_prerod_body.)
 		_draw_summit_egg(ci, t)
 	if corridor_t > 0:
 		_draw_corridor(ci, t)
@@ -2328,7 +2512,9 @@ func _draw_player() -> void:
 		"airborne": false if (p.is_recharging or in_water) else not p.is_grounded,
 		"squash": p.squash,
 		# Falling out of the arena she comes towards us: she grows.
-		"grow": _exit_grow() if exit_fall else 1.0,
+		"grow": _exit_grow() if exit_fall else _pull_scale(),
+		# Pulled into the yellow body (the transformation) she spins slowly.
+		"spin": _pull_spin(),
 	})
 	if in_water:
 		# Swimming: the river covers everything below the surface.
@@ -2383,9 +2569,11 @@ func _draw_garden_bg() -> void:
 		var y0 := -m + (vh + 2 * m) * b / bands
 		var u2 := clampf((y0 + (vh + 2 * m) / bands / 2) / vh, 0, 1)
 		ci.draw_rect(Rect2(-m, y0, vw + 2 * m, (vh + 2 * m) / bands + 1), top_c.lerp(bot_c, u2))
-	if is_climb():
+	if is_climb() and prerod_hand() < 1.0:
 		# The forest run's sun, whole, shining over the casino and rising as she climbs.
-		_draw_climb_sun(ci)
+		# (The transformation draws it in screen space, _draw_prerod_body, fading in over
+		# it: its glow and rays fade out meanwhile.)
+		_draw_climb_sun(ci, 1.0 - prerod_hand())
 	elif k > 0.45:
 		# Sun rising behind the summit.
 		var sk := (k - 0.45) / 0.55
@@ -2437,12 +2625,12 @@ func sun_screen() -> Array:
 ## The climb's sun in the background (behind the platforms, not transparent): a warm
 ## glow, turning rays, a solid disc and the 12 golden slices (SpriteArt.draw_sun). It turns
 ## with the view and dims when the casino winds down (the transformation).
-func _draw_climb_sun(ci: CanvasItem) -> void:
+func _draw_climb_sun(ci: CanvasItem, glow := 1.0) -> void:
 	var at: Array = sun_screen()
 	var c: Vector2 = at[0] / view_zoom
 	var r: float = at[1] / view_zoom
 	var tt := (_light_t if prerod_t >= 0 else time_ms) / 1000.0
-	var dim := 1.0 - 0.55 * wind
+	var dim := (1.0 - 0.55 * wind) * glow
 	Draw.radial_glow(ci, c, r * (2.6 + 0.12 * sin(tt * 1.7)), Color(1, 0.8, 0.35, 0.45 * dim), Color(1, 0.93, 0.7, 0.85 * dim))
 	for i in 18:
 		var a := tt * 0.25 + i * TAU / 18
@@ -2453,6 +2641,162 @@ func _draw_climb_sun(ci: CanvasItem) -> void:
 	SpriteArt.draw_sun(ci, c, r, 12, 0.0, tt)
 	if wind > 0:
 		ci.draw_circle(c, r * 1.06, Color(0.24, 0.16, 0.32, 0.45 * wind))
+
+
+## The transformation's follicle / yellow body on screen: [centre, radius]. It starts as
+## the sky's sun (where it was), comes to LUTEUM_C and grows (FOCUS), then the zoom into
+## its opening (PULL + IRIS: up to LUTEUM_ZOOM ×, the opening then fills the screen).
+func prerod_body() -> Array:
+	var s0c: Vector2 = _prerod_sun0[0]
+	var s0r: float = _prerod_sun0[1]
+	var f := _smooth(_pk(0.25, PREROD_FOCUS - 0.25))
+	var r := lerpf(s0r, LUTEUM_R, f) * (1.0 + 0.025 * sin(_light_t / 380.0) * _pk(PREROD_T_LUTEUM, 0.6))
+	var z := _pk(PREROD_T_PULL, PREROD_PULL + PREROD_IRIS)
+	return [s0c.lerp(LUTEUM_C, f), r * pow(LUTEUM_ZOOM, z * z)]
+
+
+## 0..1: the follicle open (its slices apart like petals) — up in EGG, closed again in LUTEUM.
+func prerod_open() -> float:
+	return _smooth(_pk(PREROD_T_EGG, 0.5)) * (1.0 - _smooth(_pk(PREROD_T_LUTEUM, 0.8)))
+
+
+## 0..1: how much of the yellow body (the corpus luteum) has formed.
+func prerod_luteum() -> float:
+	return _smooth(_pk(PREROD_T_LUTEUM + 0.2, 1.0))
+
+
+## Where the released egg is on screen (and its size; 0 = not out yet / gone).
+func prerod_egg() -> Array:
+	var at: Array = prerod_body()
+	var c: Vector2 = at[0]
+	var r: float = at[1]
+	var grow := _smooth(_pk(PREROD_T_EGG + 0.1, 0.45))
+	var k := _pk(PREROD_T_EGG + EGG_OUT, EGG_FLY)
+	if grow <= 0.0 or k >= 1.0:
+		return [c, 0.0]
+	# A gentle arc up and out of the frame (top right).
+	var e := k * k * (3 - 2 * k) * 0.5 + k * 0.5
+	var ctrl := c + Vector2(r * 1.6, -r * 2.2)
+	var end := Vector2(W + 90, -90)
+	var pos := c.lerp(ctrl, e).lerp(ctrl.lerp(end, e), e)
+	return [pos, (0.13 * r + 6.0) * grow * (1.0 + 0.35 * k)]
+
+
+## The inside of the yellow body's opening around `c`: dark amber in the middle, brighter
+## to its rim at `r_open` (`hole` > 0: a clear hole in the middle, the way in).
+static func draw_opening(ci: CanvasItem, c: Vector2, r_open: float, hole: float, alpha: float) -> void:
+	var n := 24
+	if hole <= 0.0:
+		ci.draw_circle(c, r_open / n + 1.0, Color(LUTEUM_IN, alpha))
+	for i in n:
+		var a := lerpf(hole, r_open, float(i) / n)
+		var b := lerpf(hole, r_open, float(i + 1) / n)
+		var col := LUTEUM_IN.lerp(LUTEUM_RIM, clampf((a + b) / 2 / r_open, 0, 1))
+		ci.draw_arc(c, (a + b) / 2, 0, TAU, 96, Color(col, alpha), b - a + 1.5, true)
+	if hole > 0.0:
+		ci.draw_arc(c, hole + 6, 0, TAU, 96, Color(1, 0.86, 0.55, 0.55 * alpha), 14.0, true)
+	ci.draw_arc(c, r_open, 0, TAU, 96, Color(1, 0.84, 0.48, 0.8 * alpha), maxf(2.0, r_open * 0.035), true)
+
+
+## The follicle → the egg → the yellow body (screen space, on the veil; it turns with the view).
+func _draw_prerod_body(ci: CanvasItem) -> void:
+	var at: Array = prerod_body()
+	var c: Vector2 = at[0]
+	var r: float = at[1]
+	var tt := _light_t / 1000.0
+	var turn := view_angle()
+	var open := prerod_open()
+	var lut := prerod_luteum()
+	var gold := Color(1, 0.8, 0.35)
+	var amber := Color(1, 0.6, 0.18)
+	Draw.radial_glow(ci, c, r * (2.4 + 0.12 * sin(tt * 1.7)), Color(gold.lerp(amber, lut), 0.5), Color(1, 0.93, 0.7, 0.7 * (1.0 - 0.5 * lut)))
+	# The sun's rays fade as it becomes the yellow body.
+	if lut < 1.0:
+		for i in 18:
+			var a := turn + tt * 0.25 + i * TAU / 18
+			var l := r * (1.32 + 0.16 * sin(tt * 2.0 + i * 1.3) + 0.25 * open)
+			var d := Vector2(cos(a), sin(a))
+			ci.draw_line(c + d * r * (1.05 + 0.25 * open), c + d * l, Color(1, 0.86, 0.42, 0.85 * (1.0 - lut)), maxf(2.0, r * 0.07), true)
+	# The follicle: its disc (gone while it is open) and the 12 slices, apart like petals.
+	if lut < 1.0:
+		var sun_a := 1.0 - lut
+		ci.draw_circle(c, r * 1.04, Color(Color(0.96, 0.62, 0.12), sun_a * (1.0 - open)))
+		for i in 12:
+			var a0 := turn - PI / 2 + i * TAU / 12 + 0.035
+			var a1 := turn - PI / 2 + (i + 1) * TAU / 12 - 0.035
+			var am := (a0 + a1) / 2
+			var off := Vector2(cos(am), sin(am)) * r * 0.3 * open
+			var tip := c + off * 1.2
+			var tri := PackedVector2Array([tip, c + off + Vector2(cos(a0), sin(a0)) * r, c + off + Vector2(cos(a1), sin(a1)) * r])
+			Draw.polygon_safe(ci, tri, Color(Color("#fbbf24").lerp(amber, lut), sun_a))
+			ci.draw_polyline(tri + PackedVector2Array([tri[0]]), Color(1, 0.97, 0.84, 0.8 * sun_a), maxf(1.5, r * 0.02), true)
+		if open > 0.0:
+			# The opened middle glows where the egg comes out.
+			Draw.radial_glow(ci, c, r * 0.7 * open, Color(1, 0.95, 0.8, 0.9 * open * sun_a))
+	# The yellow body: a soft hollow amber sphere with an opening (the way in).
+	if lut > 0.0:
+		var rr := r * (0.85 + 0.15 * lut)
+		ci.draw_circle(c, rr, Color(Color("#e9a23b"), lut))
+		ci.draw_arc(c, rr * 0.93, 0, TAU, 96, Color(0.72, 0.4, 0.1, 0.55 * lut), rr * 0.14, true)
+		Draw.radial_glow(ci, c + Vector2(-0.28, -0.3).rotated(turn) * rr, rr * 0.75, Color(1, 0.9, 0.62, 0.55 * lut))
+		var hole := rr * LUTEUM_HOLE * lut
+		if hole > 1.0:
+			draw_opening(ci, c, hole, 0.0, lut)
+	# The egg (as the cave's grain / the summit's egg): out of the middle, away out of the frame.
+	var eg: Array = prerod_egg()
+	var er: float = eg[1]
+	if er > 0.5:
+		var ec: Vector2 = eg[0]
+		var tm := _light_t
+		Draw.radial_glow(ci, ec, er * 2.6 + sin(tm / 200.0) * 3, Color(1, 0.9, 0.55, 0.7), Color(1, 1, 0.9, 0.95))
+		ci.draw_circle(ec, er * 0.8, Color("#fff7df"))
+		ci.draw_circle(ec + Vector2(-er * 0.2, -er * 0.2), maxf(0.1, er * 0.3), Color("#f9a8d4"))
+		for i in 8:
+			var a := tm / 600.0 + i * TAU / 8
+			ci.draw_circle(ec + Vector2(cos(a), sin(a)) * (er + 14 + sin(tm / 300.0 + i) * 4), 2.5, Color(1, 0.95, 0.7, 0.8))
+
+
+## The transformation's captions [key, from, to] (s of prerod_t): the egg (from when the
+## follicle opens, into the closing), then the yellow body (through the pull, until the
+## opening fills the screen; the caption is in screen space, it doesn't turn). Long enough
+## to read: the test holds each to CAPTION_READ × board_read_time in every language.
+static func prerod_caption_spans() -> Array:
+	return [
+		["PREROD_EGG", PREROD_T_EGG + 0.25, PREROD_T_LUTEUM + 0.8],
+		["PREROD_LUTEUM", PREROD_T_LUTEUM + 0.9, PREROD_T_IRIS],
+	]
+
+
+## The transformation's captions [key, alpha] now: the egg, then the yellow body.
+func prerod_caption() -> Array:
+	for sp: Array in prerod_caption_spans():
+		var t0: float = sp[1]
+		var t1: float = sp[2]
+		if prerod_t >= t0 and prerod_t < t1:
+			return [sp[0], minf(clampf((prerod_t - t0) / 0.35, 0, 1), clampf((t1 - prerod_t) / 0.35, 0, 1))]
+	return ["", 0.0]
+
+
+func _draw_prerod_caption(ci: CanvasItem) -> void:
+	var cap: Array = prerod_caption()
+	var a: float = cap[1]
+	if a <= 0.0:
+		return
+	var s := Text.plain(Text.t(str(cap[0])))
+	var f: Font = Text.font_bold
+	var pos := Vector2(W / 2 - CAPTION_W / 2, CAPTION_Y)
+	ci.draw_multiline_string_outline(f, pos, s, HORIZONTAL_ALIGNMENT_CENTER, CAPTION_W, CAPTION_FS, 2, 8, Color(0.16, 0.07, 0.2, 0.85 * a))
+	ci.draw_multiline_string(f, pos, s, HORIZONTAL_ALIGNMENT_CENTER, CAPTION_W, CAPTION_FS, 2, Color(1, 0.96, 0.86, a))
+
+
+## The captions must fit (two lines at CAPTION_W) in every language (the test).
+static func prerod_fit_problems() -> Array:
+	var out: Array = []
+	for key: String in ["PREROD_EGG", "PREROD_LUTEUM"]:
+		var pr := Draw.fit_problem(key, Text.font_bold, Text.plain(Text.t(key)), CAPTION_W, CAPTION_FS, 2)
+		if pr != "":
+			out.append(pr)
+	return out
 
 
 func _draw_garden_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:

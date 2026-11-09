@@ -577,14 +577,17 @@ func _make_platformer(lvl: int, checkpoint: int) -> Platformer:
 	return pf
 
 
-## The climb's end turns into the PMS maze: the casino winds down and the view turns upside
-## down (Platformer.start_prerod), then the maze (already upside down) fades in over it,
-## Kyra settles onto her platform (above her on screen) and 4A opens.
+## The climb's end turns into the PMS maze (Platformer.start_prerod): the casino winds down,
+## the sun (the follicle) comes close, opens and lets the egg go (ovulation), closes into the
+## yellow body (the corpus luteum) and Kyra is pulled into its opening while the view turns
+## upside down; when the opening fills the screen the maze (already upside down) starts
+## inside it (Platformer.start_warm: warm amber, then its dusk), the climb goes and 4A opens.
+## No fade to black.
 func _into_pms(old: Platformer) -> void:
 	var run := _run_id
 	old.start_prerod()
 	# (Polled, not a timer: the pause menu can stop the transformation half way.)
-	while old.view_flip < 1.0:
+	while not old.prerod_finished():
 		await get_tree().process_frame
 		if run != _run_id or not is_instance_valid(old):
 			return
@@ -597,21 +600,10 @@ func _into_pms(old: Platformer) -> void:
 	platformer = pf
 	# She comes in a little above (in the world) her platform and settles onto it.
 	pf.p.y -= 70
-	pf.set_fade(0.0)
+	pf.start_warm()
 	_set_state("platformer")
-	var tw := create_tween()
-	tw.tween_method(func(a: float):
-		if is_instance_valid(pf):
-			pf.set_fade(a)
-		if is_instance_valid(old):
-			old.set_fade(1.0 - a), 0.0, 1.0, 1.0)
-	_fade_tws.append(tw)
-	await tw.finished
-	if is_instance_valid(old):
-		old.queue_free()
-	if run != _run_id or platformer != pf:
-		return
-	await get_tree().create_timer(0.6).timeout
+	old.queue_free()
+	await get_tree().create_timer(Platformer.WARM_IRIS + 0.5, false).timeout
 	if run != _run_id or platformer != pf:
 		return
 	pf.hold_input = false

@@ -346,6 +346,7 @@ func _run() -> void:
 	check(pf.p.breath_charges == 3, "breath charges refilled")
 	await frames(2)
 	check(pf.hud.hint_lines() == ["HINT_BREATH_ATTACK"], "breath charged: the hint says the breath attacks %s" % str(pf.hud.hint_lines()))
+	_check_labels(pf.hud.labels, ["HUD_LBL_IRON", "HUD_LBL_BREATH"], "cave")
 	pf.p.breath_charges = 0
 	await frames(2)
 	check(pf.hud.hint_lines() == ["HINT_BREATH_CHARGE"], "breath used up: the hint says to charge it %s" % str(pf.hud.hint_lines()))
@@ -384,6 +385,7 @@ func _run() -> void:
 					bad_hints.append("%s/%s/%s (%d px)" % [lang, hk, mode, int(AbilityHints.line_width(Text._filter_mode(str(Text._strings[lang][hk]))))])
 	Game.control_mode = mode_was
 	check(bad_hints.is_empty(), "every ability hint parses as [key] caps + one *action* in all languages and both control modes %s" % str(bad_hints))
+	_hud_layout()
 
 	step("minigame 2 – chocolate")
 	await _go_trigger(pf, "mg2")
@@ -597,6 +599,7 @@ func _run() -> void:
 	rn.drops = 1
 	await frames(2)
 	check(rn.hint_lines() == ["HINT_RUN_FOCUS"], "one drop: the focus hint %s" % str(rn.hint_lines()))
+	_check_labels(rn.hud_labels, ["HUD_LBL_SUN", "HUD_LBL_WATER"], "forest run")
 	rn.drops = 4
 	await frames(2)
 	check(rn.hint_lines() == ["HINT_RUN_FOCUS", "HINT_RUN_DOUBLE"], "two drops or more: focus and the double jump %s" % str(rn.hint_lines()))
@@ -1137,22 +1140,75 @@ func _run() -> void:
 
 	step("the transformation (the climb's end → the PMS maze)")
 	check(pf.prerod_t >= 0 and pf.hold_input and main.platformer == pf, "after 3E the transformation starts (no control)")
+	check(Platformer.prerod_fit_problems().is_empty(), "the transformation's captions fit (current language)")
+	var cap_long: Array = []
+	var lang_c: String = Text.language
+	for lang in ["en", "sk", "pt"]:
+		Text.language = lang
+		cap_long.append_array(Platformer.prerod_fit_problems())
+	Text.language = lang_c
+	check(cap_long.is_empty(), "the transformation's captions fit in sk / en / pt %s" % str(cap_long))
 	var tick0: float = pf.ticker[0].x if not pf.ticker.is_empty() else 0.0
-	await seconds(1.0)
-	check(pf.ticker.is_empty() or is_equal_approx(pf.ticker[0].x, tick0), "the board's ticker stops")
-	await seconds(0.7)
-	check(pf.wind >= 1.0 and pf.view_flip < 0.05, "the casino winds down first (wind %.2f), then it turns" % pf.wind)
-	check(pf._world.modulate.b > pf._world.modulate.g and pf._world.modulate.r < 0.9, "the gold drains out of the colours (dusky violet)")
-	var mid_flip := await until(func(): return pf.view_flip > 0.4 and pf.view_flip < 0.6, 3)
-	check(mid_flip and pf.hud.modulate.a < 0.05 and absf(pf._world.rotation - PI / 2) < 0.4, "halfway the view is turned ~90° (%.2f rad), the HUD is gone" % pf._world.rotation)
-	var turned := await until(func(): return not is_instance_valid(pf) or pf.view_flip >= 1.0, 3)
-	check(turned and is_instance_valid(pf) and absf(pf._world.rotation - PI) < 0.05 and absf(pf._bg.rotation - PI) < 0.05 and absf(pf._player_layer.rotation - PI) < 0.05, "the whole view (background, world, Kyra) turns 180°")
-	var maze_on := await until(func(): return main.platformer != null and main.platformer != pf and main.platformer.is_pms(), 2)
+	var lut_sun0: Array = pf.prerod_body()
+	var phases: Array = []
+	var pr_fade_max := 0.0
+	var pr_seen := {}
+	var kyra0 := pf.p.center()
+	var guard_t := 0
+	while is_instance_valid(pf) and main.platformer == pf and guard_t < 60 * 14:
+		guard_t += 1
+		var ph := pf.prerod_phase()
+		if phases.is_empty() or phases.back() != ph:
+			phases.append(ph)
+		pr_fade_max = maxf(pr_fade_max, main._fade.modulate.a)
+		if ph == "focus" and pf.prerod_t > 1.0 and not pr_seen.has("ticker"):
+			pr_seen["ticker"] = pf.ticker.is_empty() or is_equal_approx(pf.ticker[0].x, tick0)
+		if ph == "egg" and pf.prerod_t > Platformer.PREROD_T_EGG + 0.3 and not pr_seen.has("egg_open"):
+			var b: Array = pf.prerod_body()
+			pr_seen["egg_open"] = pf.prerod_open() > 0.5 and pf.view_flip < 0.01 and (b[0] as Vector2).distance_to(Platformer.LUTEUM_C) < 2.0 and float(b[1]) > float(lut_sun0[1])
+			pr_seen["dusk"] = pf._world.modulate.b > pf._world.modulate.g and pf._world.modulate.r < 0.9 and pf.hud.modulate.a < 0.05
+		if pf.egg_released and not pr_seen.has("egg_out"):
+			pr_seen["egg_out"] = ph == "egg" and float(pf.prerod_egg()[1]) > 0 and pf.prerod_luteum() == 0.0
+			pr_seen["egg_cap"] = pf.prerod_caption()[0] == "PREROD_EGG"
+		if ph == "luteum" and pf.prerod_t > Platformer.PREROD_T_LUTEUM + 1.3 and not pr_seen.has("luteum"):
+			pr_seen["luteum"] = pf.prerod_luteum() > 0.9 and pf.prerod_open() < 0.05 and float(pf.prerod_egg()[1]) == 0.0 and pf.prerod_caption()[0] == "PREROD_LUTEUM" and pf.view_flip < 0.01
+		if ph == "pull" and pf.prerod_t > Platformer.PREROD_T_PULL + Platformer.PREROD_PULL * 0.5 and not pr_seen.has("pull"):
+			var mid := Vector2(pf.camera_x, pf.camera_y) + Platformer.LUTEUM_C / pf.view_zoom
+			pr_seen["pull"] = pf.p.center().distance_to(mid) < kyra0.distance_to(mid) and pf._pull_scale() < 0.8 and pf.view_flip > 0.3 and pf.view_flip < 0.7 and absf(pf._world.rotation - PI / 2) < 0.5
+		if ph == "iris" and not pr_seen.has("iris"):
+			pr_seen["iris"] = pf.view_flip >= 1.0 and absf(pf._world.rotation - PI) < 0.05 and absf(pf._bg.rotation - PI) < 0.05 and absf(pf._player_layer.rotation - PI) < 0.05 and pf._player_layer.modulate.a < 0.05
+		await frames(1)
+	check(phases == ["focus", "egg", "luteum", "pull", "iris", "done"] or phases == ["focus", "egg", "luteum", "pull", "iris"], "the transformation's phases in order %s" % str(phases))
+	check(pr_seen.get("ticker", false), "the board's ticker stops")
+	check(pr_seen.get("egg_open", false), "the sun (the follicle) comes to the middle, grows and opens along its slices")
+	check(pr_seen.get("dusk", false), "the casino's gold drains to dusk and the HUD is gone")
+	check(pr_seen.get("egg_out", false) and pr_seen.get("egg_cap", false), "ovulation: the egg is released and floats away (caption PREROD_EGG)")
+	check(pr_seen.get("luteum", false), "the opened sun closes into the yellow body (caption PREROD_LUTEUM)")
+	check(pr_seen.get("pull", false), "Kyra is pulled into the opening (shrinking) while the view turns")
+	check(pr_seen.get("iris", false), "the whole view (background, world, Kyra) has turned 180° when the opening fills the screen")
+	check(pr_fade_max == 0.0, "no fade to black during the transformation (%.2f)" % pr_fade_max)
+	var short_caps: Array = []
+	var lang_cap := Text.language
+	for lang in ["sk", "en", "pt"]:
+		Text.language = lang
+		for sp: Array in Platformer.prerod_caption_spans():
+			var need := Platformer.CAPTION_READ * Platformer.board_read_time(Text.plain(Text.t(str(sp[0]))))
+			if float(sp[2]) - float(sp[1]) < need:
+				short_caps.append("%s/%s %.2f < %.2f" % [lang, sp[0], float(sp[2]) - float(sp[1]), need])
+	Text.language = lang_cap
+	check(short_caps.is_empty(), "the transformation's captions stay on long enough to read %s" % str(short_caps))
+	var maze_on: bool = main.platformer != null and main.platformer != pf and main.platformer.is_pms()
 	check(maze_on and Game.level == Game.PMS_ID and main.state == "platformer", "the PMS maze (level 6) comes in")
 	var pms: Platformer = main.platformer
-	check(pms.view_flip == 1.0 and pms.modulate.a < 0.5, "the maze is already upside down and fades in over the climb")
+	check(pms.view_flip == 1.0 and pms.warm > 0.9 and pms.warm_t >= 0 and pms._world.modulate.b < 0.7, "the maze starts upside down inside the yellow body (warm amber)")
+	await frames(2)
+	check(not is_instance_valid(pf), "the climb is gone")
+	var warm_fades := await until(func(): return pms.warm < 0.5, 4)
+	check(warm_fades and main._fade.modulate.a == 0.0, "the warm tint fades to the maze's dusk")
 	await finish_dialog("4A")
-	check(not is_instance_valid(pf), "the climb is gone after the crossfade")
+	check(Text.dialogs["4A"].parts.any(func(pt): return pt.speaker == "Progesteronka"), "4A: Progesterónka greets her inside the corpus luteum")
+	var cooled := await until(func(): return pms.warm == 0.0 and pms.warm_t < 0, 6)
+	check(cooled and pms._world.modulate == Color.WHITE, "the maze has its dusky colours after the warm start")
 	check(pms.modulate.a == 1.0 and not pms.hold_input and pms.p.is_grounded, "Kyra settled onto her platform; control is back after 4A")
 
 	step("level 4 – the PMS maze")
@@ -1167,6 +1223,25 @@ func _run() -> void:
 	main._dev_action("pms_transform", 0)
 	var dev_top := await until(func(): return main.platformer != null and main.platformer.is_climb() and main.platformer.climb_won, 8)
 	check(dev_top, "the developer menu's Transformation starts at the climb's top")
+	var tpf: Platformer = main.platformer
+	var g6 := 0
+	while is_instance_valid(tpf) and main.platformer == tpf and tpf.prerod_t < Platformer.PREROD_T_LUTEUM and g6 < 400:
+		g6 += 1
+		if tpf.board_talking():
+			tpf.board_talk.t = tpf.board_talk.dur
+		await frames(2)
+	check(is_instance_valid(tpf) and tpf.prerod_phase() == "luteum", "the developer Transformation plays the sequence (%s)" % (tpf.prerod_phase() if is_instance_valid(tpf) else "-"))
+	_key(KEY_ESCAPE, true)
+	await frames(2)
+	_key(KEY_ESCAPE, false)
+	var pt0: float = tpf.prerod_t
+	await frames(30)
+	check(main._pause.is_open() and get_tree().paused and tpf.prerod_t == pt0, "the pause menu stops the transformation")
+	main._pause._buttons[1].pressed.emit()
+	await frames(5)
+	check(not get_tree().paused and main.state == "intro", "Restart game during the transformation starts a new run")
+	await seconds(Platformer.PREROD_T_END - pt0 + 2.0)
+	check(main.state == "intro" and Game.level != Game.PMS_ID and not (main.platformer != null and main.platformer.is_pms()) and main._fade.modulate.a == 0.0, "the old transformation doesn't reach into the new run")
 	main._quit_to_title()
 	await frames(3)
 
@@ -2214,6 +2289,7 @@ func _climb_hearts(pf: Platformer) -> void:
 	pf.rise_wait = 30.0
 	await frames(3)
 	check(pf.hud.hint_lines().is_empty(), "no hearts ready: no heart abilities in the hints")
+	_check_labels(pf.hud.labels, ["HUD_LBL_HEARTS"], "jackpot climb")
 	var h: LevelData.Ent = _climb_ent(pf, "heart")
 	var taken0 := pf.hearts_taken
 	_climb_put(pf, h.x + h.w / 2, h.y + 30)
@@ -2618,6 +2694,7 @@ func _pms_play(pf: Platformer) -> void:
 	# The breath: hold to breathe in, then the world is calm a while (steady).
 	await frames(30)
 	check(pf.hud.hint_lines() == ["HINT_PMS_BREATHE"], "the maze's ability hint: hold to breathe %s" % str(pf.hud.hint_lines()))
+	_check_labels(pf.hud.labels, ["HUD_LBL_COMFORT", "HUD_LBL_BREATH"], "PMS maze")
 	Input.action_press("breathe")
 	await seconds(Platformer.CALM_FILL + 0.2)
 	Input.action_release("breathe")
@@ -2840,3 +2917,126 @@ func _meter_model_checks() -> void:
 	mm.slot_flash = 0.0
 	r = mm.fill(20.0, false)
 	check(r.x > 0.19 and mm.slot_flash == 0.0 and mm.last_slot == 2, "MeterModel: fill(…, false) fills without its own flash (the caller flashes on arrival)")
+
+
+## The HUD labels a level drew this frame: the expected keys, each under its indicator
+## (not inside it), centred on it.
+func _check_labels(labels: Array, keys: Array, level: String) -> void:
+	var got: Array = labels.map(func(l): return l.key)
+	check(got == keys, "%s: the HUD labels under the indicators %s" % [level, str(got)])
+	var bad: Array = []
+	for l in labels:
+		var box: Rect2 = l.box
+		var r: Rect2 = l.rect
+		if r.position.y < box.end.y or absf(r.get_center().x - box.get_center().x) > 1.0 or r.size.x <= 0:
+			bad.append("%s %s under %s" % [l.key, str(r), str(box)])
+	check(bad.is_empty(), "%s: each label sits centred under its indicator %s" % [level, str(bad)])
+
+
+## The HUD in every level (static layout, all languages): the labels fit under their
+## indicators without touching the pills or the ability hints; the icons are centred in
+## their pills (their drawn bounds against the pill, 1.5 px).
+func _hud_layout() -> void:
+	step("HUD labels and centred icons")
+	var lang_was := Text.language
+	var bad: Array = []
+	var cave_pill := Rect2(1066 - 16 - PlatformerHud.PILL.x, 16, PlatformerHud.PILL.x, PlatformerHud.PILL.y)
+	var heart_pill := Rect2(1066 - 16 - PlatformerHud.HEART_PILL.x, 16, PlatformerHud.HEART_PILL.x, PlatformerHud.HEART_PILL.y)
+	# Every indicator: [label key, its box, the hint anchor under it (or none)].
+	var sets := [
+		["HUD_LBL_IRON", PlatformerHud.iron_box(), Vector2(-1, -1)],
+		["HUD_LBL_BREATH", cave_pill, Vector2(cave_pill.end.x, Draw.label_bottom(cave_pill))],
+		["HUD_LBL_SUN", ForestRunner.sun_box(), Vector2(-1, -1)],
+		["HUD_LBL_WATER", ForestRunner.WATER_HUD, ForestRunner.hint_anchor()],
+		["HUD_LBL_HEARTS", heart_pill, Vector2(heart_pill.end.x, Draw.label_bottom(heart_pill))],
+		["HUD_LBL_COMFORT", PlatformerHud.PMS_SLOTS, Vector2(-1, -1)],
+	]
+	for lang in ["sk", "en", "pt"]:
+		Text.language = lang
+		for st in sets:
+			var key: String = st[0]
+			var box: Rect2 = st[1]
+			var anchor: Vector2 = st[2]
+			var txt := Text.plain(Text.t(key))
+			var r := Draw.label_rect(box, txt)
+			if txt == "" or txt == key:
+				bad.append("%s/%s missing" % [lang, key])
+			# Under the box (a gap), centred, on the screen, not wider than the box + 40.
+			if r.position.y < box.end.y + 1 or absf(r.get_center().x - box.get_center().x) > 0.5 or r.position.x < 2 or r.end.x > 1064 or r.size.x > box.size.x + 40:
+				bad.append("%s/%s %s under %s" % [lang, key, str(r), str(box)])
+			# The ability hints start under the label (AbilityHints.draw: anchor.y + 7).
+			if anchor.x >= 0 and anchor.y + 7.0 - 6.0 < r.end.y:
+				bad.append("%s/%s: hints at %.0f overlap the label (ends %.0f)" % [lang, key, anchor.y + 1.0, r.end.y])
+	Text.language = lang_was
+	# The forest run's stage ring at the top of the sun pulse stays above the sun's label.
+	var ring_bottom := ForestRunner.SUN_HUD.y + ForestRunner.SUN_RING_R * ForestRunner.SUN_RING_PULSE + 1.5
+	var sun_lbl := Draw.label_rect(ForestRunner.sun_box(), Text.plain(Text.t("HUD_LBL_SUN")))
+	if ring_bottom >= sun_lbl.position.y:
+		bad.append("the pulsed sun ring (to %.1f) runs into the label (from %.1f)" % [ring_bottom, sun_lbl.position.y])
+	check(bad.is_empty(), "every HUD indicator has its label under it, clear of the pill and the hints, in sk / en / pt %s" % str(bad))
+	# Icons centred: the drawn bounds of the slot row (both pills) against the pill.
+	var off: Array = []
+	var water := ForestRunner.WATER_HUD
+	var drops := PackedVector2Array()
+	for i in 4:
+		var c := MeterHud.slot_center(water, i)
+		drops.append_array(ForestRunner._drop_pts(MeterHud.drop_at(c, 1.05), 1.05))
+	_centred(off, "water drops", Draw.bounds(drops), water)
+	var hearts := PackedVector2Array()
+	for i in Platformer.HEART_SLOTS:
+		var c := MeterHud.slot_center(heart_pill, i, Platformer.HEART_SLOTS)
+		# A full heart's ink: the polygon plus its outline (the point's spike below).
+		var hb := Draw.bounds(PlatformerHud._heart_pts(MeterHud.heart_at(c, 12.0), 12.0))
+		hearts.append(hb.position - Vector2(0, SpriteArt.HEART_INK_TOP * 12.0))
+		hearts.append(hb.end + Vector2(0, SpriteArt.HEART_INK_BOTTOM * 12.0))
+		var empty := Draw.bounds(PlatformerHud._heart_pts(MeterHud.heart_at(c, 11.0, false), 11.0))
+		if absf(empty.get_center().y - heart_pill.get_center().y) > 1.0:
+			off.append("an empty heart %.1f off" % (empty.get_center().y - heart_pill.get_center().y))
+	_centred(off, "hearts", Draw.bounds(hearts), heart_pill)
+	# The reserve's badge: its icon + "+N" as one row centred in the badge.
+	for n in [0, 3, 12]:
+		var lay := MeterHud.badge_layout(water, n)
+		var b := MeterHud.badge_rect(water)
+		var left: float = lay.icon.x - MeterHud.BADGE_ICON_W / 2 - b.position.x
+		var right: float = b.end.x - (float(lay.text_x) + float(lay.text_w))
+		if absf(left - right) > 1.0 or absf(lay.icon.y - b.get_center().y) > 0.01:
+			off.append("badge +%d: %.1f / %.1f" % [n, left, right])
+	# The breath pill's rows (text + icon, the charges) centred.
+	for items in [["t:SHIFT", "wind"], ["t:PUSH", "pad"], ["t:RELOAD", "pad"], ["t:SHIFT", "reload"], ["wind", "wind", "wind"]]:
+		var row := PlatformerHud.icon_row_items(Text.font_bold, cave_pill.get_center(), items)
+		var first: Dictionary = row[0]
+		var last: Dictionary = row[row.size() - 1]
+		var l: float = first.c.x - first.w / 2.0 - cave_pill.position.x
+		var rr: float = cave_pill.end.x - (last.c.x + last.w / 2.0)
+		if absf(l - rr) > 1.0:
+			off.append("breath row %s: %.1f / %.1f" % [str(items), l, rr])
+	# The maze's slots: centred in the panel, each item's drawn bounds centred in its slot.
+	var sl := Rect2(PlatformerHud.pms_slot_center(0) - Vector2(21, 21), Vector2(42 * 3 + 20, 42))
+	_centred(off, "PMS slots", sl, PlatformerHud.PMS_SLOTS)
+	for i in 3:
+		var kind: String = PmsMaze.ITEMS[i]
+		var k := PlatformerHud.pms_item_scale(kind)
+		var c := PlatformerHud.pms_slot_center(i)
+		var at := c - PmsMaze.item_bounds(kind).get_center() * k
+		var ib := Rect2(at + PmsMaze.item_bounds(kind).position * k, PmsMaze.item_bounds(kind).size * k)
+		_centred(off, "PMS item " + kind, ib, Rect2(c - Vector2(21, 21), Vector2(42, 42)))
+	# The spinner's symbols: a heart's / a bell's bounds on the card's centre.
+	var hb := Draw.bounds(PlatformerHud._heart_pts(MeterHud.heart_at(Vector2(100, 100), 14.0), 14.0))
+	var hmid := (hb.position.y - SpriteArt.HEART_INK_TOP * 14.0 + hb.end.y + SpriteArt.HEART_INK_BOTTOM * 14.0) / 2.0
+	if absf(hmid - 100.0) > 1.0 or absf(hb.get_center().x - 100.0) > 1.0:
+		off.append("spinner heart %.1f" % hmid)
+	var bell_c := Vector2(100, 100) - Vector2(0, SpriteArt.bell_mid(13.0))
+	var bell_top := bell_c.y - 13.0 * 1.4
+	var bell_bottom := bell_c.y + 13.0 * 1.0
+	if absf((bell_top + bell_bottom) / 2 - 100.0) > 1.0:
+		off.append("spinner bell %.1f" % ((bell_top + bell_bottom) / 2))
+	check(off.is_empty(), "the HUD's icons are centred in their pills (drops, hearts, the badge, the breath, the maze's items, the spinner) %s" % str(off))
+
+
+func _centred(off: Array, what: String, b: Rect2, pill: Rect2) -> void:
+	var dl := b.position.x - pill.position.x
+	var dr := pill.end.x - b.end.x
+	var dt := b.position.y - pill.position.y
+	var db := pill.end.y - b.end.y
+	if absf(dl - dr) > 1.5 or absf(dt - db) > 1.5 or dl < 0 or dt < 0:
+		off.append("%s: left %.1f right %.1f top %.1f bottom %.1f" % [what, dl, dr, dt, db])

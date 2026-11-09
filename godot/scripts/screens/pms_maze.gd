@@ -252,6 +252,19 @@ static func draw_bg(ci: CanvasItem, vs: Vector2, t: float, cam_y: float, level_h
 
 
 ## A comfort item centred on c (s = scale).
+## The drawn bounds of an item at scale 1 round its `c` (`draw_item`; the tea's faint
+## steam left out): the HUD centres them in its slots.
+static func item_bounds(kind: String) -> Rect2:
+	match kind:
+		"tea":
+			return Rect2(-22.4, -11, 44.8, 23.3)
+		"bottle":
+			return Rect2(-14, -22, 28, 39)
+		"blanket":
+			return Rect2(-17, -12, 42, 24)
+	return Rect2(-16, -16, 32, 32)
+
+
 static func draw_item(ci: CanvasItem, kind: String, c: Vector2, t: float, s := 1.0, a := 1.0) -> void:
 	ci.draw_set_transform(c, 0.0, Vector2(s, s))
 	match kind:

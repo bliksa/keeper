@@ -24,6 +24,8 @@ var _alpha := 1.0
 ## The maze's item slots: a little pop when one fills.
 var _slot_pop := [0.0, 0.0, 0.0]
 var _items_seen: Array[bool] = [false, false, false]
+## The labels under the indicators as last drawn: [{key, box, rect}] (tests).
+var labels: Array = []
 
 
 func _ready() -> void:
@@ -101,6 +103,7 @@ func _wanted_hints() -> Array:
 
 
 func _draw() -> void:
+	labels = []
 	if platformer == null:
 		return
 	var font: Font = Text.font_bold
@@ -115,16 +118,20 @@ func _draw() -> void:
 	if platformer.is_climb():
 		_draw_climb(font)
 		return
-	# Iron: one big nut with the count in its middle (top-left, like the sun in level 2).
-	var r := draw_iron(self, font, Vector2(60, 58), Game.iron, _bounce, _spin)
+	# Iron: one big nut with the count in its middle (top-left, like the sun in level 2),
+	# its label under it.
+	draw_iron(self, font, IRON_HUD, Game.iron, _bounce, _spin)
+	labels = [{"key": "HUD_LBL_IRON", "box": iron_box(), "rect": Draw.hud_label(self, iron_box(), "HUD_LBL_IRON")}]
 	if Game.has_breathing:
 		var br := _draw_breath(font)
+		labels.append({"key": "HUD_LBL_BREATH", "box": br, "rect": Draw.hud_label(self, br, "HUD_LBL_BREATH")})
 		if not platformer.is_summit():
-			# The hints follow the pill (under Kyra while she breathes / is held).
+			# The hints follow the pill (under Kyra while she breathes / is held), under
+			# its label.
 			var follow := _breath_follows()
-			hints.draw(self, Vector2(br.get_center().x if follow else br.end.x, br.end.y), follow)
+			hints.draw(self, Vector2(br.get_center().x if follow else br.end.x, Draw.label_bottom(br)), follow)
 	if platformer.is_summit():
-		_draw_upgrades(font, r.end.y + 8)
+		_draw_upgrades(font, Draw.label_bottom(iron_box()) + 6)
 		# Floor counter (Icy Tower) and the combo.
 		var ft := "%s %d" % [Text.plain(Text.t("HUD_FLOOR")), platformer.floor_now]
 		var fw := font.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
@@ -137,6 +144,15 @@ func _draw() -> void:
 			var cr := Rect2(1066 / 2 - cw / 2 - 14, 56, cw + 28, 34)
 			Draw.panel(self, cr, Color("#78350f"), 17, Color("#fbbf24"), 2)
 			draw_string(font, Vector2(cr.position.x + 14, cr.position.y + 24), ct, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#fef3c7"))
+
+
+## The cave's iron nut (its centre) and its drawn box (the texture is 2.3 × its radius
+## of 42 tall): the label goes under it.
+const IRON_HUD := Vector2(60, 58)
+
+
+static func iron_box() -> Rect2:
+	return Rect2(IRON_HUD - Vector2(49, 49), Vector2(98, 98))
 
 
 ## The big nut of the HUD centred on `c`; returns its box (for what goes below).
@@ -211,13 +227,10 @@ func _draw_breath(font: Font) -> Rect2:
 		var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 300.0)
 		_progress_outline(rect, 1.0, Color(TEAL, pulse))
 		if p.has_used_breath:
-			var n := p.breath_charges
-			for i in n:
-				var x := c.x + (i - (n - 1) / 2.0) * 26
-				if keyboard:
-					_wind_icon(Vector2(x, c.y), INK)
-				else:
-					draw_texture_rect(load("res://assets/ui/pad_red.png"), Rect2(x - 10, c.y - 10, 20, 20), false)
+			var row: Array = []
+			for i in p.breath_charges:
+				row.append("wind" if keyboard else "pad")
+			_icon_row(font, c, row)
 		else:
 			_key_hint(font, c, "SHIFT" if keyboard else "PUSH", keyboard)
 	elif p.is_recharging and p.breathing_cooldown <= 0:
@@ -235,45 +248,98 @@ func _draw_breath(font: Font) -> Rect2:
 		if p.breath_charges > 0:
 			_key_hint(font, c, "SHIFT" if keyboard else "PUSH", keyboard)
 		else:
-			var s := "SHIFT" if keyboard else "RELOAD"
-			Draw.text_center(self, font, c + Vector2(-12 if keyboard else -14, 0), s, 18, INK)
-			if keyboard:
-				_reload_icon(c + Vector2(30, 0))
-			else:
-				draw_texture_rect(load("res://assets/ui/pad_red.png"), Rect2(c.x + 34, c.y - 10, 20, 20), false)
+			_icon_row(font, c, ["t:" + ("SHIFT" if keyboard else "RELOAD"), "reload" if keyboard else "pad"])
 	return rect
 
 
 func _key_hint(font: Font, c: Vector2, s: String, keyboard: bool) -> void:
-	Draw.text_center(self, font, c + Vector2(-14, 0), s, 18, INK)
-	if keyboard:
-		_wind_icon(c + Vector2(30, 0), INK)
-	else:
-		draw_texture_rect(load("res://assets/ui/pad_red.png"), Rect2(c.x + 24, c.y - 10, 20, 20), false)
+	_icon_row(font, c, ["t:" + s, "wind" if keyboard else "pad"])
 
 
+## The breath pill's contents as one row centred on `c` (both ways): "t:TEXT" (the HUD
+## font at 18 px), "wind", "reload", "pad" (the gamepad's red button).
+const ROW_GAP := 8.0
+const ROW_FS := 18
+const TEXT_BEARING := 0.14
+
+
+static func icon_row_items(font: Font, c: Vector2, items: Array) -> Array:
+	var ws: Array = []
+	var total := 0.0
+	for it in items:
+		var w := _row_item_w(font, str(it))
+		ws.append(w)
+		total += w
+	total += ROW_GAP * maxf(0.0, items.size() - 1)
+	var x := c.x - total / 2
+	var out: Array = []
+	for i in items.size():
+		var w: float = ws[i]
+		out.append({"item": str(items[i]), "c": Vector2(x + w / 2, c.y), "w": w})
+		x += w + ROW_GAP
+	return out
+
+
+static func _row_item_w(font: Font, it: String) -> float:
+	if it.begins_with("t:"):
+		# The ink, not the advance: KeeperDyslexic's capitals keep ≈ 0.14 em of side
+		# bearing on each side (measured: 2.75 / 2.25 px at 18 px), so the row's ink is
+		# what gets centred.
+		return font.get_string_size(it.substr(2), HORIZONTAL_ALIGNMENT_LEFT, -1, ROW_FS).x - 2.0 * TEXT_BEARING * ROW_FS
+	match it:
+		"wind":
+			return WIND_BOUNDS.size.x
+		"reload":
+			return RELOAD_BOUNDS.size.x
+	return 20.0
+
+
+func _icon_row(font: Font, c: Vector2, items: Array) -> void:
+	for e in icon_row_items(font, c, items):
+		var it: String = e.item
+		var ic: Vector2 = e.c
+		if it.begins_with("t:"):
+			Draw.text_center(self, font, ic, it.substr(2), ROW_FS, INK)
+		elif it == "wind":
+			_wind_icon(ic, INK)
+		elif it == "reload":
+			_reload_icon(ic)
+		else:
+			draw_texture_rect(load("res://assets/ui/pad_red.png"), Rect2(ic.x - 10, ic.y - 10, 20, 20), false)
+
+
+## The wind icon's drawn bounds round its drawing origin (the lines' ends, the curls).
+const WIND_BOUNDS := Rect2(-10, -11, 17.5, 17)
+const RELOAD_BOUNDS := Rect2(-8, -9, 18, 17)
+
+
+## The lucide "wind" icon with its bounds centred on `c`.
 func _wind_icon(c: Vector2, col: Color) -> void:
+	var o := c - WIND_BOUNDS.get_center()
 	# Three gusts with curled ends (the lucide "wind" icon).
 	for row in [[-6.0, 14.0], [0.0, 18.0], [6.0, 12.0]]:
-		var y: float = c.y + row[0]
+		var y: float = o.y + row[0]
 		var len: float = row[1]
-		draw_line(Vector2(c.x - 10, y), Vector2(c.x - 10 + len - 3, y), col, 2.0, true)
-		draw_arc(Vector2(c.x - 10 + len - 3, y - 2.5), 2.5, PI / 2, -PI, 8, col, 2.0, true)
+		draw_line(Vector2(o.x - 10, y), Vector2(o.x - 10 + len - 3, y), col, 2.0, true)
+		draw_arc(Vector2(o.x - 10 + len - 3, y - 2.5), 2.5, PI / 2, -PI, 8, col, 2.0, true)
 
 
+## A circular arrow with its bounds centred on `c`.
 func _reload_icon(c: Vector2) -> void:
-	draw_arc(c, 8, -PI * 0.25, PI * 1.4, 16, INK, 2.0, true)
-	draw_colored_polygon(PackedVector2Array([c + Vector2(6, -9), c + Vector2(10, -2), c + Vector2(3, -3)]), INK)
+	var o := c - RELOAD_BOUNDS.get_center()
+	draw_arc(o, 8, -PI * 0.25, PI * 1.4, 16, INK, 2.0, true)
+	draw_colored_polygon(PackedVector2Array([o + Vector2(6, -9), o + Vector2(10, -2), o + Vector2(3, -3)]), INK)
 
 
+## The breathing rhythm's symbols, each centred on `c` (18 px tall).
 func _shape(kind: String, c: Vector2, col: Color) -> void:
 	match kind:
 		"up":
-			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -10), c + Vector2(10, 8), c + Vector2(-10, 8)]), col)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -9), c + Vector2(10, 9), c + Vector2(-10, 9)]), col)
 		"hold":
 			draw_rect(Rect2(c - Vector2(8, 8), Vector2(16, 16)), col)
 		"down":
-			draw_colored_polygon(PackedVector2Array([c + Vector2(0, 10), c + Vector2(10, -8), c + Vector2(-10, -8)]), col)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(0, 9), c + Vector2(10, -9), c + Vector2(-10, -9)]), col)
 
 
 ## Outline that runs clockwise along the pill's rounded edge as the breath
@@ -365,7 +431,8 @@ func _draw_climb(font: Font) -> void:
 	# The heart meter (top-right) and what the hearts can buy under it.
 	var pill := Rect2(1066 - 16 - HEART_PILL.x, 16, HEART_PILL.x, HEART_PILL.y)
 	draw_heart_pill(self, pill, pf.meter, t / 1000.0, pf.heart_short > 0, _heart_pop, _alpha)
-	hints.draw(self, Vector2(pill.end.x, pill.end.y))
+	labels = [{"key": "HUD_LBL_HEARTS", "box": pill, "rect": Draw.hud_label(self, pill, "HUD_LBL_HEARTS", _alpha)}]
+	hints.draw(self, Vector2(pill.end.x, Draw.label_bottom(pill)))
 	# The banner (JACKPOT!, SUPER JUMP! …).
 	if not pf.banner.is_empty() and pf.prerod_t < 0:
 		var bt: float = pf.banner.t
@@ -404,15 +471,18 @@ static func draw_heart_pill(ci: CanvasItem, r: Rect2, m: MeterModel, t: float, s
 		var fill := clampf(level - i, 0, 1)
 		var s := 12.0 * (1.0 + MeterHud.slot_pop(m, i) + (0.35 * sin(clampf(pop / 0.4, 0, 1) * PI) if i == top else 0.0))
 		var empty := Color(0.94, 0.27, 0.27, 0.75 * alpha) if blink and fill < 0.99 else Color(0.58, 0.5, 0.6, 0.3 * alpha)
+		# The heart's bounds centred on the slot (its point hangs lower than its lobes).
+		var hc := MeterHud.heart_at(c, s)
 		if fill >= 0.99:
-			SpriteArt.draw_heart(ci, c, s, 1.0, alpha)
+			SpriteArt.draw_heart(ci, hc, s, 1.0, alpha)
 			continue
-		_heart_shape(ci, c, 11.0, empty)
+		_heart_shape(ci, MeterHud.heart_at(c, 11.0, false), 11.0, empty)
 		if fill > 0.01:
-			# Only the part below its level.
-			var pts := _heart_pts(c, s)
-			var y := c.y + s * (1.19 - 1.81 * fill)
-			var below := PackedVector2Array([Vector2(c.x - 30, y), Vector2(c.x + 30, y), Vector2(c.x + 30, c.y + 30), Vector2(c.x - 30, c.y + 30)])
+			# Only the part below its level (no outline: centred as a bare shape).
+			hc = MeterHud.heart_at(c, s, false)
+			var pts := _heart_pts(hc, s)
+			var y := hc.y + s * (1.19 - 1.81 * fill)
+			var below := PackedVector2Array([Vector2(c.x - 30, y), Vector2(c.x + 30, y), Vector2(c.x + 30, hc.y + 30), Vector2(c.x - 30, hc.y + 30)])
 			for part in Geometry2D.intersect_polygons(pts, below):
 				Draw.polygon_safe(ci, part, Color(Color("#f43f5e"), alpha))
 	MeterHud.draw_reserve(ci, r, m, Color(col, 1.0), "heart", t, alpha)
@@ -621,9 +691,9 @@ func _draw_reels(font: Font, t: float, box: Rect2) -> void:
 func _reel_symbol(font: Font, sym: String, c: Vector2, k := 1.0) -> void:
 	match sym:
 		"heart":
-			SpriteArt.draw_heart(self, c, 14.0 * k, 1.0, _alpha)
+			SpriteArt.draw_heart(self, MeterHud.heart_at(c, 14.0 * k), 14.0 * k, 1.0, _alpha)
 		"bell":
-			SpriteArt.draw_bell(self, c, 13.0 * k, 0.0, _alpha)
+			SpriteArt.draw_bell(self, c - Vector2(0, SpriteArt.bell_mid(13.0 * k)), 13.0 * k, 0.0, _alpha)
 		"joker":
 			SpriteArt.draw_joker(self, c, 38.0 * k, 0.0, _alpha)
 		_:
@@ -639,20 +709,20 @@ func _a(c: Color) -> Color:
 func _draw_pms(font: Font) -> void:
 	var pf := platformer
 	var t := pf.time_ms
-	var label := Text.plain(Text.t("PMS_ITEMS"))
-	var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
-	var box := Rect2(16, 16, 24 + lw + 3 * 52, 56)
+	var box := PMS_SLOTS
 	Draw.panel(self, box, BG, 18, Color("#b27c94", 0.5), 2)
-	draw_string(font, Vector2(box.position.x + 14, box.position.y + 33), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, INK)
 	for i in 3:
-		var c := Vector2(box.position.x + 24 + lw + 22 + i * 52, box.get_center().y)
+		var c := pms_slot_center(i)
 		var got: bool = pf.pms_found[i]
 		var pop: float = _slot_pop[i]
 		var sc := 1.0 + 0.35 * sin(clampf(pop / 0.45, 0, 1) * PI)
 		Draw.panel(self, Rect2(c - Vector2(21, 21), Vector2(42, 42)), Color("#f6e9ef") if got else Color("#e9e4ea"), 12, Color("#b27c94") if got else Color("#c9bccd"), 2)
 		if got:
 			Draw.radial_glow(self, c, 22, Color(1, 0.86, 0.7, 0.35))
-		PmsMaze.draw_item(self, PmsMaze.ITEMS[i], c + Vector2(0, 2), t, 0.95 * sc, 1.0 if got else 0.22)
+		var kind: String = PmsMaze.ITEMS[i]
+		var k := pms_item_scale(kind) * sc
+		PmsMaze.draw_item(self, kind, c - PmsMaze.item_bounds(kind).get_center() * k, t, k, 1.0 if got else 0.22)
+	labels = [{"key": "HUD_LBL_COMFORT", "box": box, "rect": Draw.hud_label(self, box, "HUD_LBL_COMFORT")}]
 	# The breath pill (top-right), the ability hints under it.
 	var pill := Rect2(1066 - 16 - PILL.x, 16, PILL.x, PILL.y)
 	Draw.panel(self, pill, BG, 16)
@@ -666,4 +736,19 @@ func _draw_pms(font: Font) -> void:
 	_wind_icon(bc + Vector2(-44, 0), INK)
 	draw_arc(bc + Vector2(44, 0), 9, 0, TAU, 24, Color(INK, 0.6), 2.0, true)
 	draw_arc(bc + Vector2(44, 0), 4 + 4 * sin(t / 600.0) * (1.0 - pf.steady), 0, TAU, 16, Color(INK, 0.6), 2.0, true)
-	hints.draw(self, Vector2(pill.end.x, pill.end.y))
+	labels.append({"key": "HUD_LBL_BREATH", "box": pill, "rect": Draw.hud_label(self, pill, "HUD_LBL_BREATH")})
+	hints.draw(self, Vector2(pill.end.x, Draw.label_bottom(pill)))
+
+
+## The maze's three item slots (42 px each, 10 apart) in their panel (7 px round them).
+const PMS_SLOTS := Rect2(16, 16, 7 * 2 + 42 * 3 + 10 * 2, 56)
+
+
+static func pms_slot_center(i: int) -> Vector2:
+	return Vector2(PMS_SLOTS.position.x + 7 + 21 + i * 52, PMS_SLOTS.get_center().y)
+
+
+## An item's scale in its slot: its drawn bounds fit 34 px (at most 0.95).
+static func pms_item_scale(kind: String) -> float:
+	var b := PmsMaze.item_bounds(kind)
+	return minf(0.95, 34.0 / maxf(b.size.x, b.size.y))

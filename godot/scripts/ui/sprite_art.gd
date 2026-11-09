@@ -438,6 +438,25 @@ static func draw_heart(ci: CanvasItem, c: Vector2, s: float, turn := 1.0, alpha 
 	ci.draw_circle(c + Vector2(-s * 0.38 * sx, -s * 0.32), s * 0.2, Color(1, 1, 1, 0.75 * alpha))
 
 
+## The drawn heart (`draw_heart`, size `s`) is not centred on its `c`: the curve runs
+## from −9.6 to +19 (of 16) below it. Draw at `c - Vector2(0, heart_mid(s))` to centre
+## the heart's bounds on `c` (the HUD's slots and cards).
+## `outlined` (as draw_heart draws it): the outline's sharp point reaches further below
+## than its round lobes above (measured at s = 12: 1.8 px above the polygon, 4.3 below),
+## so the ink's centre is a little lower still.
+const HEART_INK_TOP := 1.8 / 12.0
+const HEART_INK_BOTTOM := 4.3 / 12.0
+
+
+static func heart_mid(s: float, outlined := true) -> float:
+	return 4.7 * s / 16.0 + ((HEART_INK_BOTTOM - HEART_INK_TOP) / 2.0 * s if outlined else 0.0)
+
+
+## The same for `draw_bell` (its loop on top, the clapper below): bounds −1.4 s … +1.0 s.
+static func bell_mid(s: float) -> float:
+	return -0.2 * s
+
+
 ## A gold bell around `c` (`s` = its half width), swinging by `swing` radians.
 static func draw_bell(ci: CanvasItem, c: Vector2, s: float, swing := 0.0, alpha := 1.0) -> void:
 	var top := c + Vector2(0, -s * 1.05)

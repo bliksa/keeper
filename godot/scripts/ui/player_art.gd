@@ -148,7 +148,8 @@ static func draw(ci: CanvasItem, p: PlayerBody, time_ms: float, big_ring := fals
 	var sq: float = o.get("squash", 0.0)
 	var sx := k_scale * (1.0 + 0.25 * sq)
 	var sy := k_scale * (1.0 - 0.3 * sq)
-	ci.draw_set_transform(origin, 0.0, Vector2(sx if facing else -sx, sy))
+	# o.spin: a slow turn (radians; pulled into the yellow body at the climb's end).
+	ci.draw_set_transform(origin, float(o.get("spin", 0.0)), Vector2(sx if facing else -sx, sy))
 	if tex:
 		var k := SPRITE_H / tex.get_height()
 		var w := tex.get_width() * k

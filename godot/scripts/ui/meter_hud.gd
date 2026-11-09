@@ -53,10 +53,23 @@ static func outline_point(rect: Rect2, k: float) -> Vector2:
 	return part[part.size() - 1]
 
 
-## Where slot `i` of `n` sits in the pill.
+## Where slot `i` of `n` sits in the pill: the row of slots centred both ways (the
+## icons are drawn centred on it: `drop_at` / `heart_at` correct their shapes' offsets).
 static func slot_center(r: Rect2, i: int, n := 4) -> Vector2:
 	var step := (r.size.x - 24) / n
-	return Vector2(r.position.x + 12 + step * (i + 0.5), r.get_center().y + 1)
+	return Vector2(r.position.x + 12 + step * (i + 0.5), r.get_center().y)
+
+
+## The point to draw a drop (`SpriteArt.draw_drop`, scale `k`: −13 k … +12 k round it) at
+## so that its bounds are centred on `c`.
+static func drop_at(c: Vector2, k: float) -> Vector2:
+	return c + Vector2(0, 0.5 * k)
+
+
+## The same for a heart (`SpriteArt.draw_heart`, size `s`; `outlined` = with its dark
+## outline, false = the bare shape).
+static func heart_at(c: Vector2, s: float, outlined := true) -> Vector2:
+	return c - Vector2(0, SpriteArt.heart_mid(s, outlined))
 
 
 ## How much a slot pops (scale) right now: a pickup's flash, a reloaded unit landing.
@@ -124,10 +137,27 @@ static func badge_rect(r: Rect2) -> Rect2:
 	return Rect2(r.position.x - BADGE_W - 2, r.get_center().y - 13, BADGE_W, 26)
 
 
-## The badge's icon: where a reloaded unit sets off from.
-static func badge_icon(r: Rect2) -> Vector2:
+## The badge's icon and "+N" as one row centred in the badge: the icon's centre (its
+## bounds' centre) and the text's left x.
+const BADGE_ICON_W := 11.0
+const BADGE_ICON_GAP := 3.0
+const BADGE_FS := 15
+
+
+static func badge_text(n: int) -> String:
+	return "+%d" % n
+
+
+static func badge_layout(r: Rect2, n := 1) -> Dictionary:
 	var b := badge_rect(r)
-	return Vector2(b.position.x + 12, b.get_center().y + 1)
+	var tw := Text.font_bold.get_string_size(badge_text(n), HORIZONTAL_ALIGNMENT_LEFT, -1, BADGE_FS).x
+	var x0 := b.get_center().x - (BADGE_ICON_W + BADGE_ICON_GAP + tw) / 2
+	return {"icon": Vector2(x0 + BADGE_ICON_W / 2, b.get_center().y), "text_x": x0 + BADGE_ICON_W + BADGE_ICON_GAP, "text_w": tw}
+
+
+## The badge's icon: where a reloaded unit sets off from.
+static func badge_icon(r: Rect2, n := 1) -> Vector2:
+	return badge_layout(r, n).icon
 
 
 ## "+N": the whole units in reserve, on a little tab left of the pill (dim while it holds
@@ -139,21 +169,28 @@ static func _draw_badge(ci: CanvasItem, r: Rect2, m: MeterModel, col: Color, kin
 	var g := 3.0 * sin(clampf(fl, 0, 1) * PI)
 	var b := badge_rect(r).grow(g)
 	Draw.panel(ci, b, Color(Color("#f0eee9"), 0.94 * a), 13, Color(col, (0.35 + 0.5 * fl) * a), 2)
-	var ic := badge_icon(r)
+	var lay := badge_layout(r, n)
+	var ic: Vector2 = lay.icon
 	if n >= 1 or part <= 0.0:
 		_icon(ci, kind, ic, 0.55, a)
 	else:
 		# Only a part of a unit: a faint icon, coloured up to that part.
 		_icon(ci, kind, ic, 0.55, 0.35 * alpha)
 		_icon_part(ci, kind, ic, 0.55, part, alpha)
-	var txt := "+%d" % n
 	var font: Font = Text.font_bold
-	ci.draw_string(font, Vector2(ic.x + 10, b.get_center().y + 6), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(Color("#064e3b"), a))
+	ci.draw_string(font, Vector2(float(lay.text_x), text_baseline(font, b.get_center().y, BADGE_FS)), badge_text(n), HORIZONTAL_ALIGNMENT_LEFT, -1, BADGE_FS, Color(Color("#064e3b"), a))
+
+
+## The baseline that centres digits / capitals of size `fs` on `cy` (their ink, not the
+## font's line box).
+static func text_baseline(font: Font, cy: float, fs: int) -> float:
+	return cy + fs * 0.36
 
 
 ## The icon's lower `part` (0–1) only.
 static func _icon_part(ci: CanvasItem, kind: String, c: Vector2, k: float, part: float, alpha: float) -> void:
 	var shape := PackedVector2Array()
+	c = heart_at(c, 12.0 * k) if kind == "heart" else drop_at(c, k)
 	if kind == "heart":
 		var s := 12.0 * k
 		for i in 24:
@@ -177,17 +214,18 @@ static func _icon_part(ci: CanvasItem, kind: String, c: Vector2, k: float, part:
 		Draw.polygon_safe(ci, poly, Color(colr, alpha))
 
 
+## A drop / heart whose bounds are centred on `c`.
 static func _icon(ci: CanvasItem, kind: String, c: Vector2, k: float, alpha: float) -> void:
 	if kind == "heart":
-		SpriteArt.draw_heart(ci, c, 12.0 * k, 1.0, alpha)
+		SpriteArt.draw_heart(ci, heart_at(c, 12.0 * k), 12.0 * k, 1.0, alpha)
 	else:
-		SpriteArt.draw_drop(ci, c, k, Color(Color("#5fb3f0"), alpha))
+		SpriteArt.draw_drop(ci, drop_at(c, k), k, Color(Color("#5fb3f0"), alpha))
 
 
 ## One reloaded unit on its way: from the reserve's badge into its slot, a short arc
 ## over the pill, growing as it comes, a faint trail behind it.
 static func _draw_flyer(ci: CanvasItem, r: Rect2, m: MeterModel, f: Dictionary, col: Color, kind: String, alpha: float) -> void:
-	var from := badge_icon(r)
+	var from := badge_icon(r, int(floorf(m.reserve + MeterModel.EPS)))
 	var to := slot_center(r, int(f.slot), int(m.slots))
 	var mid := (from + to) / 2 + Vector2(0, -26)
 	# A part of a unit (a top-up) flies smaller than a whole one.
