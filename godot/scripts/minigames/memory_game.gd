@@ -140,11 +140,27 @@ func _grid_rect(i: int, n: int) -> Rect2:
 	return Rect2(60.0 + (i % cols) * (w + 10), y0 + (i / cols) * (h + 10), w, h)
 
 
+## The smallest label size; the narrowest tile text (5 columns, a shown tile: the dot
+## takes 52 px of it).
+const LABEL_MIN := 9
+const NARROW_W := (946.0 - 4 * 10) / 5 - 52
+
+
+## Texts that don't fit their place in the current language ([] = all fit; the tests).
+static func fit_problems() -> Array:
+	var out: Array = []
+	for sc in SCENES:
+		out.append(Draw.fit_problem(sc.name, Text.font, Text.plain(Text.t(sc.name)) + "  ·  " + Text.plain(Text.t("MG8_ROUND")) + " 3 / 3", 900, 12))
+		for i in PER_SCENE:
+			var k := "%s_%02d" % [sc.prefix, i + 1]
+			out.append(Draw.fit_problem(k, Text.font_bold, Text.plain(Text.t(k)), NARROW_W, LABEL_MIN))
+	out.append(Draw.fit_problem("MG8_RESULT", Text.font_bold, Text.plain(Text.t("MG8_RESULT")), 400 - 32, 16))
+	return out.filter(func(x): return x != "")
+
+
 ## A label left-aligned in a tile: steps the size down until it fits the width.
 func _label(font: Font, x: float, cy: float, width: float, s: String, col: Color) -> void:
-	var size := 13
-	while size > 9 and font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width:
-		size -= 1
+	var size := Draw.fit_size(font, s, width, 13, LABEL_MIN)
 	draw_string(font, Vector2(x, cy + size * 0.38), s, HORIZONTAL_ALIGNMENT_LEFT, width, size, col)
 
 

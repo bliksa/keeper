@@ -77,7 +77,7 @@ func _ready() -> void:
 	_scroll.get_v_scroll_bar().value_changed.connect(func(_v): _grid.queue_redraw())
 	# One wheel notch scrolls 4 rows (the level is ~300 rows tall).
 	_scroll.get_v_scroll_bar().custom_step = CELL_H * 4
-	_toast = UiKit.label("", 14, Color.WHITE, true)
+	_toast = UiKit.dev_label("", 14, Color.WHITE, true)
 	_toast.position = Vector2(SIDEBAR + 24, top + 12)
 	_toast.visible = false
 	var tsb := StyleBoxFlat.new()
@@ -548,7 +548,7 @@ func _paint_at(pos: Vector2) -> void:
 func _draw_grid() -> void:
 	var CW := cw()
 	var ci := _grid
-	var font: Font = Text.font_bold
+	var font: Font = Text.font_dev_bold
 	var scroll_top := _scroll.scroll_vertical
 	var first := maxi(0, int(scroll_top / CELL_H) - 1)
 	var last := mini(rows.size(), first + int(600 / CELL_H) + 3)
@@ -657,7 +657,7 @@ func _draw_grid() -> void:
 			ci.draw_line(Vector2(w, 0), Vector2(w, level_h), frame_col, 3.0)
 			ci.draw_set_transform(Vector2(w + END_PAD / 2, level_h / 2), -PI / 2, Vector2.ONE)
 			Draw.text_center(ci, font, Vector2(0, -6), "END OF LEVEL  ·  %d columns" % ncols, 13, Color(frame_col, 0.9))
-			Draw.text_center(ci, Text.font, Vector2(0, 14), "add more with “Add 20 columns” in the header", 11, Color("#64748b"))
+			Draw.text_center(ci, Text.font_dev, Vector2(0, 14), "add more with “Add 20 columns” in the header", 11, Color("#64748b"))
 			ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 		return
 	if level_h + END_PAD >= scroll_top and level_h <= scroll_top + 600:
@@ -669,13 +669,13 @@ func _draw_grid() -> void:
 		ci.draw_line(Vector2(0, level_h), Vector2(w, level_h), frame_col, 3.0)
 		if upward():
 			Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "START  ·  she %s upwards  ·  %d rows" % ["runs" if is_runner() else "climbs", rows.size()], 13, Color(frame_col, 0.9))
-			Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "“Add 20 rows” adds them at the top (the end)", 11, Color("#64748b"))
+			Draw.text_center(ci, Text.font_dev, Vector2(w / 2, level_h + END_PAD / 2 + 14), "“Add 20 rows” adds them at the top (the end)", 11, Color("#64748b"))
 			return
 		Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "END OF LEVEL  ·  %d rows" % rows.size(), 13, Color(frame_col, 0.9))
 		if level_id == Game.PMS_ID:
-			Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "World coordinates: the game draws this maze rotated 180° (upside down, the arrows feel reversed)", 11, Color("#64748b"))
+			Draw.text_center(ci, Text.font_dev, Vector2(w / 2, level_h + END_PAD / 2 + 14), "World coordinates: the game draws this maze rotated 180° (upside down, the arrows feel reversed)", 11, Color("#64748b"))
 			return
-		Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "add more with “Add 20 rows” in the header", 11, Color("#64748b"))
+		Draw.text_center(ci, Text.font_dev, Vector2(w / 2, level_h + END_PAD / 2 + 14), "add more with “Add 20 rows” in the header", 11, Color("#64748b"))
 
 
 ## The forest run's map: green sides, a brown path of three lanes, stage lines.
@@ -690,13 +690,13 @@ func _draw_runner_row(ci: CanvasItem, r: int, y: float) -> void:
 	# Distance from the start every 10 rows (20 m).
 	var from_start := rows.size() - 1 - r
 	if from_start % 10 == 0:
-		ci.draw_string(Text.font, Vector2(w * ForestRunner.COLS + 8, y + CELL_H - 8), "%d m" % int(ForestRunner.START_Z + from_start * ForestRunner.ROW_M), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
+		ci.draw_string(Text.font_dev, Vector2(w * ForestRunner.COLS + 8, y + CELL_H - 8), "%d m" % int(ForestRunner.START_Z + from_start * ForestRunner.ROW_M), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
 
 
 ## Cells of the forest run; false = drawn the usual way (dialog letters).
 func _draw_runner_cell(ci: CanvasItem, ch: String, cell: Rect2) -> bool:
 	var mid := cell.get_center()
-	var font: Font = Text.font_bold
+	var font: Font = Text.font_dev_bold
 	match ch:
 		" ":
 			return true
@@ -1000,10 +1000,10 @@ func _open_import() -> void:
 	card.position = Vector2(233, 90)
 	card.size = Vector2(600, 400)
 	_import.add_child(card)
-	var title := UiKit.label("Import level", 20, Color.WHITE, true)
+	var title := UiKit.dev_label("Import level", 20, Color.WHITE, true)
 	title.position = Vector2(20, 16)
 	card.add_child(title)
-	var hint := UiKit.label("Paste level text (rows, '.' = empty) or the web editor's JSON:", 12, Color("#94a3b8"))
+	var hint := UiKit.dev_label("Paste level text (rows, '.' = empty) or the web editor's JSON:", 12, Color("#94a3b8"))
 	hint.position = Vector2(20, 52)
 	card.add_child(hint)
 	var te := TextEdit.new()
@@ -1011,11 +1011,11 @@ func _open_import() -> void:
 	te.size = Vector2(560, 250)
 	te.add_theme_font_size_override("font_size", 12)
 	card.add_child(te)
-	var cancel := UiKit.button("Cancel", Vector2(120, 36), 12)
+	var cancel := UiKit.dev_button("Cancel", Vector2(120, 36), 12)
 	cancel.position = Vector2(330, 344)
 	cancel.pressed.connect(func(): _import.queue_free())
 	card.add_child(cancel)
-	var load_btn := UiKit.button("Load", Vector2(120, 36), 12, Color("#059669"))
+	var load_btn := UiKit.dev_button("Load", Vector2(120, 36), 12, Color("#059669"))
 	load_btn.position = Vector2(460, 344)
 	load_btn.pressed.connect(func():
 		var parsed := LevelData.parse_text(te.text, Game.level_cols(level_id))
@@ -1076,12 +1076,12 @@ func start_test() -> void:
 	bar.position = Vector2(0, 600 - 44)
 	bar.size = Vector2(1066, 44)
 	hud_layer.add_child(bar)
-	_test_info = UiKit.label("TEST MODE  ·  arrows move, Up/Space jump, Ctrl breathe  ·  Enter or Esc = back", 13, Color.WHITE, true)
+	_test_info = UiKit.dev_label("TEST MODE  ·  arrows move, Up/Space jump, Ctrl breathe  ·  Enter or Esc = back", 13, Color.WHITE, true)
 	_test_info.position = Vector2(200, 600 - 44)
 	_test_info.size = Vector2(700, 44)
 	_test_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	hud_layer.add_child(_test_info)
-	var back := UiKit.button("BACK TO EDITOR", Vector2(170, 32), 12, Color("#059669"))
+	var back := UiKit.dev_button("BACK TO EDITOR", Vector2(170, 32), 12, Color("#059669"))
 	back.position = Vector2(12, 600 - 38)
 	back.pressed.connect(stop_test)
 	hud_layer.add_child(back)
@@ -1110,7 +1110,7 @@ func _start_runner_test() -> void:
 	var hud_layer := CanvasLayer.new()
 	hud_layer.layer = 33
 	layer.add_child(hud_layer)
-	var back := UiKit.button("BACK TO EDITOR", Vector2(170, 32), 12, Color("#059669"))
+	var back := UiKit.dev_button("BACK TO EDITOR", Vector2(170, 32), 12, Color("#059669"))
 	back.position = Vector2(12, 600 - 100)
 	back.pressed.connect(stop_test)
 	hud_layer.add_child(back)

@@ -290,18 +290,18 @@ func _build_left() -> void:
 	var cats := HBoxContainer.new()
 	cats.add_theme_constant_override("separation", 3)
 	for c in [["kyra", "Kyra"], ["collectibles", "Items"], ["enemies", "Enemies"], ["npcs", "NPCs"]]:
-		var b := UiKit.button(c[1], Vector2((LIST_W - 28 - 9) / 4, 28), 11, Color("#1e293b"), Color("#cbd5e1"))
+		var b := UiKit.dev_button(c[1], Vector2((LIST_W - 28 - 9) / 4, 28), 11, Color("#1e293b"), Color("#cbd5e1"))
 		b.tooltip_text = {"kyra": "Kyra's animations", "collectibles": "Collectibles: iron, water drops, light seeds",
 			"enemies": "Enemies: cramps, the boss, birds, notifications…", "npcs": "NPCs: Estra and the dialog portraits"}[c[0]]
 		b.pressed.connect(select_category.bind(c[0]))
 		cats.add_child(b)
 		_cat_btns[c[0]] = b
 	box.add_child(cats)
-	box.add_child(UiKit.label("ANIMATION", 11, Color("#94a3b8"), true))
+	box.add_child(UiKit.dev_label("ANIMATION", 11, Color("#94a3b8"), true))
 	_anim_pick = _picker()
 	_anim_pick.item_selected.connect(func(i): _select_anim(_anim_pick.get_item_metadata(i)))
 	box.add_child(_anim_pick)
-	box.add_child(UiKit.label("VARIANT", 11, Color("#94a3b8"), true))
+	box.add_child(UiKit.dev_label("VARIANT", 11, Color("#94a3b8"), true))
 	var vrow := HBoxContainer.new()
 	vrow.add_theme_constant_override("separation", 2)
 	_var_pick = _picker()
@@ -316,7 +316,7 @@ func _build_left() -> void:
 		b.pressed.connect(it[2])
 		vrow.add_child(b)
 	box.add_child(vrow)
-	_list_title = UiKit.label("", 11, Color("#94a3b8"), true)
+	_list_title = UiKit.dev_label("", 11, Color("#94a3b8"), true)
 	_list_title.clip_text = true
 	_list_title.custom_minimum_size = Vector2(LIST_W - 28, 0)
 	_list_title.tooltip_text = "Code-drawn art is replaced as soon as the variant has frames."
@@ -329,7 +329,7 @@ func _build_left() -> void:
 	_list.custom_minimum_size = Vector2(LIST_W - 40, 0)
 	_list.add_theme_constant_override("separation", 4)
 	sc.add_child(_list)
-	var add := UiKit.button("Add frames…", Vector2(LIST_W - 28, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
+	var add := UiKit.dev_button("Add frames…", Vector2(LIST_W - 28, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
 	add.icon = load(ICONS % "image-plus")
 	add.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	add.add_theme_constant_override("icon_max_width", 18)
@@ -340,7 +340,7 @@ func _build_left() -> void:
 	add.custom_minimum_size = Vector2((LIST_W - 34) / 2, 30)
 	add.text = "Upload frames…"
 	add_row.add_child(add)
-	var pick := UiKit.button("From assets…", Vector2((LIST_W - 34) / 2, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
+	var pick := UiKit.dev_button("From assets…", Vector2((LIST_W - 34) / 2, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
 	pick.icon = load(ICONS % "images")
 	pick.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	pick.add_theme_constant_override("icon_max_width", 18)
@@ -457,7 +457,7 @@ func _frame_row(i: int, path: String) -> Control:
 	if t:
 		thumb.texture = _thumb(t)
 	h.add_child(thumb)
-	var name := UiKit.label("#%d  %s" % [i + 1, path.get_file()], 10, Color("#cbd5e1"))
+	var name := UiKit.dev_label("#%d  %s" % [i + 1, path.get_file()], 10, Color("#cbd5e1"))
 	name.custom_minimum_size = Vector2(40, 0)
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.clip_text = true
@@ -615,13 +615,13 @@ func _rename_dialog() -> void:
 	edit.position = Vector2(20, 24)
 	edit.size = Vector2(360, 36)
 	card.add_child(edit)
-	var ok := UiKit.button("Rename", Vector2(110, 34), 12, Color("#059669"))
+	var ok := UiKit.dev_button("Rename", Vector2(110, 34), 12, Color("#059669"))
 	ok.position = Vector2(270, 84)
 	ok.pressed.connect(func():
 		rename_variant(edit.text)
 		root.queue_free())
 	card.add_child(ok)
-	var cancel := UiKit.button("Cancel", Vector2(110, 34), 12)
+	var cancel := UiKit.dev_button("Cancel", Vector2(110, 34), 12)
 	cancel.position = Vector2(150, 84)
 	cancel.pressed.connect(root.queue_free)
 	card.add_child(cancel)
@@ -833,7 +833,7 @@ func _build_right() -> void:
 	var prev := UiKit.icon_button(ICONS % "chevron-left", "Previous frame (←)", 36)
 	prev.pressed.connect(step_frame.bind(-1))
 	bar.add_child(prev)
-	_play_btn = UiKit.button("Pause", Vector2(104, 36), 12, Color("#1e293b"))
+	_play_btn = UiKit.dev_button("Pause", Vector2(104, 36), 12, Color("#1e293b"))
 	_play_btn.add_theme_constant_override("icon_max_width", 16)
 	_play_btn.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_play_btn.tooltip_text = "Pause / play (Space or click the preview)"
@@ -842,13 +842,13 @@ func _build_right() -> void:
 	var next := UiKit.icon_button(ICONS % "chevron-right", "Next frame (→)", 36)
 	next.pressed.connect(step_frame.bind(1))
 	bar.add_child(next)
-	_frame_lbl = UiKit.label("", 12, Color("#94a3b8"))
+	_frame_lbl = UiKit.dev_label("", 12, Color("#94a3b8"))
 	_frame_lbl.custom_minimum_size = Vector2(120, 36)
 	_frame_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_frame_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(_frame_lbl)
 	for m in [["anim", "Animation"], ["game", "Gameplay"]]:
-		var b := UiKit.button(m[1], Vector2(110, 36), 12, Color("#1e293b"), Color("#cbd5e1"))
+		var b := UiKit.dev_button(m[1], Vector2(110, 36), 12, Color("#1e293b"), Color("#cbd5e1"))
 		b.tooltip_text = "Loop the selected animation" if m[0] == "anim" else "Run & jump on its own, or use ← → and Space"
 		b.pressed.connect(set_preview.bind(m[0]))
 		bar.add_child(b)
@@ -883,7 +883,7 @@ func _build_right() -> void:
 	actions.size = Vector2(w, 36)
 	actions.add_theme_constant_override("separation", 8)
 	add_child(actions)
-	_status = UiKit.label("Drag PNGs onto the window to add frames.", 11, Color("#94a3b8"))
+	_status = UiKit.dev_label("Drag PNGs onto the window to add frames.", 11, Color("#94a3b8"))
 	_status.custom_minimum_size = Vector2(0, 36)
 	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -929,10 +929,10 @@ func _slider(parent: Control, label: String, lo: float, hi: float, step: float, 
 	col.custom_minimum_size = Vector2(338, 0)
 	col.add_theme_constant_override("separation", 0)
 	var row := HBoxContainer.new()
-	var l := UiKit.label(label, 11, Color("#cbd5e1"))
+	var l := UiKit.dev_label(label, 11, Color("#cbd5e1"))
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(l)
-	var v := UiKit.label(fmt % value, 11, Color("#34d399"), true)
+	var v := UiKit.dev_label(fmt % value, 11, Color("#34d399"), true)
 	row.add_child(v)
 	col.add_child(row)
 	var s := HSlider.new()
@@ -1137,8 +1137,8 @@ func _draw_stage() -> void:
 		_frame_lbl.text = "Gameplay" if preview == "game" else "%d frames · looping" % current_paths().size()
 	if paused:
 		Draw.panel(s, Rect2(STAGE.size.x - 140, 14, 80, 26), Color("#78350f"), 13)
-		s.draw_string(Text.font_bold, Vector2(STAGE.size.x - 140, 32), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color.WHITE)
-	s.draw_string(Text.font, Vector2(14, STAGE.size.y - 12), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
+		s.draw_string(Text.font_dev_bold, Vector2(STAGE.size.x - 140, 32), "PAUSED", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color.WHITE)
+	s.draw_string(Text.font_dev, Vector2(14, STAGE.size.y - 12), info, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color("#64748b"))
 
 
 ## A sprite: big in the middle (Animation), or at game size next to Kyra (Gameplay).
@@ -1161,9 +1161,9 @@ func _draw_sprite_stage(s: Control) -> void:
 	_sprite_node.scale = Vector2(zoom, zoom)
 	_sprite_node.queue_redraw()
 	var where: String = SpriteArt.def(id).get("where", "")
-	s.draw_string(Text.font, Vector2(14, 26), where + ("" if n > 0 else "  ·  drawn in code"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#94a3b8"))
+	s.draw_string(Text.font_dev, Vector2(14, 26), where + ("" if n > 0 else "  ·  drawn in code"), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#94a3b8"))
 	if zoom != 1.0:
-		s.draw_string(Text.font_bold, Vector2(14, 46), "×%.1f" % zoom, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#64748b"))
+		s.draw_string(Text.font_dev_bold, Vector2(14, 46), "×%.1f" % zoom, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#64748b"))
 	if paused and n > 0:
 		_frame_lbl.text = "Frame %d / %d" % [selected + 1, n]
 	elif n == 0:

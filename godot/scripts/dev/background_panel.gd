@@ -42,7 +42,7 @@ func _ready() -> void:
 	head.position = Vector2(14, 8)
 	head.size = Vector2(W - 28, 30)
 	add_child(head)
-	_title = UiKit.label("", 14, Color.WHITE, true)
+	_title = UiKit.dev_label("", 14, Color.WHITE, true)
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	head.add_child(_title)
@@ -98,14 +98,14 @@ func _ready() -> void:
 	foot.size = Vector2(W - 28, 32)
 	foot.add_theme_constant_override("separation", 6)
 	add_child(foot)
-	var add := UiKit.button("Add layer…", Vector2(130, 32), 12, Color("#059669"))
+	var add := UiKit.dev_button("Add layer…", Vector2(130, 32), 12, Color("#059669"))
 	add.icon = load(ICONS % "image-plus")
 	add.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	add.add_theme_constant_override("icon_max_width", 16)
 	add.tooltip_text = "Pick an image (or upload one) for a new layer in front"
 	add.pressed.connect(open_browser.bind(-1))
 	foot.add_child(add)
-	var reset := UiKit.button("Reset", Vector2(80, 32), 12, Color("#1e293b"), Color("#cbd5e1"))
+	var reset := UiKit.dev_button("Reset", Vector2(80, 32), 12, Color("#1e293b"), Color("#cbd5e1"))
 	reset.tooltip_text = "Back to the game's background for this level"
 	reset.pressed.connect(func():
 		editor.reset_bg()
@@ -114,7 +114,7 @@ func _ready() -> void:
 	var dl := UiKit.icon_button(ICONS % "download", "Download this background as JSON", 32)
 	dl.pressed.connect(editor.export_bg)
 	foot.add_child(dl)
-	var hint := UiKit.label("Use in game / Save to repo\nin the header apply it", 10, Color("#64748b"))
+	var hint := UiKit.dev_label("Use in game / Save to repo\nin the header apply it", 10, Color("#64748b"))
 	hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	foot.add_child(hint)
 	refresh()
@@ -142,7 +142,7 @@ func refresh() -> void:
 		cfg().base = "#" + c.to_html(false)
 		editor.bg_changed())
 	_opts.add_child(col)
-	_opts.add_child(UiKit.label("Base colour", 11, Color("#cbd5e1")))
+	_opts.add_child(UiKit.dev_label("Base colour", 11, Color("#cbd5e1")))
 	if editor.level_id in [2, 3, Game.CLIMB_ID]:
 		_opts.add_child(_check("Procedural sky", "procedural", "The level's code-drawn sky (behind the layers)"))
 	if editor.level_id == 1:
@@ -151,7 +151,7 @@ func refresh() -> void:
 		c.queue_free()
 	var ls := layers()
 	if ls.is_empty():
-		_list.add_child(UiKit.label("No image layers yet. Add one below.", 11, Color("#64748b")))
+		_list.add_child(UiKit.dev_label("No image layers yet. Add one below.", 11, Color("#64748b")))
 	for i in range(ls.size() - 1, -1, -1):
 		_list.add_child(_layer_row(i, ls[i]))
 
@@ -192,7 +192,7 @@ func _layer_row(i: int, l: Dictionary) -> Control:
 	if t:
 		th.texture = AssetBrowser.thumb(t, 54, 34)
 	h.add_child(th)
-	var name := UiKit.label("%d · %s%s" % [i + 1, AssetBrowser.label(l.image), "  (this browser)" if AssetBrowser.is_local(l.image) else ""], 11, Color.WHITE if t else Color("#f87171"))
+	var name := UiKit.dev_label("%d · %s%s" % [i + 1, AssetBrowser.label(l.image), "  (this browser)" if AssetBrowser.is_local(l.image) else ""], 11, Color.WHITE if t else Color("#f87171"))
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.clip_text = true
 	name.custom_minimum_size = Vector2(60, 0)
@@ -233,11 +233,11 @@ func _slider(i: int, key: String, text: String, lo: float, hi: float, step: floa
 	col.custom_minimum_size = Vector2(186, 0)
 	col.add_theme_constant_override("separation", -2)
 	var top_row := HBoxContainer.new()
-	var l := UiKit.label(text, 10, Color("#94a3b8"))
+	var l := UiKit.dev_label(text, 10, Color("#94a3b8"))
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top_row.add_child(l)
 	var val := get_value(i, key)
-	var vl := UiKit.label(fmt % val, 10, Color("#34d399"), true)
+	var vl := UiKit.dev_label(fmt % val, 10, Color("#34d399"), true)
 	top_row.add_child(vl)
 	col.add_child(top_row)
 	var s := HSlider.new()
@@ -391,5 +391,5 @@ func _draw_preview() -> void:
 		Draw.vignette(ci, Rect2(Vector2.ZERO, PREVIEW), Color(0, 0, 0, 0.35), 0.4)
 	if c.procedural:
 		Draw.panel(ci, Rect2(6, 6, 150, 18), Color(0, 0, 0, 0.45), 9)
-		ci.draw_string(Text.font, Vector2(14, 19), "+ procedural sky in game", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.85))
+		ci.draw_string(Text.font_dev, Vector2(14, 19), "+ procedural sky in game", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 1, 1, 0.85))
 	ci.draw_rect(Rect2(Vector2.ZERO, PREVIEW), Color("#334155"), false, 1.0)

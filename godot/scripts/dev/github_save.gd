@@ -157,10 +157,10 @@ static func token_dialog(parent: Control, on_done: Callable, force_token := fals
 	sb.set_corner_radius_all(12)
 	card.add_theme_stylebox_override("panel", sb)
 	root.add_child(card)
-	var title := UiKit.label("Save to GitHub", 20, Color.WHITE, true)
+	var title := UiKit.dev_label("Save to GitHub", 20, Color.WHITE, true)
 	title.position = Vector2(24, 18)
 	card.add_child(title)
-	var help := UiKit.label(
+	var help := UiKit.dev_label(
 		"Saving commits straight to %s/%s; the game rebuilds in ~2 minutes.\n\n" % [OWNER, REPO] +
 		"Paste a GitHub token once (kept only in this browser):\n" +
 		"github.com → Settings → Developer settings → Fine-grained tokens →\n" +
@@ -176,13 +176,13 @@ static func token_dialog(parent: Control, on_done: Callable, force_token := fals
 	edit.position = Vector2(24, 200)
 	edit.size = Vector2(552, 36)
 	card.add_child(edit)
-	var cancel := UiKit.button("Cancel", Vector2(120, 36), 12)
+	var cancel := UiKit.dev_button("Cancel", Vector2(120, 36), 12)
 	cancel.position = Vector2(326, 260)
 	cancel.pressed.connect(func():
 		root.queue_free()
 		on_done.call(false))
 	card.add_child(cancel)
-	var ok := UiKit.button("Save token", Vector2(130, 36), 12, Color("#059669"))
+	var ok := UiKit.dev_button("Save token", Vector2(130, 36), 12, Color("#059669"))
 	ok.position = Vector2(456, 260)
 	ok.pressed.connect(func():
 		if edit.text.strip_edges() == "":

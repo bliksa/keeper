@@ -69,7 +69,7 @@ func _ready() -> void:
 	# Under the green bar, exactly where the browser's loading screen shows it.
 	var ver := Label.new()
 	ver.text = Game.build_label()
-	ver.add_theme_font_override("font", Text.font)
+	ver.add_theme_font_override("font", Text.font_dev)
 	ver.add_theme_font_size_override("font_size", 12)
 	ver.add_theme_color_override("font_color", Color("#6b7280"))
 	ver.position = Vector2(533 - 200, 240)
@@ -100,7 +100,7 @@ const ICON_W := 22
 ## Left padding so the icon and the text sit in the middle of the button.
 func _center_icon(b: Button) -> void:
 	var tw := b.get_theme_font("font").get_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, -1, b.get_theme_font_size("font_size")).x
-	var pad := maxf(6, (b.size.x - (ICON_W + 10 + tw)) / 2)
+	var pad := maxf(6, (b.custom_minimum_size.x - (ICON_W + 10 + tw)) / 2)
 	for st in ["normal", "hover", "pressed"]:
 		var sb: StyleBoxFlat = b.get_theme_stylebox(st).duplicate()
 		sb.content_margin_left = pad
@@ -108,11 +108,22 @@ func _center_icon(b: Button) -> void:
 		b.add_theme_stylebox_override(st, sb)
 
 
+## Steps the button's font down from FONT until icon + text + the minimum padding fit its
+## fixed width (KeeperDyslexic is wide: pt "COMEÇAR" would grow START into DEV), and puts
+## the width back after the padding is set (a Control grows to its content). A few px of
+## slack: the button's own text shaping measures a little wider than get_string_size.
+func _fit_text(b: Button) -> void:
+	var avail := b.custom_minimum_size.x - (ICON_W + 10) - 6 - 4 - 4
+	b.add_theme_font_size_override("font_size", Draw.fit_size(b.get_theme_font("font"), b.text, avail, FONT, 12))
+
+
 func _refresh() -> void:
 	_full.text = Text.t("UI_SWITCH_FULLSCREEN").to_upper()
 	_start.text = Text.t("UI_CLICK_TO_START").to_upper()
 	for b in [_full, _start, _dev]:
+		_fit_text(b)
 		_center_icon(b)
+		b.size = b.custom_minimum_size
 	_subs.text = Text.t("UI_SUBTITLES").to_upper()
 	_dev.tooltip_text = Text.t("UI_DEVELOPER_MODE")
 	for lang in _flags:

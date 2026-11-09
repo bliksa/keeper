@@ -15,6 +15,20 @@ const PAIRS := [
 ## Top of the card columns; the column labels sit just above, the hint line
 ## below; everything stays above the hint panel (y 450).
 const CARDS_Y := 48.0
+## A card's text width (400 px card, clear of the ✓) and how many lines fit its 50 px.
+const TEXT_W := 400.0 - 50
+const MAX_LINES := 2
+
+
+## Texts that don't fit their place in the current language ([] = all fit; the tests).
+static func fit_problems() -> Array:
+	var out: Array = []
+	for pr in PAIRS:
+		out.append(Draw.fit_problem(pr.sig, Text.font_bold, Text.plain(Text.t(pr.sig)), TEXT_W, 12, MAX_LINES))
+		out.append(Draw.fit_problem(pr.exp, Text.font, Text.plain(Text.t(pr.exp)), TEXT_W, 11, MAX_LINES))
+		out.append(Draw.fit_problem(pr.hint, Text.font, Text.plain(Text.t(pr.hint)), 832 - 24, 12))
+	out.append(Draw.fit_problem("MG10_DONE", Text.font_bold, Text.plain(Text.t("MG10_DONE")), 832 - 24, 14))
+	return out.filter(func(x): return x != "")
 
 var right_order: Array = []
 var sel_left := -1
@@ -147,7 +161,7 @@ func _draw() -> void:
 			# Text centred vertically in the card, clear of the ✓ on the right.
 			var f: Font = fb if c == 0 else Text.font
 			var fs := 12 if c == 0 else 11
-			var tw := r.size.x - 50
+			var tw := TEXT_W
 			var txt := Text.plain(Text.t(key))
 			var th := f.get_multiline_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, tw, fs, 3).y
 			var ty := r.position.y + (r.size.y - th) / 2 + f.get_ascent(fs)

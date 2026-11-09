@@ -14,11 +14,11 @@ extends RefCounted
 ## `parse()` splits a line into these segments (tests).
 
 const FADE := 0.2
-const SIZE := 15
+const SIZE := 14
 const H := 25.0
 const GAP := 6.0
 const CAP_H := 22.0
-const CAP_SIZE := 13
+const CAP_SIZE := 12
 const CAP := Color("#0f3d3a", 0.82)
 const CAP_RIM := Color("#7dd3c0", 0.55)
 const CAP_SHADE := Color(0, 0, 0, 0.55)

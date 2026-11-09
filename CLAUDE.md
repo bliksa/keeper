@@ -87,9 +87,14 @@ transformation / `_start_pms`). Minigame talk
 - Textures wider than 8192 px don't load in some browsers — keep
   `process/size_limit=4096` in their `.import` file (see `back.png.import`).
 - Coordinates are in the 1066×600 virtual screen (same as the web build).
-- Dialog boxes use OpenDyslexic as KeeperDyslexic (`tools/tighten_punctuation.py`: tighter
-  letters, punctuation closer to the word; OFL renaming) (`Text.font_dialog` / `font_dialog_bold`); the
-  text steps down from 18 px until it fits (`DialogBox.TEXT_SIZES`). The test
+- **KeeperDyslexic is the game's default font** (OpenDyslexic with `tools/tighten_punctuation.py`: tighter
+  letters, punctuation closer to the word; OFL renaming): `Text.font` / `font_bold` (= `font_dialog` /
+  `font_dialog_bold`) for every player-facing text (HUD, minigames, menus, the board, hints) and the project
+  theme's `custom_font`. Comfortaa (`Text.font_dev` / `font_dev_bold`) only for the developer mode
+  (`UiKit.dev_button` / `dev_label`, `UiKit.dev_theme()` on `DevMenu`) and the build label. The font is wide:
+  where text sits in a fixed place, shrink it with `Draw.fit_size` (or wrap) and add it to that minigame's
+  `static func fit_problems()` (`Draw.fit_problem`; the test checks them, the menu buttons and the hints in
+  sk / en / pt). Dialog text steps down from 18 px until it fits (`DialogBox.TEXT_SIZES`). The test
   checks every dialog in all languages fits; keep parts short (≈ 3 lines).
 - Keep `web-export/` untouched; it is the reference implementation.
 
@@ -239,7 +244,7 @@ repeat). A stage whose pieces can no longer all be found repeats
 (`_check_loop` → `_loop_stage`, queued as soon as its end comes into view: a copy is laid out beyond `dist + VIEW`, nothing in view moves; what already shows of the next stage is run through first and copied after the repeat; `_enter_loop` at the old end moves the missed pieces into the repeat). A hit's lost slice tumbles out of her (`lost_flyers`) and blinks red in the sun (`sun_lost`). Web shortcut `?run=hit` shows it (`?run=end`: the level's end, `dev_last_piece`; dev menu "End → climb"). Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`; the double jump needs two drops, else `water_short` + `short_for`), hits (then `invuln` = `INVULN_TIME` 3 s: she blinks and nothing hits her):
 `bump()` (roll back `BUMP_BACK`, not before the stage start; −`HIT_DROPS` and `_lose_slice()`: the stage's last found piece goes back onto the track, never below the last minigame's count), a flying notification in the air =
 `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass again,
-except within `GRACE`. Water: a magazine of 4 drops (`drops`, HUD top-right, `draw_water_pill`) fed by the bar `water` (0–100, the line round the pill fills like the cave's breath ring, `progress_outline`; path drops `D`/`U` add `DROP_WATER`). A jump is free, a double jump costs `DOUBLE_DROPS` = 2, focus (`slow_time`) burns `FOCUS_DRAIN` = 1 drop/s, a hit `HIT_DROPS` = 1; an empty magazine reloads from the bar (`DROP_UNIT` per drop, `RELOAD_TIME`, `_update_magazine`). The map comes from `tools/gen_forest_run.py` (fluid: every obstacle row has `min_gap` rows of reaction time at the stage speed, the free path moves one over; the generator checks it). `jump_to(z)` moves her (and the stage) for tests / the dev menu
+except within `GRACE`. Water works like the jackpot climb's hearts (one model, `scripts/meter_model.gd` `MeterModel`: the run keeps an instance `meter`, the climb's `add_heart_fill` calls `MeterModel.settle`): 4 ready drops (`drops` = `meter.ready`, HUD top-right, `draw_water_pill`) and the bar `water` (= `meter.bar`, 0–100, the line round the pill fills like the cave's breath ring, `progress_outline`); every path drop `D`/`U` fills it by `DROP_WATER` = `Platformer.HEART_FILL` (20 %), a full bar = one more ready drop (`_add_water`), with all four ready the bar stays full and refills the next one spent. No reload. A jump is free, a double jump costs `DOUBLE_DROPS` = 2 (`meter.spend`), focus (`slow_time`) burns `FOCUS_DRAIN` = 1 drop/s, a hit `HIT_DROPS` = 1 (`meter.drain`). The map comes from `tools/gen_forest_run.py` (fluid: every obstacle row has `min_gap` rows of reaction time at the stage speed, the free path moves one over; the generator checks it). `jump_to(z)` moves her (and the stage) for tests / the dev menu
 ("Forest run", "Stage 2", "Stage 3"). Level editor: tool group "Forest run",
 `_draw_runner_row/_cell`, test play `_start_runner_test` (minigames skipped).
 Level start (from the boss: `main._on_boss_defeated` plays dialog 1D in the arena while the nuts form their ring into the grain; then `_into_forest` waits for the ring to close, the floor is gone and Kyra hops up and over to the middle, then falls, growing towards us (`Platformer.start_exit_fall`, `EXIT_HOP`, `EXIT_GROW`, PlayerArt option `grow`), the camera following, then `_start_runner(..., over_cave = true)` fades the run in over the arena (`start_intro(null, true)`, `Platformer.hide_egg`): when the arena goes, the run takes Kyra over where she was on screen (`Platformer.exit_visual` → `ForestRunner.handoff`) and she falls on onto the path, growing to her size there (`HANDOFF_FALL`, `land_t`) and lands with her back to us, the grain flies to the top-left and opens into the sun (`_draw_grain`, `_draw_intro_hud`), the trees appear from the screen centre (`_intro_k`, `INTRO_TREES`), then `intro_done` → `show_controls` (instead of 2A). Web shortcut `?boss=win` opens the arena with the boss just beaten. Dialogs 2A (start from the dev menu), 2B (notifications, letter b), 2C (side traps, letter c), 2E (end). No seeds in the run.
@@ -319,7 +324,7 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   `PlatformerHud._draw_board` (dialog-box panel, Estrogenka's portrait, a marquee of
   chasing bulbs, the news ticker `Platformer.ticker` scrolling `CLIMB_TICK_1..8` right →
   left at `TICKER_SPEED`, event lines via `ticker_say()` come next and the ticker hurries;
-  no score, no reels: they are top-left). Its top edge (`board_y()`) is always a floor (the dialog
+  no score, no spinner: it is top-left). Its top edge (`board_y()`) is always a floor (the dialog
   floor code in `_update`). Kyra is on layer 9 above it.
 - **Board dialogs** (`board_dialog(id)`, no DialogBox, no buttons, not modal:
   `dialog_open` stays false, play and the rise go on): the node's parts replace the ticker
@@ -351,8 +356,9 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
 - **Springs** `!` (`_spring`: `SPRING_FORCE` ≈ 550 px, jumps refilled, BOOST!, `boost_t`
   keeps a released jump key from cutting the flight), **hearts** `$` (`_take_heart`, code art
   `SpriteArt.draw_heart`, sprite `heart`), **bells** `:` now and then (`_ring_bell`: +1 ready heart, a
-  chime, `CLIMB_BELL`; sprite `bell`), **jokers** `?` occasionally (`_take_joker` → `slot_spin`: the reels
-  top-left spin, `SLOT_STOPS`, pay at `SLOT_SPIN` via `_pay_slot` → `grant_power` from a shuffled bag
+  chime, `CLIMB_BELL`; the spinner spins `BELL_STOPS` and settles on three bells; sprite `bell`), **jokers** `?`
+  occasionally (`_take_joker` → `slot_spin` {kind, stop_at, result …}: the spinner top-left spins, `SLOT_STOPS`,
+  settles on three jokers (`spin_rest` = what it rests on), pays at `SLOT_SPIN` via `_pay_slot` → `grant_power` from a shuffled bag
   `_next_power`: `super_jump` ×1.3, `triple` 3 jumps (`_max_jumps`), `magnet` pulls hearts in
   `MAGNET_RANGE`, each `POWER_TIME` s in `climb_power`; `rocket` ≈ 900 px now; sprite `joker`), `~` updrafts.
 - **The heart meter** (like the forest run's water): `hearts` ready (0..`HEART_SLOTS` = 4) fed by `heart_bar`
@@ -369,9 +375,10 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   [centre, radius] on screen: it starts where the run left it (`SUN_MELT_POS`, `SUN_R0`) and rises to
   `SUN_TOP_Y` (`SUN_R1`) with `sun_progress()` (0 at the start … 1 at the top). It turns with the view and dims
   in the transformation.
-- HUD (`PlatformerHud._draw_climb`, screen space, not zoomed): the slot machine top-left (`_draw_reels`: idle
-  heart · joker · bell with a slow wobble, a joker spins them to 7-7-7 and the power-up blinks under them),
-  FLOOR top-centre, the heart meter top-right (`draw_heart_pill`: four hearts, the bar as a line round the pill,
+- HUD (`PlatformerHud._draw_climb`, screen space, not zoomed): the spinner top-left (`_draw_reels` in
+  `SPINNER`: a light pill as high as the heart meter with three white windows, still when idle on
+  `spin_rest`; a bell or a joker spins it, clicks as each window stops; the power-up's name only on the
+  ticker), no floor counter (floors stay internal), the heart meter top-right (`draw_heart_pill`: four hearts, the bar as a line round the pill,
   `ForestRunner.progress_outline`) with the ability hints under it, the banner.
 - Map: `python3 tools/gen_climb.py` (seeded; reads GRAVITY / JUMP_FORCE / MAX_SPEED from
   `platformer.gd`; 36 columns: two routes wander up side by side, merge and split, plus
@@ -388,7 +395,7 @@ board's talk / slot / banner / power-ups cleared), then `_update_view` runs its 
 `prerod_t`: 0–`PREROD_WIND` (1.5 s) the casino winds down (`wind` 0→1: `_bg` / `_world` /
 `_player_layer` modulate to dusky violet, `_draw_casino_lights` slow (`_light_t`), fade and
 drip, the summit egg dims, `PlatformerHud` lets the stopped ticker's letters come loose and
-drift up (`_draw_loose_letters`) and fades the reels / FLOOR / the heart meter (`_a()`)), then
+drift up (`_draw_loose_letters`) and fades the spinner / the heart meter (`_a()`)), then
 `PREROD_TURN` (2.5 s) the view turns (`view_flip` 0→1, ease-in-out; `_turning()` adds a small
 wobble, melt squash and zoom-out; the HUD fades; the garden sky is drawn wider so the corners
 stay sky; `_backdrop` fills the rest, `_veil` = a screen-space vignette). At `view_flip` 1

@@ -21,9 +21,13 @@ var breathing_hints := {}
 ## Who speaks in dialogs (data/characters.json): id -> {name: {lang: s}, portrait: sprite id}.
 var characters := {}
 
-## Comfortaa (the web build's font) — regular and bold weights.
+## The game's default font for every player-facing text (HUD, minigames, menus,
+## the climb's board): KeeperDyslexic, the same faces as font_dialog / _bold.
 var font: Font
 var font_bold: Font
+## Comfortaa (the web build's font): only the developer mode UI and the build label.
+var font_dev: Font
+var font_dev_bold: Font
 ## OpenDyslexic for the dialog boxes (easier to read with dyslexia), as
 ## KeeperDyslexic: the same font with . , ! ? : ; … closer to the letter before
 ## them (tools/tighten_punctuation.py; OFL, renamed as the licence asks). It covers
@@ -70,13 +74,15 @@ func _ready() -> void:
 	var reg := FontVariation.new()
 	reg.base_font = base
 	reg.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 500}
-	font = reg
+	font_dev = reg
 	var bold := FontVariation.new()
 	bold.base_font = base
 	bold.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 700}
-	font_bold = bold
+	font_dev_bold = bold
 	font_dialog = _dialog_font("res://assets/fonts/KeeperDyslexic-Regular.otf")
 	font_dialog_bold = _dialog_font("res://assets/fonts/KeeperDyslexic-Bold.otf")
+	font = font_dialog
+	font_bold = font_dialog_bold
 
 
 ## OpenDyslexic has very tall built-in line spacing (≈ 1.9 × size); trimmed to

@@ -95,9 +95,30 @@ func _retry() -> void:
 	_send_hint()
 
 
+## A food's name (beside its blob): 14 px, down to NAME_MIN when it is long, else two
+## lines at NAME_MIN (Tekvicové semienka); the fact /
+## the pick hint under it wrap at TEXT_W (11 px, FACT_LINES / 3 lines).
+const CARD := Vector2(196, 150)
+const NAME_W := CARD.x - 80
+const NAME_MIN := 12
+const TEXT_W := CARD.x - 24
+const FACT_LINES := 4
+
+
+## Texts that don't fit their place in the current language ([] = all fit; the tests).
+static func fit_problems() -> Array:
+	var out: Array = []
+	var fb: Font = Text.font_bold
+	for it in ITEMS:
+		out.append(Draw.fit_problem(it.name, fb, Text.plain(Text.t(it.name)), NAME_W, NAME_MIN, 2))
+		out.append(Draw.fit_problem(it.fact, Text.font, Text.plain(Text.t(it.fact)), TEXT_W, 11, FACT_LINES))
+	out.append(Draw.fit_problem("MG5_PICK_HINT", Text.font, Text.plain(Text.t("MG5_PICK_HINT")), TEXT_W, 11, 3))
+	return out.filter(func(x): return x != "")
+
+
 func _card_rect(i: int) -> Rect2:
-	var w := 196.0
-	var h := 150.0
+	var w := CARD.x
+	var h := CARD.y
 	var gap := 12.0
 	var x0 := (1066 - (4 * w + 3 * gap)) / 2
 	return Rect2(x0 + (i % 4) * (w + gap), TOP + (i / 4) * (h + gap), w, h)
@@ -136,9 +157,11 @@ func _draw() -> void:
 	var fb: Font = Text.font_bold
 	# The plate counter: a small line under the cards.
 	var grid_end := _card_rect(ITEMS.size() - 1).end.y
-	var pr := Rect2(1066 / 2 - 90, grid_end + 14, 180, 28)
-	Draw.panel(self, pr, Color("#f0eee9", a), 14, Color("#d1fae5"), 1)
-	Draw.text_center(self, fb, pr.get_center() + Vector2(0, 5), "%s  %d / %d" % [Text.plain(Text.t("MG5_PLATE")), chosen.size(), PICK], 14, Color("#064e3b", a))
+	var plate := "%s  %d / %d" % [Text.plain(Text.t("MG5_PLATE")), chosen.size(), PICK]
+	var pw := maxf(180.0, fb.get_string_size(plate, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x + 32)
+	var pr := Rect2(1066 / 2 - pw / 2, grid_end + 14, pw, 30)
+	Draw.panel(self, pr, Color("#f0eee9", a), 15, Color("#d1fae5"), 1)
+	Draw.text_center(self, fb, pr.get_center(), plate, 14, Color("#064e3b", a))
 	for i in ITEMS.size():
 		var it := _item(i)
 		var r := _card_rect(i)
@@ -161,14 +184,20 @@ func _draw() -> void:
 		var c := Vector2(r.position.x + 36, r.position.y + 40)
 		draw_circle(c, 22, Color(it.col, a))
 		draw_circle(c + Vector2(-7, -7), 7, Color(1, 1, 1, 0.35 * a))
-		draw_string(fb, Vector2(r.position.x + 68, r.position.y + 46), Text.plain(Text.t(it.name)), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 80, 14, Color("#064e3b", a))
+		var nm := Text.plain(Text.t(it.name))
+		var ns := Draw.fit_size(fb, nm, NAME_W, 14, NAME_MIN)
+		if fb.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, ns).x <= NAME_W:
+			draw_string(fb, Vector2(r.position.x + 68, r.position.y + 46), nm, HORIZONTAL_ALIGNMENT_LEFT, NAME_W, ns, Color("#064e3b", a))
+		else:
+			var lh := fb.get_height(ns)
+			draw_multiline_string(fb, Vector2(r.position.x + 68, r.position.y + 40 - lh / 2 + fb.get_ascent(ns) - lh / 2 + 2), nm, HORIZONTAL_ALIGNMENT_LEFT, NAME_W, ns, 2, Color("#064e3b", a))
 		if on and not evaluated:
 			_mark(c + Vector2(18, 18), true, Color("#059669", a))
 		if evaluated and _reveal > 0.3:
 			_mark(c + Vector2(18, 18), it.good, Color("#059669") if it.good else Color("#e11d48"))
-			draw_multiline_string(Text.font, Vector2(r.position.x + 12, r.position.y + 84), Text.plain(Text.t(it.fact)), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 24, 11, 4, Color("#065f46", _reveal))
+			draw_multiline_string(Text.font, Vector2(r.position.x + 12, r.position.y + 84), Text.plain(Text.t(it.fact)), HORIZONTAL_ALIGNMENT_LEFT, TEXT_W, 11, FACT_LINES, Color("#065f46", _reveal))
 		elif not evaluated:
-			draw_multiline_string(Text.font, Vector2(r.position.x + 12, r.position.y + 84), Text.plain(Text.t("MG5_PICK_HINT")), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 24, 11, 3, Color("#059669", 0.7 * a))
+			draw_multiline_string(Text.font, Vector2(r.position.x + 12, r.position.y + 84), Text.plain(Text.t("MG5_PICK_HINT")), HORIZONTAL_ALIGNMENT_LEFT, TEXT_W, 11, 3, Color("#059669", 0.7 * a))
 
 
 ## A tick or a cross drawn with lines (the UI font has no glyph for them).

@@ -18,8 +18,8 @@ extends Node2D
 ## replaces the boss (reach the summit before the wave catches you).
 ## Level 5 (the jackpot climb, level 3 of the game) is climbed up with the board at the
 ## bottom edge rising behind her (the ticker): springs, hearts (they fill the heart meter;
-## ready hearts buy a heart boost and a heart jump), bells (+1 heart), jokers (the reels
-## top-left spin and pay a power-up), jackpot rows (checkpoints) and, once in the middle,
+## ready hearts buy a heart boost and a heart jump), bells (+1 heart), jokers (the spinner
+## top-left spins and pays a power-up), jackpot rows (checkpoints) and, once in the middle,
 ## the wheel of the cycle (minigame mg11, FertilityWheel); no score. Caught by the board she
 ## sits, no death. The board never stops rising (except while the wheel is open); there are
 ## no dialog boxes: dialogs play on the board itself (board_dialog). The forest run's sun
@@ -99,12 +99,16 @@ const CLIMB_TOP_MARGIN := 70.0
 ## Spring launch: v² / (2 · GRAVITY) ≈ 550 px; the rocket ≈ 900 px.
 const SPRING_FORCE := 21.0
 const ROCKET_FORCE := 26.8
-## Timed power-ups (s), the magnet's reach (px), the reels top-left (s until they pay).
+## Timed power-ups (s), the magnet's reach (px), the spinner top-left (a joker: s until
+## it pays; a bell: a shorter spin, BELL_STOPS).
 const POWER_TIME := 12.0
 const ROCKET_TIME := 1.4
 const MAGNET_RANGE := 260.0
 const SLOT_SPIN := 1.2
 const SLOT_STOPS := [0.5, 0.85, 1.2]
+const BELL_STOPS := [0.3, 0.45, 0.6]
+## The spinner's symbols (its three windows) and what it shows before the first spin.
+const SPIN_SYMBOLS := ["heart", "bell", "joker"]
 const POWERS := ["super_jump", "triple", "magnet", "rocket"]
 ## The board's news ticker: speed (px/s), font size, the text area on the board.
 const TICKER_SPEED := 90.0
@@ -256,8 +260,11 @@ var wheel_done := false
 ## Timed power-ups from the jokers: name → seconds left (not Game.upgrades).
 var climb_power := {}
 var _power_bag: Array = []
-## The reels top-left (a joker spins them): {t, power, stops, paid}; empty = idle.
+## The spinner top-left (a joker or a bell spins it): {t, kind ("joker" / "bell"), power,
+## stops, stop_at (Array of s), result (3 symbols), paid}; empty = idle.
 var slot_spin := {}
+## What the spinner's three windows show while idle (the last spin's result).
+var spin_rest: Array = SPIN_SYMBOLS.duplicate()
 ## Big centre banner ({text, t}), floating number pops in the world.
 var banner := {}
 var pops: Array[Dictionary] = []
@@ -513,7 +520,7 @@ func phase_showing() -> bool:
 	return not phase_note.is_empty()
 
 
-## 0..1: the climb's counters (the reels, FLOOR, the heart meter) come in after the announcement starts.
+## 0..1: the climb's counters (the spinner, the heart meter) come in after the announcement starts.
 func counters_in() -> float:
 	if phase_note.is_empty():
 		return 1.0
@@ -2959,7 +2966,7 @@ func _draw_bell(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	SpriteArt.draw_bell(ci, c, e.w * 0.5, sin(t / 260.0 + e.id) * 0.3)
 
 
-## A joker (a card with a jester's hat), bobbing: the reels top-left spin.
+## A joker (a card with a jester's hat), bobbing: the spinner top-left spins.
 func _draw_joker(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 4)
 	Draw.radial_glow(ci, c, e.w, Color(250 / 255.0, 204 / 255.0, 21 / 255.0, 0.35))
@@ -3161,12 +3168,12 @@ func _take_heart(e: LevelData.Ent) -> void:
 ## Fills the heart meter's bar; every full bar is a ready heart (up to HEART_SLOTS; with
 ## all of them ready the bar stays full and refills the next one spent).
 func add_heart_fill(amount: float) -> void:
-	heart_bar += amount
-	while heart_bar >= 100.0 and hearts < HEART_SLOTS:
-		heart_bar -= 100.0
-		hearts += 1
+	# The same meter as the forest run's water (MeterModel).
+	var r := MeterModel.settle(hearts, heart_bar + amount, HEART_SLOTS)
+	hearts = int(roundf(r.x))
+	heart_bar = r.y
+	if r.z > 0:
 		Audio.play_sfx("cink-11.wav", 0.3)
-	heart_bar = minf(heart_bar, 100.0)
 
 
 ## Spends ready hearts (refilled from a full bar); false (and the missing ones blink) if
@@ -3195,6 +3202,11 @@ func _ring_bell(e: LevelData.Ent) -> void:
 	Audio.play_sfx("cink-09.wav", 0.5)
 	Audio.play_sfx("cink-11.wav", 0.45)
 	ticker_say(Text.plain(Text.t(key)))
+	# The spinner top-left spins a short while and settles on three bells (no pay-out:
+	# the bell's +1 heart is given above). A joker's spin still running is paid first.
+	if not slot_spin.is_empty() and not slot_spin.paid:
+		_pay_slot()
+	slot_spin = {"t": 0.0, "kind": "bell", "power": "", "stops": 0, "stop_at": BELL_STOPS, "result": ["bell", "bell", "bell"], "paid": true}
 
 
 ## Falling onto a platform (or the board) within JUMP_BUFFER: a jump pressed now is
@@ -3248,12 +3260,12 @@ func heart_boost() -> bool:
 	return true
 
 
-## A joker: the reels top-left spin and always pay out a power-up.
+## A joker: the spinner top-left spins and always pay out a power-up.
 func _take_joker(e: LevelData.Ent) -> void:
 	e.collected = true
 	if not slot_spin.is_empty() and not slot_spin.paid:
 		_pay_slot()
-	slot_spin = {"t": 0.0, "power": _next_power(), "stops": 0, "paid": false}
+	slot_spin = {"t": 0.0, "kind": "joker", "power": _next_power(), "stops": 0, "stop_at": SLOT_STOPS, "result": ["joker", "joker", "joker"], "paid": false}
 	_sparkles(Vector2(e.x + e.w / 2, e.y + e.h / 2), 14)
 	Audio.play_sfx("click.wav", 0.5)
 	ticker_say("? ? ?")
@@ -3284,18 +3296,22 @@ func _update_slot(dt: float) -> void:
 	if slot_spin.is_empty():
 		return
 	slot_spin.t += dt
-	while slot_spin.stops < SLOT_STOPS.size() and slot_spin.t >= SLOT_STOPS[slot_spin.stops]:
+	var stop_at: Array = slot_spin.stop_at
+	while slot_spin.stops < stop_at.size() and slot_spin.t >= stop_at[slot_spin.stops]:
 		slot_spin.stops += 1
 		Audio.play_sfx("click.wav", 0.6)
+	if slot_spin.stops >= stop_at.size():
+		spin_rest = slot_spin.result.duplicate()
 	if not slot_spin.paid and slot_spin.t >= SLOT_SPIN:
 		_pay_slot()
-	if slot_spin.t > SLOT_SPIN + 1.8:
+	if slot_spin.t > float(stop_at[stop_at.size() - 1]) + 0.6:
 		slot_spin = {}
 
 
 func _pay_slot() -> void:
 	slot_spin.paid = true
 	slot_spin.stops = SLOT_STOPS.size()
+	spin_rest = slot_spin.result.duplicate()
 	grant_power(slot_spin.power)
 	_coin_shower(30)
 	Audio.play_sfx("finished.wav", 0.45)

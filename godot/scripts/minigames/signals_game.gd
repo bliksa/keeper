@@ -78,8 +78,31 @@ func place(phase_index: int) -> void:
 		Audio.play_sfx("breathoff.wav", 0.4)
 
 
+## Where the texts go: the card's signal (20 px, 2 lines), the columns' phase names /
+## days (one line) and the placed cards (10 px, 3 lines).
+const CARD_TEXT_W := 480.0 - 40
+const COL_W := 196.0
+
+
+## Texts that don't fit their place in the current language ([] = all fit; the tests).
+static func fit_problems() -> Array:
+	var out: Array = []
+	var fb: Font = Text.font_bold
+	for cd in CARDS:
+		var t := Text.plain(Text.t(cd.text))
+		out.append(Draw.fit_problem(cd.text, fb, t, CARD_TEXT_W, 20, 2))
+		out.append(Draw.fit_problem(cd.text + " (placed)", Text.font, t, COL_W - 32, 10, 3))
+	for ph in PHASES:
+		out.append(Draw.fit_problem(ph.name, fb, Text.plain(Text.t(ph.name)), COL_W - 12, 14))
+		out.append(Draw.fit_problem(ph.days, Text.font, Text.plain(Text.t(ph.days)), COL_W - 12, 10))
+	out.append(Draw.fit_problem("MG7_NOT_THAT", Text.font, Text.plain(Text.t("MG7_NOT_THAT")), CARD_TEXT_W, 12))
+	out.append(Draw.fit_problem("MG7_DONE", fb, Text.plain(Text.t("MG7_DONE")), CARD_TEXT_W, 14))
+	out.append(Draw.fit_problem("MG7_KEYS", Text.font, Text.plain(Text.t("MG7_KEYS")), 1000, 12))
+	return out.filter(func(x): return x != "")
+
+
 func _phase_rect(i: int) -> Rect2:
-	var w := 196.0
+	var w := COL_W
 	var gap := 12.0
 	var x0 := (1066 - (4 * w + 3 * gap)) / 2
 	return Rect2(x0 + i * (w + gap), 196, w, 232)
@@ -125,12 +148,13 @@ func _draw() -> void:
 	if not all_placed():
 		Draw.panel(self, cr, Color("#f0eee9", a), 14, Color("#f43f5e") if _shake > 0 else Color("#d1fae5"), 3 if _shake > 0 else 1)
 		draw_string(fb, Vector2(cr.position.x + 20, cr.position.y + 28), "%s %d / %d" % [Text.plain(Text.t("MG7_SIGNAL")), current + 1, order.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#059669", a))
-		draw_multiline_string(fb, Vector2(cr.position.x + 20, cr.position.y + 62), Text.plain(Text.t(card().text)), HORIZONTAL_ALIGNMENT_LEFT, cr.size.x - 40, 20, 2, Color("#064e3b", a))
+		draw_multiline_string(fb, Vector2(cr.position.x + 20, cr.position.y + 62), Text.plain(Text.t(card().text)), HORIZONTAL_ALIGNMENT_LEFT, CARD_TEXT_W, 20, 2, Color("#064e3b", a))
 		if _last_wrong >= 0:
 			draw_string(Text.font, Vector2(cr.position.x + 20, cr.end.y - 14), Text.plain(Text.t("MG7_NOT_THAT")), HORIZONTAL_ALIGNMENT_LEFT, cr.size.x - 40, 12, Color("#be123c", a))
 	else:
 		Draw.panel(self, cr, Color("#ecfdf5", a), 14, Color("#10b981"), 3)
-		Draw.text_center(self, fb, cr.get_center(), Text.plain(Text.t("MG7_DONE")), 20, Color("#064e3b", a))
+		var done := Text.plain(Text.t("MG7_DONE"))
+		Draw.text_center(self, fb, cr.get_center(), done, Draw.fit_size(fb, done, CARD_TEXT_W, 20, 14), Color("#064e3b", a))
 	# Phase columns.
 	for i in 4:
 		var ph: Dictionary = PHASES[i]

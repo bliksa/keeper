@@ -324,7 +324,8 @@ func _draw_legend(fb: Font) -> void:
 		draw_circle(Vector2(r.position.x + 30, y), 11, day_color(day))
 		if fertile(day):
 			SpriteArt.draw_heart(self, Vector2(r.position.x + 30, y), 6.0, 1.0)
-		draw_string(fb, Vector2(r.position.x + 52, y + 6), Text.plain(Text.t(row[1])), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 130, 16, Color("#064e3b"))
+		var nm := Text.plain(Text.t(row[1]))
+		draw_string(fb, Vector2(r.position.x + 52, y + 6), nm, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 130, Draw.fit_size(fb, nm, r.size.x - 130, 16, LEGEND_MIN), Color("#064e3b"))
 		var dd: String = row[2]
 		var dw := Text.font.get_string_size(dd, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
 		draw_string(Text.font, Vector2(r.end.x - 20 - dw, y + 5), dd, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#4a7d7b"))
@@ -355,7 +356,7 @@ func _draw_card(fb: Font) -> void:
 	var vk := verdict_key(result_day)
 	var title := Text.plain(Text.t(vk))
 	var ts := 22
-	while ts > 14 and fb.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, ts).x > w - (28 if possible else 0):
+	while ts > TITLE_MIN and fb.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, ts).x > w - (28 if possible else 0):
 		ts -= 1
 	var ty := r.position.y + 122
 	if possible:
@@ -380,11 +381,33 @@ func _draw_card(fb: Font) -> void:
 		Draw.text_center(self, fb, br.get_center() + Vector2(0, bfs * 0.35), bt, bfs, Color("#78350f", k))
 
 
-## Does every text of the card fit (tests)? The verdict body within its area at size ≥ 12.
+## The smallest sizes of the verdict's title and the legend's names (long in sk / pt).
+const TITLE_MIN := 12
+const LEGEND_MIN := 13
+
+
+## Does every text of the card fit (tests)? See fit_problems.
 static func texts_fit() -> bool:
+	return fit_problems().is_empty()
+
+
+## Texts that don't fit their place in the current language ([] = all fit; the tests):
+## the verdict body within its area at size ≥ 12, the title (≥ 14), the legend rows, the
+## note, the hub and the buttons at their smallest sizes.
+static func fit_problems() -> Array:
+	var out: Array = []
+	var fb: Font = Text.font_bold
 	var w := CARD.size.x - 44
 	for vk in ["MG11_POSSIBLE", "MG11_UNLIKELY"]:
 		var body := Text.plain(Text.t(vk + "_TEXT"))
 		if Text.font_dialog.get_multiline_string_size(body, HORIZONTAL_ALIGNMENT_LEFT, w, 12).y > 150:
-			return false
-	return true
+			out.append(vk + "_TEXT")
+		out.append(Draw.fit_problem(vk, fb, Text.plain(Text.t(vk)), w - (28 if vk == "MG11_POSSIBLE" else 0), TITLE_MIN))
+	for k in ["MG11_PERIOD", "MG11_AFTER_PERIOD", "MG11_FERTILE", "MG11_OVULATION", "MG11_LUTEAL"]:
+		out.append(Draw.fit_problem(k, fb, Text.plain(Text.t(k)), CARD.size.x - 130, LEGEND_MIN))
+	out.append(Draw.fit_problem("MG11_FOLLICULAR_NOTE", Text.font, Text.plain(Text.t("MG11_FOLLICULAR_NOTE")), CARD.size.x - 40, 14))
+	for k in ["MG11_SPIN", "MG11_STOP"]:
+		out.append(Draw.fit_problem(k, fb, Text.plain(Text.t(k)), 74, 11))
+	for k in ["MG11_AGAIN", "BTN_CONTINUE"]:
+		out.append(Draw.fit_problem(k, fb, Text.plain(Text.t(k)), 152 - 16, 11))
+	return out.filter(func(x): return x != "")

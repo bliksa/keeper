@@ -26,6 +26,16 @@ func _ready() -> void:
 	get_tree().quit(1 if failures > 0 else 0)
 
 
+## A button's text (+ icon, margins) fits its intended width. Not against b.size: a Control
+## grows to its minimum size, so that check could never fail. get_minimum_size() is what the
+## content needs (font, icon, stylebox margins), custom_minimum_size the width it was given.
+func _button_fits(b: Button) -> bool:
+	var w := b.custom_minimum_size.x
+	if w <= 0.0:
+		return true
+	return b.get_minimum_size().x <= w + 0.5 and b.size.x <= w + 0.5
+
+
 ## Set by the last line of _run().
 var _finished := false
 
@@ -170,6 +180,17 @@ func _run() -> void:
 	add_child(main)
 	await frames(5)
 	check(main.state == "boot", "starts on boot screen")
+	var boot_long := []
+	var lang_b: String = Text.language
+	for lang in Text.LANGUAGES:
+		Text.language = lang
+		await frames(1)
+		var bs := main._menu as BootScreen
+		for b in [bs._full, bs._start]:
+			if not _button_fits(b):
+				boot_long.append("%s/%s %s %s %d" % [lang, b.text, b.get_minimum_size(), b.size, b.get_theme_font_size("font_size")])
+	Text.language = lang_b
+	check(boot_long.is_empty(), "the boot screen's buttons fit their text with KeeperDyslexic in sk / en / pt %s" % str(boot_long))
 	main._menu.started.emit()
 	await frames(5)
 	check(main.state == "title", "title screen")
@@ -217,6 +238,46 @@ func _run() -> void:
 	Game.control_mode = mode0
 	check(board_long.is_empty(), "every board dialog (3A..3E) fits the board's text area (smallest size %d) %s" % [board_smallest, str(board_long)])
 	check(["3A", "3B", "3C", "3D", "3E"].all(func(id): return Text.dialogs.has(id) and not Text.dialogs[id].has("buttons")), "the climb's dialogs have no buttons")
+
+	step("game font")
+	# KeeperDyslexic is the default font of every player-facing text: Text.font(_bold)
+	# (HUD, minigames, menus), the board, a plain label (the project theme); the developer
+	# mode stays in Comfortaa (its own theme).
+	var plain := Label.new()
+	main.add_child(plain)
+	var plain_font: Font = plain.get_theme_font("font")
+	plain.queue_free()
+	check(Text.font == Text.font_dialog and Text.font_bold == Text.font_dialog_bold and str(ProjectSettings.get_setting("gui/theme/custom_font")).ends_with("KeeperDyslexic-Regular.otf") and plain_font != null and plain_font.resource_path.ends_with("KeeperDyslexic-Regular.otf"), "KeeperDyslexic is the game's default font (Text.font / font_bold, the theme: a plain label)")
+	var dev_b := UiKit.dev_button("x", Vector2(80, 30))
+	var game_b := UiKit.button("x", Vector2(80, 30))
+	check((Text.font_dev as FontVariation).base_font.resource_path.ends_with("Comfortaa.ttf") and UiKit.dev_theme().default_font == Text.font_dev and dev_b.get_theme_font("font") == Text.font_dev_bold and game_b.get_theme_font("font") == Text.font_bold, "the developer mode keeps Comfortaa (dev_button / dev_label / dev_theme), game buttons use KeeperDyslexic")
+	dev_b.free()
+	game_b.free()
+	var ts := main._menu as TitleScreen
+	var menu_long := []
+	var lang_t: String = Text.language
+	var mode_t: String = Game.control_mode
+	for lang in Text.LANGUAGES:
+		Text.language = lang
+		for mode in ["keyboard", "gamepad"]:
+			Game.control_mode = mode
+			await frames(1)
+			for b in [ts._start_btn, ts._credits_btn, ts._mute_btn, ts._mode_btn] + main._pause._buttons:
+				if not _button_fits(b):
+					menu_long.append("%s/%s" % [lang, b.text])
+	Text.language = lang_t
+	Game.control_mode = mode_t
+	await frames(1)
+	check(menu_long.is_empty(), "the title's and the pause menu's buttons fit their text in sk / en / pt %s" % str(menu_long))
+	var mg_long := []
+	for lang in Text.LANGUAGES:
+		Text.language = lang
+		for probs in [IronPlateGame.fit_problems(), SignalsGame.fit_problems(), CatchGame.fit_problems(), MemoryGame.fit_problems(),
+				PairsGame.fit_problems(), PricesGame.fit_problems(), RhythmGame.fit_problems(), FertilityWheel.fit_problems()]:
+			for pr in probs:
+				mg_long.append("%s/%s" % [lang, pr])
+	Text.language = lang_t
+	check(mg_long.is_empty(), "every minigame text fits its card / panel / line with KeeperDyslexic in sk / en / pt %s" % str(mg_long))
 
 	step("forest intro")
 	main._menu.start_pressed.emit()
@@ -320,7 +381,7 @@ func _run() -> void:
 							return true
 					return false)
 				if stray or acts != 1 or (caps == 0 and not passive) or AbilityHints.line_width(Text._filter_mode(str(Text._strings[lang][hk]))) > 420:
-					bad_hints.append("%s/%s/%s" % [lang, hk, mode])
+					bad_hints.append("%s/%s/%s (%d px)" % [lang, hk, mode, int(AbilityHints.line_width(Text._filter_mode(str(Text._strings[lang][hk]))))])
 	Game.control_mode = mode_was
 	check(bad_hints.is_empty(), "every ability hint parses as [key] caps + one *action* in all languages and both control modes %s" % str(bad_hints))
 
@@ -533,7 +594,6 @@ func _run() -> void:
 	check(not rn.slow, "no slow-down without water")
 	Input.action_release("slow_time")
 	# The ability hints under the water pill: only what the drops allow right now.
-	rn.reload_t = 0
 	rn.drops = 0
 	await frames(2)
 	check(rn.hint_lines().is_empty(), "no drops: no ability hints %s" % str(rn.hint_lines()))
@@ -545,8 +605,17 @@ func _run() -> void:
 	check(rn.hint_lines() == ["HINT_RUN_FOCUS", "HINT_RUN_DOUBLE"], "two drops or more: focus and the double jump %s" % str(rn.hint_lines()))
 	rn.drops = 0
 	rn.water = 0
-	# The magazine: a double jump costs two drops; empty, it reloads from the bar.
+	# The water meter works like the climb's hearts (MeterModel): a double jump costs two
+	# ready drops, a full bar refills one spent, every path drop fills the bar by HEART_FILL.
 	rn.objects.clear()
+	rn.py = 0
+	rn.vy = 0
+	rn.jumps = 2
+	rn.drops = 4
+	rn.water = 0
+	rn.jump()
+	rn.jump()
+	check(rn.jumps == 0 and absf(rn.drops - 2) < 0.01, "a double jump costs two drops")
 	rn.py = 0
 	rn.vy = 0
 	rn.jumps = 2
@@ -554,17 +623,37 @@ func _run() -> void:
 	rn.water = 100
 	rn.jump()
 	rn.jump()
-	check(rn.jumps == 0 and absf(rn.drops - 2) < 0.01, "a double jump costs two drops")
-	rn.py = 0
-	rn.vy = 0
-	rn.jumps = 2
+	check(absf(rn.drops - 3) < 0.01 and rn.water < 0.01, "with a full bar the double jump costs two, the bar refills one (3 ready)")
 	rn.drops = 0
-	await frames(2)
-	check(rn.reload_t > 0, "an empty magazine reloads from the bar")
-	await seconds(ForestRunner.RELOAD_TIME * 0.5)
-	check(rn.drops > 0.5 and rn.drops < 3.9 and rn.water < 100, "it takes a while (the drops fill one by one, the bar goes down)")
-	await seconds(ForestRunner.RELOAD_TIME * 0.6 + 0.1)
-	check(absf(rn.drops - 4) < 0.05 and absf(rn.water - 0) < 2 and rn.reload_t <= 0, "four drops back, the bar paid for them")
+	rn.water = 0
+	await frames(5)
+	check(rn.drops == 0 and rn.water == 0, "no reload: empty drops stay empty until water is collected")
+	check(absf(ForestRunner.DROP_WATER - Platformer.HEART_FILL) < 0.01, "a path drop fills the bar by the same share as a heart")
+	for k in int(100.0 / ForestRunner.DROP_WATER) - 1:
+		rn._add_water(ForestRunner.DROP_WATER)
+	check(rn.drops == 0 and rn.water > 75, "the bar fills drop by drop (%.0f)" % rn.water)
+	rn._add_water(ForestRunner.DROP_WATER)
+	check(absf(rn.drops - 1) < 0.01 and rn.water < 0.01, "a full bar = one more ready drop")
+	rn.drops = 4
+	rn.water = 60
+	rn._add_water(60)
+	check(absf(rn.drops - 4) < 0.01 and absf(rn.water - 100) < 0.01, "all four ready: the bar stays full")
+	rn.drops = 3.5
+	rn.water = 100
+	rn.meter.drain(0.0)
+	check(absf(rn.drops - 3.5) < 0.01 and absf(rn.water - 100) < 0.5, "a full bar waits for a whole free slot (3.5 + 100 stays %.2f, %.0f)" % [rn.drops, rn.water])
+	# Focus from four ready drops and a full bar: the first drop drains, then the full bar
+	# refills it whole (no fractional top-up that would freeze the bar below 100).
+	var fm := MeterModel.new(4.0, 4.0, 100.0)
+	for k in 72:
+		fm.drain(1.0 / 60.0)
+	check(absf(fm.ready - 3.8) < 0.02 and fm.bar < 0.01, "focus 1.2 s from 4 ready + a full bar: %.2f ready, bar %.0f" % [fm.ready, fm.bar])
+	var tap := MeterModel.new(4.0, 3.98, 90.0)
+	check(tap.fill(15.0) == 0.0 and absf(tap.ready - 3.98) < 0.001 and absf(tap.bar - 100) < 0.01, "a pickup after a short focus tap makes no fractional drop (no chime)")
+	var mm := MeterModel.new(4.0, 2.0, 90.0)
+	check(not mm.spend(3) and mm.spend(2) and mm.ready == 0 and mm.fill(10.0) == 1.0 and mm.ready == 1, "MeterModel: spend / fill")
+	rn.drops = 0
+	rn.water = 0
 	# Side traps: placed ones, and random ones in the last stage.
 	rn.build_course()
 	rn.water = 0
@@ -906,6 +995,12 @@ func _run() -> void:
 	check(pf.slot_spin.get("paid", false) and pf.climb_power.size() > 0, "the reels stop and pay a power-up (%s)" % pf.slot_spin.get("power", "?"))
 	check(pf.board_talking(Platformer.POWER_DIALOG.get(pf.slot_spin.get("power", ""), "?")) and not node_box().is_open(), "the first power-up from a joker is explained on the board")
 	check(pf.slot_spin.get("power", "") == "super_jump" and pf.board_talking("3A"), "the first joker of a climb pays the super jump (3A introduces the jokers)")
+	check(pf.slot_spin.get("kind", "") == "joker" and pf.spin_rest == ["joker", "joker", "joker"] and pf.ticker_queue.has(Text.plain(Text.t("CLIMB_PU_SUPER_JUMP"))), "the joker's spin settles on three jokers; the power-up's name goes to the ticker")
+	check(PlatformerHud.SPINNER.size.y == PlatformerHud.HEART_PILL.y and PlatformerHud.SPINNER.size.y == ForestRunner.WATER_HUD.size.y and PlatformerHud.SPINNER.position.y == 16, "the spinner is a pill as high as the heart meter / the water pill, top-left")
+	var floor_txt := false
+	for lang in Text.LANGUAGES:
+		floor_txt = floor_txt or Text._strings.get(lang, {}).has("CLIMB_FLOOR")
+	check(not floor_txt and not FileAccess.get_file_as_string("res://scripts/ui/platformer_hud.gd").contains("CLIMB_FLOOR"), "the climb has no floor counter (no CLIMB_FLOOR text)")
 	var en_s: Dictionary = Text._strings.get("en", {})
 	check(str(en_s.get("3A1", "")).to_lower().contains("joker") and str(en_s.get("3C1", "")).to_lower().contains("heart") and not str(en_s.get("3C1", "")).to_lower().contains("chip"), "3A introduces the jokers, 3C talks about hearts")
 	# Each power-up's first grant in a climb explains it on the board (3A..3D), once.
@@ -2141,6 +2236,11 @@ func _climb_hearts(pf: Platformer) -> void:
 	var bells0 := pf.bells
 	await frames(2)
 	check(bell.collected and pf.hearts == 2 and pf.bells == bells0 + 1, "a bell rings: one more ready heart (%d)" % pf.hearts)
+	check(pf.slot_spin.get("kind", "") == "bell" and int(pf.slot_spin.get("stops", 9)) < 3, "a bell spins the spinner top-left")
+	await seconds(Platformer.BELL_STOPS[-1] + 0.1)
+	check(pf.spin_rest == ["bell", "bell", "bell"] and pf.hearts == 2, "… a short spin that settles on three bells (the +1 heart stays)")
+	await seconds(0.7)
+	check(pf.slot_spin.is_empty() and pf.spin_rest == ["bell", "bell", "bell"], "then the spinner rests (still) on them")
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
 	check(pf.hud.hint_lines() == ["HINT_CLIMB_HEART_BOOST", "HINT_CLIMB_HEART_JUMP"], "two hearts: the heart boost and the heart jump are offered %s" % str(pf.hud.hint_lines()))

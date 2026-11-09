@@ -103,7 +103,7 @@ func _ready() -> void:
 
 
 ## ?climb=power: the climb with three ready hearts, a super jump and the magnet (their
-## hints top-right), then a joker spins the reels top-left.
+## hints top-right), then a joker spins the spinner top-left.
 func _dev_climb_powers() -> void:
 	await get_tree().create_timer(2.0).timeout
 	if platformer and platformer.is_climb():

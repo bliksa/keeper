@@ -101,18 +101,17 @@ const JUMP_V := 7.0
 const DOUBLE_V := 6.2
 const LANE_SPEED := 11.0
 const SLOW_SCALE := 0.4
-## Water: a magazine of DROPS_MAX drops (the HUD shows them) fed by the bar
-## below it (`water`, 0–100, filled by the drops on the path). A double jump
-## costs DOUBLE_DROPS, focus burns FOCUS_DRAIN drops a second, a hit HIT_DROPS.
-## When the magazine is empty it reloads from the bar (DROP_UNIT of the bar per
-## drop), which takes RELOAD_TIME.
+## Water works like the climb's hearts (MeterModel, `meter`): DROPS_MAX ready drops
+## (`drops`, the HUD shows them) and the bar round the pill (`water`, 0–100) that every
+## drop on the path fills by DROP_WATER (= the climb's HEART_FILL); a full bar is one
+## more ready drop, with all four ready it stays full and refills the next one spent.
+## A double jump costs DOUBLE_DROPS, focus burns FOCUS_DRAIN drops a second, a hit
+## HIT_DROPS.
 const DROPS_MAX := 4.0
 const DOUBLE_DROPS := 2.0
 const FOCUS_DRAIN := 1.0
 const HIT_DROPS := 1.0
-const DROP_UNIT := 25.0
-const RELOAD_TIME := 2.0
-const DROP_WATER := 5.0
+const DROP_WATER := Platformer.HEART_FILL
 ## Water (focus) a hit on an obstacle costs.
 const BUMP_BACK := 6.0
 const CARRY_BACK := 14.0
@@ -138,7 +137,14 @@ var py := 0.0
 var vy := 0.0
 var jumps := 2
 var slow := false
-var water := 30.0
+## The water meter (shared model with the climb's hearts): `drops` = its ready drops,
+## `water` = its bar.
+var meter := MeterModel.new(DROPS_MAX, DROPS_MAX, 30.0)
+var water: float:
+	get:
+		return meter.bar
+	set(v):
+		meter.bar = clampf(v, 0.0, 100.0)
 var time := 0.0
 ## Rolling back after a bump (s left) or being carried by a bird (s left).
 var bump_t := 0.0
@@ -170,11 +176,12 @@ var water_flash := 0.0
 var water_short := 0.0
 ## Which mark the missing water was for ("jump", "focus", "double"): it blinks.
 var short_for := ""
-## The magazine (0–DROPS_MAX) and the reload in progress (s left; the drops
-## it is filling to).
-var drops := DROPS_MAX
-var reload_t := 0.0
-var _reload_to := 0.0
+## Ready drops (0–DROPS_MAX; fractional while focus drains them).
+var drops: float:
+	get:
+		return meter.ready
+	set(v):
+		meter.ready = clampf(v, 0.0, DROPS_MAX)
 ## Seconds left of the blinking after a hit (nothing hits her meanwhile).
 var invuln := 0.0
 ## A slice lost in a hit: its place in the sun blinks red (s left).
@@ -391,14 +398,13 @@ func _read_input() -> void:
 func jump() -> void:
 	if jumps <= 0 or bump_t > 0 or carry_t > 0:
 		return
-	# A jump is free; a double jump costs two drops from the magazine.
+	# A jump is free; a double jump costs two ready drops (a full bar refills them)
 	# (some places can't be passed dry).
 	if jumps == 1:
-		if drops < DOUBLE_DROPS - 0.001:
+		if not meter.spend(DOUBLE_DROPS):
 			water_short = 0.5
 			short_for = "double"
 			return
-		drops -= DOUBLE_DROPS
 	vy = JUMP_V if jumps == 2 else DOUBLE_V
 	jumps -= 1
 	Audio.jump_sound(jumps == 0)
@@ -446,13 +452,12 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-## Focus while a drop is in the magazine (and it isn't reloading), the double jump
-## while two are.
+## Focus while a drop is ready, the double jump while two are.
 func _wanted_hints() -> Array:
 	if intro > 0 or not active or dialog_open or done or waiting:
 		return []
 	var out: Array = []
-	if (drops >= 1.0 or slow) and reload_t <= 0:
+	if drops >= 1.0 or slow:
 		out.append("HINT_RUN_FOCUS")
 	if drops >= DOUBLE_DROPS - 0.001:
 		out.append("HINT_RUN_DOUBLE")
@@ -470,16 +475,15 @@ func _update(dt: float) -> void:
 	# quick, so a tight spot can be read and taken. Not while bumped / carried.
 	var rolling := carry_t > 0 or bump_t > 0
 	var pressing := Input.is_action_pressed("slow_time")
-	var want_slow := not rolling and pressing and drops > 0.001 and reload_t <= 0
+	var want_slow := not rolling and pressing and drops > 0.001
 	if pressing and not want_slow and not _prev_slow and not rolling and Input.is_action_just_pressed("slow_time"):
 		water_short = 0.5
 		short_for = "focus"
-	_update_magazine(dt)
 	slow = want_slow
 	_prev_slow = slow
 	var wdt := dt * (SLOW_SCALE if slow else 1.0)
 	if slow:
-		drops = maxf(0, drops - FOCUS_DRAIN * dt)
+		meter.drain(FOCUS_DRAIN * dt)
 	# Moving sideways uses real time (the focus advantage).
 	px = move_toward(px, lane * LANE, LANE_SPEED * dt)
 	if carry_t > 0:
@@ -737,24 +741,12 @@ func _hits(wdt: float) -> void:
 					_sun_piece()
 
 
-## Water from a drop on the path: into the bar under the magazine.
+## Water from a drop on the path: the bar round the pill fills; a full bar is one more
+## ready drop (a chime, the pill flashes).
 func _add_water(n: float) -> void:
-	water = minf(100, water + n)
-
-
-## The magazine reloads from the bar once it is empty (drop by drop, RELOAD_TIME).
-func _update_magazine(dt: float) -> void:
-	if reload_t <= 0 and drops <= 0.001 and water >= 1.0:
-		reload_t = RELOAD_TIME
-		_reload_to = minf(DROPS_MAX, water / DROP_UNIT)
-	if reload_t > 0:
-		var add := minf(_reload_to / RELOAD_TIME * dt, maxf(0, _reload_to - drops))
-		add = minf(add, water / DROP_UNIT)
-		drops += add
-		water = maxf(0, water - add * DROP_UNIT)
-		reload_t = maxf(0, reload_t - dt)
-		if reload_t <= 0:
-			drops = minf(DROPS_MAX, drops)
+	if meter.fill(n) > 0:
+		Audio.play_sfx("cink-11.wav", 0.3)
+		water_flash = 0.45
 
 
 ## A sun piece: one more slice of the sun. Every SUN_PER_GAME a minigame, the
@@ -929,7 +921,7 @@ func _lose_slice() -> void:
 ## Ran into a root or a branch: bounce back, the path rolls back a bit.
 func bump() -> void:
 	invuln = INVULN_TIME
-	drops = maxf(0, drops - HIT_DROPS)
+	meter.drain(HIT_DROPS)
 	_lose_slice()
 	bump_t = 0.45
 	_roll_to = maxf(_stage_start(), dist - BUMP_BACK)
@@ -942,7 +934,7 @@ func bump() -> void:
 ## Caught by a bird in the air: carried back along the path.
 func carried() -> void:
 	invuln = INVULN_TIME + 1.2
-	drops = maxf(0, drops - HIT_DROPS)
+	meter.drain(HIT_DROPS)
 	carry_t = 1.2
 	_roll_to = maxf(_stage_start(), dist - CARRY_BACK)
 	flash = 0.3
@@ -1437,7 +1429,7 @@ func _draw_hud() -> void:
 		Draw.radial_glow(self, Vector2(wr.position.x + 26, wr.get_center().y), 50, Color(0.37, 0.7, 0.94, 0.6 * water_flash / 0.45))
 	if water_short > 0:
 		wr.position.x += sin(water_short * 60.0) * 5.0
-	draw_water_pill(self, wr, drops, water / 100.0, slow, time, short_for if water_short > 0 else "", reload_t)
+	draw_water_pill(self, wr, drops, water / 100.0, slow, time, short_for if water_short > 0 else "")
 	if water_short > 0:
 		Draw.panel(self, wr.grow(2), Color(0, 0, 0, 0), 18, Color(0.94, 0.27, 0.27, water_short / 0.5), 3)
 	hints.draw(self, Vector2(WATER_HUD.end.x, WATER_HUD.end.y))
@@ -1463,12 +1455,11 @@ func _draw_end_sun() -> void:
 
 
 ## The hydration pill: a drop and how full the water is (slowed time pulses it).
-## The water: the magazine of four drops (a part-used one keeps only its lower
-## part) and, as a line round the pill that fills up like the cave's breath
-## ring, the bar ("mana") the magazine reloads from. `blink` = "double" /
-## "focus": the missing drops blink red; `reload` > 0: the line shimmers while
-## the drops fill one by one.
-static func draw_water_pill(ci: CanvasItem, r: Rect2, n: float, bar_k: float, slowing: bool, t: float, blink := "", reload := 0.0) -> void:
+## The water: four ready drops (a part-used one keeps only its lower part) and,
+## as a line round the pill that fills up like the cave's breath ring, the bar
+## whose every fill is one more ready drop (as the climb's hearts). `blink` =
+## "double" / "focus": the missing drops blink red.
+static func draw_water_pill(ci: CanvasItem, r: Rect2, n: float, bar_k: float, slowing: bool, t: float, blink := "") -> void:
 	Draw.panel(ci, r, Color("#f0eee9"), 16, Color(0.37, 0.61, 0.6, 0.2), 2)
 	var red := Color(0.94, 0.27, 0.27)
 	var on := fmod(t, 0.2) < 0.12
@@ -1496,8 +1487,6 @@ static func draw_water_pill(ci: CanvasItem, r: Rect2, n: float, bar_k: float, sl
 			ci.draw_circle(c + Vector2(-3, 1) * 1.05, 2.5 * 1.05, Color(1, 1, 1, 0.8))
 	# The bar as a line round the pill (like the breath ring in the cave).
 	var col_line := Color("#2563eb").lerp(Color("#5fb3f0"), 0.35)
-	if reload > 0:
-		col_line = col_line.lerp(Color.WHITE, 0.3 + 0.3 * sin(t * 14))
 	progress_outline(ci, r, bar_k, col_line)
 
 

@@ -138,3 +138,29 @@ static func panel(ci: CanvasItem, rect: Rect2, bg: Color, radius := 12.0, border
 static func text_center(ci: CanvasItem, font: Font, c: Vector2, s: String, size: int, col: Color) -> void:
 	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 	ci.draw_string(font, Vector2(c.x - w / 2, c.y + size * 0.35), s, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+
+
+## The largest font size ≤ `size` (down to `min_size`) at which `s` fits `width` on one line.
+static func fit_size(font: Font, s: String, width: float, size: int, min_size := 8) -> int:
+	var fs := size
+	while fs > min_size and font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > width:
+		fs -= 1
+	return fs
+
+
+## How many lines `s` takes wrapped at `width`.
+static func line_count(font: Font, s: String, width: float, size: int) -> int:
+	if s.is_empty():
+		return 0
+	var h := font.get_multiline_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, width, size).y
+	return maxi(1, roundi(h / font.get_height(size)))
+
+
+## A fit problem for the minigames' fit checks ("" = fits): `s` must take at most
+## `max_lines` lines at `width` (1 = one line, no wrap).
+static func fit_problem(name: String, font: Font, s: String, width: float, size: int, max_lines := 1) -> String:
+	if max_lines <= 1:
+		var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		return "" if w <= width else "%s (%d > %d px)" % [name, int(w), int(width)]
+	var n := line_count(font, s, width, size)
+	return "" if n <= max_lines else "%s (%d > %d lines)" % [name, n, max_lines]

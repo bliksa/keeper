@@ -772,7 +772,7 @@ func _build_left() -> void:
 	box.size = box.custom_minimum_size
 	box.add_theme_constant_override("separation", 6)
 	add_child(box)
-	box.add_child(UiKit.label("LEVEL", 11, Color("#94a3b8"), true))
+	box.add_child(UiKit.dev_label("LEVEL", 11, Color("#94a3b8"), true))
 	_group_pick = OptionButton.new()
 	_group_pick.add_theme_font_size_override("font_size", 12)
 	_group_pick.focus_mode = Control.FOCUS_NONE
@@ -782,13 +782,13 @@ func _build_left() -> void:
 	box.add_child(_group_pick)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
-	var nb := UiKit.button("New dialog", Vector2((LIST_W - 30) / 2, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
+	var nb := UiKit.dev_button("New dialog", Vector2((LIST_W - 30) / 2, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
 	nb.icon = load(ICONS % "plus")
 	nb.add_theme_constant_override("icon_max_width", 16)
 	nb.tooltip_text = "A new dialog with the next free letter of this level"
 	nb.pressed.connect(new_dialog)
 	row.add_child(nb)
-	var db := UiKit.button("Delete", Vector2((LIST_W - 30) / 2, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
+	var db := UiKit.dev_button("Delete", Vector2((LIST_W - 30) / 2, 30), 11, Color("#1e293b"), Color("#cbd5e1"))
 	db.icon = load(ICONS % "trash-2")
 	db.add_theme_constant_override("icon_max_width", 16)
 	db.tooltip_text = "Delete the selected dialog"
@@ -805,7 +805,7 @@ func _build_left() -> void:
 	_list.add_theme_constant_override("separation", 4)
 	sc.add_child(_list)
 	# The dialog's buttons (they close it; several = a choice).
-	box.add_child(UiKit.label("BUTTONS OF THIS DIALOG", 11, Color("#94a3b8"), true))
+	box.add_child(UiKit.dev_label("BUTTONS OF THIS DIALOG", 11, Color("#94a3b8"), true))
 	var bsc := ScrollContainer.new()
 	_buttons_scroll = bsc
 	bsc.custom_minimum_size = Vector2(LIST_W - 24, 60)
@@ -819,10 +819,10 @@ func _build_left() -> void:
 
 func _build_right() -> void:
 	var x0 := LIST_W + 16
-	_title = UiKit.label("", 18, Color.WHITE, true)
+	_title = UiKit.dev_label("", 18, Color.WHITE, true)
 	_title.position = Vector2(x0, top + 52)
 	add_child(_title)
-	_where = UiKit.label("", 11, Color("#94a3b8"))
+	_where = UiKit.dev_label("", 11, Color("#94a3b8"))
 	_where.position = Vector2(x0, top + 78)
 	_where.size = Vector2(1066 - x0 - 300, 18)
 	add_child(_where)
@@ -831,7 +831,7 @@ func _build_right() -> void:
 	plays.add_theme_constant_override("separation", 4)
 	add_child(plays)
 	for l in LANGS:
-		var b := UiKit.button("Play " + LANG_NAMES[l], Vector2(88, 30), 12, Color("#059669"))
+		var b := UiKit.dev_button("Play " + LANG_NAMES[l], Vector2(88, 30), 12, Color("#059669"))
 		b.icon = load(ICONS % "play")
 		b.add_theme_constant_override("icon_max_width", 14)
 		b.tooltip_text = "Play this dialog in the dialog box (%s)" % LANG_NAMES[l]
@@ -846,7 +846,7 @@ func _build_right() -> void:
 	_lines.custom_minimum_size = Vector2(1066 - x0 - 30, 0)
 	_lines.add_theme_constant_override("separation", 8)
 	sc.add_child(_lines)
-	_status = UiKit.label("Edits are kept in this browser until “Save to repo”.", 11, Color("#94a3b8"))
+	_status = UiKit.dev_label("Edits are kept in this browser until “Save to repo”.", 11, Color("#94a3b8"))
 	_status.position = Vector2(x0, 600 - 34)
 	_status.size = Vector2(1066 - x0 - 16, 28)
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -881,7 +881,7 @@ func _refresh_buttons() -> void:
 		return
 	var b: Array = nodes[current].buttons
 	if b.is_empty():
-		_buttons_box.add_child(UiKit.label("None: the box shows “Next”.", 11, Color("#64748b")))
+		_buttons_box.add_child(UiKit.dev_label("None: the box shows “Next”.", 11, Color("#64748b")))
 	var keys: Array = button_texts.keys()
 	keys.sort()
 	for k in b.size():
@@ -931,15 +931,15 @@ func _refresh_buttons() -> void:
 			e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			var lr := HBoxContainer.new()
 			lr.add_theme_constant_override("separation", 4)
-			var tag := UiKit.label(LANG_NAMES[l], 10, Color("#94a3b8"), true)
+			var tag := UiKit.dev_label(LANG_NAMES[l], 10, Color("#94a3b8"), true)
 			tag.custom_minimum_size = Vector2(20, 0)
 			lr.add_child(tag)
 			lr.add_child(e)
 			v.add_child(lr)
 		if shared > 1:
-			v.add_child(UiKit.label("Also in %d other dialog(s)" % (shared - 1), 10, Color("#64748b")))
+			v.add_child(UiKit.dev_label("Also in %d other dialog(s)" % (shared - 1), 10, Color("#64748b")))
 		_buttons_box.add_child(card)
-	var add := UiKit.button("Add button", Vector2(LIST_W - 36, 28), 11, Color("#0f172a"), Color("#cbd5e1"))
+	var add := UiKit.dev_button("Add button", Vector2(LIST_W - 36, 28), 11, Color("#0f172a"), Color("#cbd5e1"))
 	add.icon = load(ICONS % "plus")
 	add.add_theme_constant_override("icon_max_width", 14)
 	add.tooltip_text = "Another button: several buttons make a choice"
@@ -969,7 +969,7 @@ func _refresh_list() -> void:
 		b.clip_text = true
 		b.custom_minimum_size = Vector2(LIST_W - 36, 34)
 		b.focus_mode = Control.FOCUS_NONE
-		b.add_theme_font_override("font", Text.font)
+		b.add_theme_font_override("font", Text.font_dev)
 		b.add_theme_font_size_override("font_size", 12)
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color("#78350f") if id == current else Color("#1e293b")
@@ -1011,7 +1011,7 @@ func _refresh_lines() -> void:
 	_where.text = where_of(current)
 	for i in n.lines.size():
 		_lines.add_child(_line_card(i))
-	var add := UiKit.button("Add line", Vector2(160, 32), 12, Color("#1e293b"), Color("#cbd5e1"))
+	var add := UiKit.dev_button("Add line", Vector2(160, 32), 12, Color("#1e293b"), Color("#cbd5e1"))
 	add.icon = load(ICONS % "plus")
 	add.add_theme_constant_override("icon_max_width", 16)
 	add.pressed.connect(add_line.bind(-1))
@@ -1034,7 +1034,7 @@ func _line_card(i: int) -> Control:
 	card.add_child(v)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 6)
-	var name := UiKit.label(key_of(current, i), 14, Color("#fbbf24"), true)
+	var name := UiKit.dev_label(key_of(current, i), 14, Color("#fbbf24"), true)
 	name.custom_minimum_size = Vector2(70, 0)
 	name.tooltip_text = "Line %d of %s: its text key in data/i18n/*.json" % [i + 1, current]
 	head.add_child(name)
@@ -1070,7 +1070,7 @@ func _line_card(i: int) -> Control:
 			_refresh_lines())
 	head.add_child(sp)
 	if line.voice != "":
-		var vl := UiKit.label("voice: " + str(line.voice), 10, Color("#64748b"))
+		var vl := UiKit.dev_label("voice: " + str(line.voice), 10, Color("#64748b"))
 		vl.tooltip_text = "Recorded voice (assets/audio). It stays with this line when lines move."
 		head.add_child(vl)
 	var spacer := Control.new()
@@ -1087,7 +1087,7 @@ func _line_card(i: int) -> Control:
 	for l in LANGS:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
-		var tag := UiKit.label(LANG_NAMES[l], 11, Color("#94a3b8"), true)
+		var tag := UiKit.dev_label(LANG_NAMES[l], 11, Color("#94a3b8"), true)
 		tag.custom_minimum_size = Vector2(26, 0)
 		row.add_child(tag)
 		var te := TextEdit.new()
@@ -1096,7 +1096,7 @@ func _line_card(i: int) -> Control:
 		te.custom_minimum_size = Vector2(0, 46)
 		te.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		te.add_theme_font_size_override("font_size", 12)
-		var mark := UiKit.label("", 10, Color.WHITE, true)
+		var mark := UiKit.dev_label("", 10, Color.WHITE, true)
 		mark.custom_minimum_size = Vector2(54, 0)
 		_mark_fit(mark, te.text)
 		te.text_changed.connect(func():
@@ -1127,10 +1127,10 @@ func character_dialog(line_i: int) -> Control:
 	sb.set_corner_radius_all(12)
 	card.add_theme_stylebox_override("panel", sb)
 	root.add_child(card)
-	var title := UiKit.label("New character", 20, Color.WHITE, true)
+	var title := UiKit.dev_label("New character", 20, Color.WHITE, true)
 	title.position = Vector2(24, 18)
 	card.add_child(title)
-	var help := UiKit.label("Its dialog avatar: Developer mode > Animations > NPCs.", 12, Color("#94a3b8"))
+	var help := UiKit.dev_label("Its dialog avatar: Developer mode > Animations > NPCs.", 12, Color("#94a3b8"))
 	help.position = Vector2(24, 52)
 	card.add_child(help)
 	var fields := {}
@@ -1144,16 +1144,16 @@ func character_dialog(line_i: int) -> Control:
 		card.add_child(e)
 		fields[k] = e
 		y += 40
-	var msg := UiKit.label("", 12, Color("#f87171"))
+	var msg := UiKit.dev_label("", 12, Color("#f87171"))
 	msg.position = Vector2(24, 248)
 	card.add_child(msg)
-	var cancel := UiKit.button("Cancel", Vector2(100, 34), 12)
+	var cancel := UiKit.dev_button("Cancel", Vector2(100, 34), 12)
 	cancel.position = Vector2(256, 248)
 	cancel.pressed.connect(func():
 		root.queue_free()
 		_refresh_lines())
 	card.add_child(cancel)
-	var ok := UiKit.button("Add", Vector2(110, 34), 12, Color("#059669"))
+	var ok := UiKit.dev_button("Add", Vector2(110, 34), 12, Color("#059669"))
 	ok.position = Vector2(366, 248)
 	ok.pressed.connect(func():
 		var id := add_character(fields.id.text, {"sk": fields.sk.text, "en": fields.en.text, "pt": fields.pt.text})

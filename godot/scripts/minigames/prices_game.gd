@@ -67,6 +67,29 @@ func _set_guess(i: int, v: int) -> void:
 		_send_hint()
 
 
+## A product's name: 16 px, down to NAME_MIN beside the guess.
+const NAME_MIN := 12
+
+
+## Texts that don't fit their place in the current language ([] = all fit; the tests).
+## A row: the product's name (≥ NAME_MIN) left, "Your guess: 2000 €" right while guessing
+## (744 px), "2000 €  /  1500 €" once evaluated (602 px); the impact box (14 px, 160 px).
+static func fit_problems() -> Array:
+	var out: Array = []
+	var fb: Font = Text.font_bold
+	var guessing := fb.get_string_size("2000 €", HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x \
+		+ Text.font.get_string_size(Text.plain(Text.t("MG4_YOUR_GUESS")) + " ", HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 4
+	var shown := fb.get_string_size("2000 €  /  1500 €", HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
+	for pr in PRODUCTS:
+		var nw := fb.get_string_size(Text.plain(Text.t(pr.name)), HORIZONTAL_ALIGNMENT_LEFT, -1, NAME_MIN).x
+		for room_value in [[832.0 - 40 - 48, guessing], [832.0 - 40 - 190, shown]]:
+			if nw + 16 + room_value[1] > room_value[0]:
+				out.append("%s + the guess (%d > %d px)" % [pr.name, int(nw + 16 + room_value[1]), int(room_value[0])])
+		for line in Text.plain(Text.t(pr.impact)).split("\n"):
+			out.append(Draw.fit_problem(pr.impact, fb, line, 160 - 12, 14))
+	return out.filter(func(x): return x != "")
+
+
 func _row_rect(i: int) -> Rect2:
 	# Rows sit above the dialog panel (bottom 150 px).
 	var h := 128.0 if evaluated else 92.0
@@ -132,7 +155,6 @@ func _draw() -> void:
 		var r := _row_rect(i)
 		var sel := i == cursor and not evaluated
 		Draw.panel(self, r, Color("#f0eee9", a), 12, Color("#10b981") if sel else Color("#d1fae5"), 3 if sel else 1)
-		draw_string(fb, r.position + Vector2(20, 32), Text.plain(Text.t(pr.name)), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#064e3b", a))
 		var g: int = guesses[pr.id]
 		var right := r.position.x + 20 + _slider_rect(i).size.x
 		var txt := "%d €" % g
@@ -140,9 +162,15 @@ func _draw() -> void:
 			txt += "  /  %d €" % pr.price
 		var tw := fb.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
 		draw_string(fb, Vector2(right - tw, r.position.y + 32), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color("#065f46", a))
-		var lbl := "Your guess: "
-		var lw := Text.font.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
-		draw_string(Text.font, Vector2(right - tw - lw - 4, r.position.y + 31), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#059669", a))
+		# "Your guess:" while guessing (after it the line reads guess / price).
+		var lw := 0.0
+		if not evaluated:
+			var lbl := Text.plain(Text.t("MG4_YOUR_GUESS")) + " "
+			lw = Text.font.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 4
+			draw_string(Text.font, Vector2(right - tw - lw, r.position.y + 31), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#059669", a))
+		var nm := Text.plain(Text.t(pr.name))
+		var nroom := right - tw - lw - 16 - (r.position.x + 20)
+		draw_string(fb, r.position + Vector2(20, 32), nm, HORIZONTAL_ALIGNMENT_LEFT, nroom, Draw.fit_size(fb, nm, nroom, 16, NAME_MIN), Color("#064e3b", a))
 		var s := _slider_rect(i)
 		Draw.panel(self, s, Color("#a7f3d0", a), 4)
 		var kx := s.position.x + s.size.x * g / float(MAX)

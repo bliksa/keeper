@@ -68,6 +68,7 @@ func _ready() -> void:
 
 	var ver := Label.new()
 	ver.name = "Version"
+	ver.add_theme_font_override("font", Text.font_dev)
 	ver.position = Vector2(24, 552)
 	ver.add_theme_font_size_override("font_size", 11)
 	ver.add_theme_color_override("font_color", Color(1, 1, 1, 0.3))

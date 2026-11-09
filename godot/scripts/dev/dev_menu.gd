@@ -31,6 +31,8 @@ const ICON := 36.0
 
 func _ready() -> void:
 	size = Vector2(1066, 600)
+	# The game's default font is KeeperDyslexic; the developer mode stays in Comfortaa.
+	theme = UiKit.dev_theme()
 	var bg := ColorRect.new()
 	bg.color = Color("#0a0f0a")
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -66,7 +68,7 @@ func _ready() -> void:
 	var x := 8.0 + ICON + 8
 	# Tabs as wide as their names (the level editor's header needs the room).
 	for t in [["shortcuts", "Shortcuts", 96.0], ["level", "Levels", 74.0], ["anim", "Animations", 102.0], ["dialogs", "Dialogs", 82.0]]:
-		var b := UiKit.button(t[1], Vector2(t[2], ICON), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
+		var b := UiKit.dev_button(t[1], Vector2(t[2], ICON), 12, Color(0, 0, 0, 0), Color("#94a3b8"))
 		b.position = Vector2(x, (BAR_H - ICON) / 2)
 		b.pressed.connect(_show.bind(t[0]))
 		add_child(b)
@@ -90,7 +92,7 @@ func _ready() -> void:
 	actions.size = Vector2(1066 - 8 - 700, ICON)
 	actions.add_theme_constant_override("separation", 4)
 	add_child(actions)
-	_help = UiKit.label("", 10, Color("#64748b"))
+	_help = UiKit.dev_label("", 10, Color("#64748b"))
 	_help.position = Vector2(730, 0)
 	_help.size = Vector2(172, BAR_H)
 	_help.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -199,13 +201,13 @@ func open_team_password() -> void:
 
 func _build_shortcuts() -> void:
 	if DevAccess.is_set_up():
-		var lk := UiKit.button("Lock", Vector2(80, ICON), 12, Color("#1e293b"), Color("#cbd5e1"))
+		var lk := UiKit.dev_button("Lock", Vector2(80, ICON), 12, Color("#1e293b"), Color("#cbd5e1"))
 		lk.icon = load("res://assets/ui/icons/lock.svg")
 		lk.add_theme_constant_override("icon_max_width", 16)
 		lk.tooltip_text = "Lock developer mode in this browser: DEV asks for the team password again"
 		lk.pressed.connect(lock)
 		header_tools.add_child(lk)
-	var tp := UiKit.button("Change password" if DevAccess.is_set_up() else "Team password", Vector2(150, ICON), 12, Color("#1e293b"), Color("#cbd5e1"))
+	var tp := UiKit.dev_button("Change password" if DevAccess.is_set_up() else "Team password", Vector2(150, ICON), 12, Color("#1e293b"), Color("#cbd5e1"))
 	tp.icon = load("res://assets/ui/icons/key-round.svg")
 	tp.add_theme_constant_override("icon_max_width", 16)
 	tp.tooltip_text = "One password for developer mode and every “Save to repo” (no token for the team)"
@@ -221,7 +223,7 @@ func _build_shortcuts() -> void:
 	card.position = Vector2(33, 20)
 	card.size = Vector2(1000, 508)
 	_content.add_child(card)
-	var title := UiKit.label("PLAY FROM  ·  the cycle", 13, Color("#94a3b8"), true)
+	var title := UiKit.dev_label("PLAY FROM  ·  the cycle", 13, Color("#94a3b8"), true)
 	title.position = Vector2(24, 18)
 	card.add_child(title)
 	# A rainbow across the levels that comes back to its start: the cycle goes round.
@@ -261,17 +263,17 @@ func _build_shortcuts() -> void:
 	]
 	for c in cols.size():
 		var x := 24 + c * (COL_W + 16)
-		var name := UiKit.label(cols[c][0], 15, Color.WHITE, true)
+		var name := UiKit.dev_label(cols[c][0], 15, Color.WHITE, true)
 		name.position = Vector2(x, 58)
 		card.add_child(name)
-		var sub := UiKit.label(cols[c][1], 11, Color("#94a3b8"))
+		var sub := UiKit.dev_label(cols[c][1], 11, Color("#94a3b8"))
 		sub.position = Vector2(x, 80)
 		card.add_child(sub)
 		var items: Array = cols[c][3]
 		for k in items.size():
 			var it: Array = items[k]
 			var first := k == 0
-			var b := UiKit.button(it[0], Vector2(COL_W, 36), 12, cols[c][2].darkened(0.35) if first else Color("#0f172a"), Color.WHITE if first else Color("#cbd5e1"))
+			var b := UiKit.dev_button(it[0], Vector2(COL_W, 36), 12, cols[c][2].darkened(0.35) if first else Color("#0f172a"), Color.WHITE if first else Color("#cbd5e1"))
 			b.position = Vector2(x, 106 + k * 42)
 			b.tooltip_text = it[1]
 			var act: String = it[2]
@@ -283,7 +285,7 @@ func _build_shortcuts() -> void:
 			card.add_child(b)
 		if c == 1:
 			# Iron for the cave checkpoints' boss shortcut.
-			var iron_lbl := UiKit.label("Iron for the boss: %d" % _iron, 11, Color("#cbd5e1"))
+			var iron_lbl := UiKit.dev_label("Iron for the boss: %d" % _iron, 11, Color("#cbd5e1"))
 			iron_lbl.position = Vector2(x, 106 + items.size() * 42 + 4)
 			card.add_child(iron_lbl)
 			var slider := HSlider.new()
@@ -304,7 +306,7 @@ func _build_shortcuts() -> void:
 	sep.position = Vector2(24, 404)
 	sep.size = Vector2(952, 1)
 	card.add_child(sep)
-	var old_lbl := UiKit.label("OLD / DEPRECATED", 11, Color("#64748b"), true)
+	var old_lbl := UiKit.dev_label("OLD / DEPRECATED", 11, Color("#64748b"), true)
 	old_lbl.position = Vector2(24, 418)
 	card.add_child(old_lbl)
 	var old := OptionButton.new()
@@ -320,7 +322,7 @@ func _build_shortcuts() -> void:
 	for o in olds:
 		old.add_item(o[0])
 	card.add_child(old)
-	var go := UiKit.button("Play", Vector2(80, 30), 12, Color("#334155"))
+	var go := UiKit.dev_button("Play", Vector2(80, 30), 12, Color("#334155"))
 	go.position = Vector2(478, 412)
 	go.pressed.connect(func():
 		var o: Array = olds[old.selected]
@@ -328,7 +330,7 @@ func _build_shortcuts() -> void:
 	card.add_child(go)
 	_old_pick = old
 
-	var keys := UiKit.label("Keys while playing: 1–4 restart at a checkpoint · Shift+2–5 jump to the next minigame / boss / jackpot row · 5 boss (climb: near the top, PMS maze: open the door) · G old summit with power-ups · C breathing + 20 iron · X skip a minigame · Esc pause", 11, Color("#64748b"))
+	var keys := UiKit.dev_label("Keys while playing: 1–4 restart at a checkpoint · Shift+2–5 jump to the next minigame / boss / jackpot row · 5 boss (climb: near the top, PMS maze: open the door) · G old summit with power-ups · C breathing + 20 iron · X skip a minigame · Esc pause", 11, Color("#64748b"))
 	keys.autowrap_mode = TextServer.AUTOWRAP_WORD
 	keys.custom_minimum_size = Vector2(952, 0)
 	keys.position = Vector2(24, 458)

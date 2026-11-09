@@ -11,6 +11,27 @@ const FOODS := [
 	{"name": "FOOD_FRUIT", "col": "#dc2626"},
 ]
 const CUSHION_Y := 372.0
+## The board; the reset note (14 px, 2 lines) is RESET_W wide.
+const BOARD := Rect2(117, 16, 832, 418)
+const RESET_W := 460.0 - 36
+
+
+## Texts that don't fit their place in the current language ([] = all fit; the tests).
+static func fit_problems() -> Array:
+	var out: Array = []
+	var fb: Font = Text.font_bold
+	out.append(Draw.fit_problem("MG9_RESET", fb, Text.plain(Text.t("MG9_RESET")), RESET_W, 14, 2))
+	# The counters share the top line: nutrients left, stress (+ its bolts) right.
+	var top := fb.get_string_size("%s  %d / %d" % [Text.plain(Text.t("MG9_NUTRIENTS")), GOAL, GOAL], HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x \
+		+ fb.get_string_size(Text.plain(Text.t("MG9_STRESS")), HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x + 3 * 16 + 10 + 48
+	if top > BOARD.size.x - 48:
+		out.append("MG9 counters (%d px)" % int(top))
+	var legend := 0.0
+	for f in FOODS:
+		legend += 36 + Text.font.get_string_size(Text.plain(Text.t(f.name)), HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+	if legend > BOARD.size.x - 48:
+		out.append("MG9 legend (%d px)" % int(legend))
+	return out.filter(func(x): return x != "")
 const CUSHION_W := 130.0
 
 var cushion_x := 533.0
@@ -110,7 +131,7 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, 1066, 600), Color(0, 0, 0, 0.6))
 	var a := 0.5 if dialog_active else 1.0
 	var fb: Font = Text.font_bold
-	var board := Rect2(117, 16, 832, 418)
+	var board := BOARD
 	Draw.panel(self, board, Color("#f0eee9", a), 16, Color("#f43f5e") if _flash > 0 else Color("#d1fae5"), 4 if _flash > 0 else 1)
 	# Counters.
 	draw_string(fb, Vector2(board.position.x + 24, board.position.y + 34), "%s  %d / %d" % [Text.plain(Text.t("MG9_NUTRIENTS")), caught, GOAL], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color("#064e3b", a))
@@ -158,4 +179,4 @@ func _draw() -> void:
 	if _reset_flash > 0:
 		var r := Rect2(1066 / 2 - 230, 200, 460, 70)
 		Draw.panel(self, r, Color("#fff1f2", a), 12, Color("#f43f5e"), 3)
-		draw_multiline_string(fb, Vector2(r.position.x + 18, r.position.y + 28), Text.plain(Text.t("MG9_RESET")), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 36, 14, 2, Color("#9f1239", a))
+		draw_multiline_string(fb, Vector2(r.position.x + 18, r.position.y + 28), Text.plain(Text.t("MG9_RESET")), HORIZONTAL_ALIGNMENT_LEFT, RESET_W, 14, 2, Color("#9f1239", a))

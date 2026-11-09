@@ -1,6 +1,8 @@
 class_name UiKit
 extends RefCounted
-## Button / label factories in the web build's style (slate buttons, Comfortaa).
+## Button / label factories in the web build's style (slate buttons). The game's
+## own UI uses Text.font (KeeperDyslexic); dev_button / dev_label keep the developer
+## mode in Comfortaa (Text.font_dev).
 
 
 static func _box(col: Color, radius: int, border := Color(0, 0, 0, 0), bw := 0) -> StyleBoxFlat:
@@ -37,6 +39,28 @@ static func button(text: String, size: Vector2, font_size := 16, bg := Color("#1
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	b.add_theme_constant_override("icon_max_width", 22)
 	return b
+
+
+## A button for the developer mode UI (Comfortaa).
+static func dev_button(text: String, size: Vector2, font_size := 16, bg := Color("#1e293b"), fg := Color.WHITE) -> Button:
+	var b := button(text, size, font_size, bg, fg)
+	b.add_theme_font_override("font", Text.font_dev_bold)
+	return b
+
+
+## A label for the developer mode UI (Comfortaa).
+static func dev_label(text: String, size := 14, col := Color.WHITE, bold := false) -> Label:
+	var l := label(text, size, col, bold)
+	l.add_theme_font_override("font", Text.font_dev_bold if bold else Text.font_dev)
+	return l
+
+
+## A theme whose default font is Comfortaa: set on the developer mode's root so
+## its controls without their own font stay in the dev font.
+static func dev_theme() -> Theme:
+	var t := Theme.new()
+	t.default_font = Text.font_dev
+	return t
 
 
 static func pill_button(text: String) -> Button:

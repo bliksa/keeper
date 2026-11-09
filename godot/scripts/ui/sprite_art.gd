@@ -439,36 +439,42 @@ static func draw_heart(ci: CanvasItem, c: Vector2, s: float, turn := 1.0, alpha 
 
 
 ## A gold bell around `c` (`s` = its half width), swinging by `swing` radians.
-static func draw_bell(ci: CanvasItem, c: Vector2, s: float, swing := 0.0) -> void:
+static func draw_bell(ci: CanvasItem, c: Vector2, s: float, swing := 0.0, alpha := 1.0) -> void:
 	var top := c + Vector2(0, -s * 1.05)
 	var pts := PackedVector2Array()
 	var outline := [Vector2(-0.25, -0.8), Vector2(-0.5, -0.55), Vector2(-0.62, 0.0), Vector2(-0.75, 0.45), Vector2(-1.0, 0.7),
 		Vector2(1.0, 0.7), Vector2(0.75, 0.45), Vector2(0.62, 0.0), Vector2(0.5, -0.55), Vector2(0.25, -0.8)]
 	for q: Vector2 in outline:
 		pts.append(top + ((q * s) + Vector2(0, s * 1.05)).rotated(swing))
-	ci.draw_circle(top + Vector2(0, s * 1.85).rotated(swing * 1.6), s * 0.2, Color("#b45309"))
-	Draw.polygon_safe(ci, pts, Color("#fbbf24"))
-	ci.draw_polyline(pts + PackedVector2Array([pts[0]]), Color("#92400e"), maxf(1.0, s * 0.1), true)
-	ci.draw_line(top + Vector2(-s * 0.35, s * 0.55).rotated(swing), top + Vector2(-s * 0.45, s * 1.35).rotated(swing), Color(1, 1, 0.85, 0.8), maxf(1.0, s * 0.12), true)
-	ci.draw_arc(top + Vector2(0, -s * 0.12), s * 0.18, 0, TAU, 12, Color("#92400e"), maxf(1.0, s * 0.09), true)
+	ci.draw_circle(top + Vector2(0, s * 1.85).rotated(swing * 1.6), s * 0.2, _fa(Color("#b45309"), alpha))
+	Draw.polygon_safe(ci, pts, _fa(Color("#fbbf24"), alpha))
+	ci.draw_polyline(pts + PackedVector2Array([pts[0]]), _fa(Color("#92400e"), alpha), maxf(1.0, s * 0.1), true)
+	ci.draw_line(top + Vector2(-s * 0.35, s * 0.55).rotated(swing), top + Vector2(-s * 0.45, s * 1.35).rotated(swing), _fa(Color(1, 1, 0.85, 0.8), alpha), maxf(1.0, s * 0.12), true)
+	ci.draw_arc(top + Vector2(0, -s * 0.12), s * 0.18, 0, TAU, 12, _fa(Color("#92400e"), alpha), maxf(1.0, s * 0.09), true)
 
 
 ## A joker card (`h` tall) with a three-pointed jester's hat, tilted by `tilt` radians.
-static func draw_joker(ci: CanvasItem, c: Vector2, h: float, tilt := 0.0) -> void:
+## `alpha` fades the whole card (the HUD's fade).
+static func draw_joker(ci: CanvasItem, c: Vector2, h: float, tilt := 0.0, alpha := 1.0) -> void:
 	var w := h * 0.72
 	ci.draw_set_transform(c, tilt, Vector2.ONE)
-	Draw.panel(ci, Rect2(-w / 2, -h / 2, w, h), Color("#fefce8"), h * 0.12, Color("#b45309"), maxf(1.0, h * 0.05))
+	Draw.panel(ci, Rect2(-w / 2, -h / 2, w, h), _fa(Color("#fefce8"), alpha), h * 0.12, _fa(Color("#b45309"), alpha), maxf(1.0, h * 0.05))
 	var cols := [Color("#7c3aed"), Color("#e11d48"), Color("#16a34a")]
 	var base := h * 0.12
 	for i in 3:
 		var x0 := -w * 0.36 + i * w * 0.24
 		var tip := Vector2(-w * 0.32 + i * w * 0.32, -h * 0.32 + (0.0 if i == 1 else h * 0.06))
-		Draw.polygon_safe(ci, PackedVector2Array([Vector2(x0, base), Vector2(x0 + w * 0.24, base), tip]), cols[i])
-		ci.draw_circle(tip, h * 0.055, Color("#fbbf24"))
-	ci.draw_rect(Rect2(-w * 0.38, base - h * 0.01, w * 0.76, h * 0.09), Color("#fbbf24"))
-	ci.draw_circle(Vector2(0, base + h * 0.2), h * 0.11, Color("#fde68a"))
-	ci.draw_arc(Vector2(0, base + h * 0.2), h * 0.06, 0.3, PI - 0.3, 8, Color("#9a3412"), maxf(1.0, h * 0.03), true)
+		Draw.polygon_safe(ci, PackedVector2Array([Vector2(x0, base), Vector2(x0 + w * 0.24, base), tip]), _fa(cols[i], alpha))
+		ci.draw_circle(tip, h * 0.055, _fa(Color("#fbbf24"), alpha))
+	ci.draw_rect(Rect2(-w * 0.38, base - h * 0.01, w * 0.76, h * 0.09), _fa(Color("#fbbf24"), alpha))
+	ci.draw_circle(Vector2(0, base + h * 0.2), h * 0.11, _fa(Color("#fde68a"), alpha))
+	ci.draw_arc(Vector2(0, base + h * 0.2), h * 0.06, 0.3, PI - 0.3, 8, _fa(Color("#9a3412"), alpha), maxf(1.0, h * 0.03), true)
 	ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+
+
+## `c` with its alpha multiplied by `a`.
+static func _fa(c: Color, a: float) -> Color:
+	return Color(c, c.a * a)
 
 
 ## The placeholder of `id` at its game size (the lab's preview of "original").

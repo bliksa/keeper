@@ -347,9 +347,9 @@ func _draw_meadow(font: Font) -> void:
 
 
 
-## The jackpot climb (level 5): the board at the bottom edge (ticker, marquee), the reels
-## top-left (a joker spins them), the floor top-centre, the heart meter top-right with the
-## ability hints under it, and the banner. No score.
+## The jackpot climb (level 5): the board at the bottom edge (ticker, marquee), the spinner
+## top-left (a bell or a joker spins it), the heart meter top-right with the ability hints
+## under it, and the banner. No score, no floor counter.
 func _draw_climb(font: Font) -> void:
 	var pf := platformer
 	var t := pf.time_ms
@@ -358,16 +358,8 @@ func _draw_climb(font: Font) -> void:
 	_alpha = (1.0 - pf.wind) * pf.counters_in()
 	if _alpha <= 0.01:
 		return
-	# The reels (top-left): idle they rest, a joker spins them.
-	_draw_reels(font, t, Rect2(16, 14, 206, 74))
-	# Floor (top centre).
-	var fl := pf.floor_of(pf.p.y + pf.p.height)
-	var fmt := Text.plain(Text.t("CLIMB_FLOOR"))
-	var ft := fmt % fl if fmt.contains("%d") else "%s %d" % [fmt, fl]
-	var fw := font.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-	var fr := Rect2(1066 / 2 - (fw + 28) / 2, 16, fw + 28, 34)
-	Draw.panel(self, fr, _a(BG), 17, _a(Color("#fbbf24")), 2)
-	draw_string(font, Vector2(fr.position.x + 14, fr.position.y + 24), ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, _a(INK))
+	# The spinner (top-left): still when idle, a bell or a joker spins it. No floor counter.
+	_draw_reels(font, t, SPINNER)
 	# The heart meter (top-right) and what the hearts can buy under it.
 	var pill := Rect2(1066 - 16 - HEART_PILL.x, 16, HEART_PILL.x, HEART_PILL.y)
 	draw_heart_pill(self, pill, pf.hearts, pf.heart_bar / 100.0, t / 1000.0, pf.heart_short > 0, _heart_pop, _alpha)
@@ -388,6 +380,8 @@ func _draw_climb(font: Font) -> void:
 
 
 const HEART_PILL := Vector2(176, 48)
+## The climb's spinner top-left: the heart meter's height and panel.
+const SPINNER := Rect2(16, 16, 150, 48)
 
 
 ## The heart meter (like the forest run's water pill): HEART_SLOTS hearts, the ready ones
@@ -556,59 +550,46 @@ func _draw_board_talk(talk: Dictionary, r: Rect2) -> void:
 	draw_line(Vector2(area.position.x, ly), Vector2(area.position.x + area.size.x * k, ly), Color("#f59e0b"), 2)
 
 
-## The slot machine top-left: three reels. Idle they rest on heart · joker · bell (a slow
-## wobble); a joker spins them, they stop one after another on 7-7-7 and the power-up won
-## blinks under them.
+## The spinner top-left: a light pill like the heart meter (SPINNER: same height), three
+## white windows. Idle it rests (still) on the last spin's symbols; a bell or a joker spins
+## it (Platformer.slot_spin): symbols slide down each window until it stops one after
+## another (a click each) on three bells / three jokers. The power-up's name goes to the
+## board's ticker, not here.
 func _draw_reels(font: Font, t: float, box: Rect2) -> void:
 	var spin: Dictionary = platformer.slot_spin
 	var active := not spin.is_empty()
-	var glow := active and not bool(spin.get("paid", false))
-	Draw.panel(self, box, _a(Color("#2e1065")), 14, _a(Color("#fde047") if glow else Color("#fbbf24")), 3)
-	# Bulbs along the top edge.
-	for i in 9:
-		var bp := Vector2(box.position.x + 14 + i * (box.size.x - 28) / 8.0, box.position.y + 6)
-		var on := (i + int(t / (70.0 if glow else 260.0))) % 2 == 0
-		draw_circle(bp, 2.5, _a(Color("#fff7c2") if on else Color("#b45309")))
-	var rw := 56.0
-	var rh := 52.0
-	var x0 := box.position.x + 13
-	var y0 := box.position.y + 14
-	var syms := ["heart", "joker", "bell", "7", "heart", "bell"]
+	Draw.panel(self, box, _a(BG), 16, _a(Color(0.98, 0.75, 0.14, 0.3)), 2)
+	var gap := 6.0
+	var rw := (box.size.x - 16 - gap * 2) / 3.0
+	var rh := box.size.y - 12
+	var x0 := box.position.x + 8
+	var y0 := box.position.y + 6
+	var syms := ["heart", "joker", "bell", "heart", "bell", "joker"]
 	for i in 3:
-		var rr := Rect2(x0 + i * (rw + 8), y0, rw, rh)
-		Draw.panel(self, rr, _a(Color("#fefce8")), 8, _a(Color("#b45309")), 2)
+		var rr := Rect2(x0 + i * (rw + gap), y0, rw, rh)
+		Draw.panel(self, rr, _a(Color.WHITE), 8, _a(Color(0.39, 0.45, 0.55, 0.25)), 1)
 		var stopped: bool = active and int(spin.stops) > i
-		if active and stopped:
-			Draw.text_center(self, font, rr.get_center() + Vector2(0, 13), "7", 36, _a(Color("#dc2626")))
-		elif active:
+		if active and not stopped:
 			# Spinning: symbols sliding down through the window.
 			var off := fmod(t / 25.0 + i * 17.0, rh)
 			for j in 2:
 				var k := (int(t / 25.0 / rh) + j + i * 2) % syms.size()
 				var cy := rr.position.y + off - j * rh + rh / 2
-				if cy > rr.position.y + 16 and cy < rr.end.y - 16:
+				if cy > rr.position.y + 10 and cy < rr.end.y - 10:
 					_reel_symbol(font, syms[k], Vector2(rr.get_center().x, cy))
 		else:
-			# Idle: resting, a slow wobble.
-			var wob := sin(t / 700.0 + i * 1.7) * 2.0
-			_reel_symbol(font, ["heart", "joker", "bell"][i], rr.get_center() + Vector2(0, wob))
-	if active and spin.paid:
-		var lbl := Text.plain(Text.t("CLIMB_PU_" + String(spin.power).to_upper()))
-		var blink := int(t / 150.0) % 2 == 0
-		var lw := font.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
-		var lr := Rect2(box.position.x, box.end.y + 4, maxf(box.size.x, lw + 20), 26)
-		Draw.panel(self, lr, _a(Color("#2e1065", 0.9)), 13)
-		draw_string(font, Vector2(lr.position.x + (lr.size.x - lw) / 2, lr.position.y + 19), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, _a(Color("#fde047") if blink else Color("#fef3c7")))
+			var rest: Array = spin.result if active else platformer.spin_rest
+			_reel_symbol(font, rest[i], rr.get_center())
 
 
 func _reel_symbol(font: Font, sym: String, c: Vector2) -> void:
 	match sym:
 		"heart":
-			SpriteArt.draw_heart(self, c, 15.0, 1.0, _alpha)
+			SpriteArt.draw_heart(self, c, 11.0, 1.0, _alpha)
 		"bell":
-			SpriteArt.draw_bell(self, c, 14.0)
+			SpriteArt.draw_bell(self, c, 10.0, 0.0, _alpha)
 		"joker":
-			SpriteArt.draw_joker(self, c, 40.0)
+			SpriteArt.draw_joker(self, c, 30.0, 0.0, _alpha)
 		_:
 			Draw.text_center(self, font, c + Vector2(0, 12), sym, 34, _a(Color("#dc2626")))
 

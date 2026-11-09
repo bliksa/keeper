@@ -11,6 +11,18 @@ const NEED := 10
 const TARGET_X := 300.0
 const LINE_Y := 190.0
 
+
+## Texts that don't fit their place in the current language ([] = all fit; the tests):
+## the energy counter and the misses share the bar's width (752 px); the keys line.
+static func fit_problems() -> Array:
+	var out: Array = []
+	var w := Text.font_bold.get_string_size("%s  %d / %d" % [Text.plain(Text.t("MG6_ENERGY")), NEED, NEED], HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x \
+		+ Text.font.get_string_size("%s %d" % [Text.plain(Text.t("MG6_MISSES")), 99], HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 24
+	if w > 832 - 80:
+		out.append("MG6 energy + misses (%d px)" % int(w))
+	out.append(Draw.fit_problem("MG6_KEYS", Text.font, Text.plain(Text.t("MG6_KEYS")), 832 - 40, 13))
+	return out.filter(func(x): return x != "")
+
 var hits := 0
 var misses := 0
 var _time := 0.0

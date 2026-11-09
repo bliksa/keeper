@@ -255,7 +255,7 @@ func _ready() -> void:
 	head.size = Vector2(954, 34)
 	head.add_theme_constant_override("separation", 8)
 	card.add_child(head)
-	var t := UiKit.label(title, 16, Color.WHITE, true)
+	var t := UiKit.dev_label(title, 16, Color.WHITE, true)
 	t.custom_minimum_size = Vector2(0, 34)
 	t.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	head.add_child(t)
@@ -271,7 +271,7 @@ func _ready() -> void:
 	search.add_theme_font_size_override("font_size", 12)
 	search.text_changed.connect(func(_t): fill())
 	head.add_child(search)
-	var up := UiKit.button("Upload…", Vector2(104, 34), 12, Color("#1e293b"), Color("#cbd5e1"))
+	var up := UiKit.dev_button("Upload…", Vector2(104, 34), 12, Color("#1e293b"), Color("#cbd5e1"))
 	up.icon = load(ICONS % "upload")
 	up.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	up.add_theme_constant_override("icon_max_width", 16)
@@ -294,7 +294,7 @@ func _ready() -> void:
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
 	sc.add_child(grid)
-	status = UiKit.label("Click an image to use it  ·  corner icons: download, delete (uploads only)  ·  drop files here to upload", 11, Color("#94a3b8"))
+	status = UiKit.dev_label("Click an image to use it  ·  corner icons: download, delete (uploads only)  ·  drop files here to upload", 11, Color("#94a3b8"))
 	status.position = Vector2(16, card.size.y - 26)
 	status.size = Vector2(954, 18)
 	card.add_child(status)
@@ -376,7 +376,7 @@ func _tile(path: String, name: String) -> Control:
 	img.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	img.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(img)
-	var l := UiKit.label(name, 10, Color("#cbd5e1"))
+	var l := UiKit.dev_label(name, 10, Color("#cbd5e1"))
 	l.position = Vector2(4, 108)
 	l.size = Vector2(104, 20)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

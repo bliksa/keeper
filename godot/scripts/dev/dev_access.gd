@@ -118,10 +118,10 @@ static func password_dialog(parent: Node, on_done: Callable, allow_token := true
 	sb.set_corner_radius_all(12)
 	card.add_theme_stylebox_override("panel", sb)
 	root.add_child(card)
-	var title := UiKit.label("Developer mode", 20, Color.WHITE, true)
+	var title := UiKit.dev_label("Developer mode", 20, Color.WHITE, true)
 	title.position = Vector2(24, 18)
 	card.add_child(title)
-	var help := UiKit.label("Enter the team password. This browser remembers it\n(it also unlocks “Save to repo” everywhere).", 12, Color("#cbd5e1"))
+	var help := UiKit.dev_label("Enter the team password. This browser remembers it\n(it also unlocks “Save to repo” everywhere).", 12, Color("#cbd5e1"))
 	help.position = Vector2(24, 56)
 	card.add_child(help)
 	var edit := LineEdit.new()
@@ -130,24 +130,24 @@ static func password_dialog(parent: Node, on_done: Callable, allow_token := true
 	edit.position = Vector2(24, 112)
 	edit.size = Vector2(452, 36)
 	card.add_child(edit)
-	var msg := UiKit.label("", 12, Color("#f87171"))
+	var msg := UiKit.dev_label("", 12, Color("#f87171"))
 	msg.position = Vector2(24, 152)
 	card.add_child(msg)
 	if allow_token:
-		var tok := UiKit.button("Use a GitHub token", Vector2(170, 32), 11, Color(0, 0, 0, 0), Color("#94a3b8"))
+		var tok := UiKit.dev_button("Use a GitHub token", Vector2(170, 32), 11, Color(0, 0, 0, 0), Color("#94a3b8"))
 		tok.position = Vector2(16, 196)
 		tok.tooltip_text = "Paste your own GitHub token instead of the team password"
 		tok.pressed.connect(func():
 			root.queue_free()
 			GitHubSave.token_dialog(parent, on_done, true))
 		card.add_child(tok)
-	var cancel := UiKit.button("Cancel", Vector2(110, 36), 12)
+	var cancel := UiKit.dev_button("Cancel", Vector2(110, 36), 12)
 	cancel.position = Vector2(246, 194)
 	cancel.pressed.connect(func():
 		root.queue_free()
 		on_done.call(false))
 	card.add_child(cancel)
-	var ok := UiKit.button("Unlock", Vector2(110, 36), 12, Color("#059669"))
+	var ok := UiKit.dev_button("Unlock", Vector2(110, 36), 12, Color("#059669"))
 	ok.position = Vector2(366, 194)
 	var try := func():
 		msg.text = "Checking…"
@@ -186,10 +186,10 @@ static func setup_dialog(parent: Node, gh: GitHubSave, on_done: Callable) -> Con
 	sb.set_corner_radius_all(12)
 	card.add_theme_stylebox_override("panel", sb)
 	root.add_child(card)
-	var title := UiKit.label("Team password", 20, Color.WHITE, true)
+	var title := UiKit.dev_label("Team password", 20, Color.WHITE, true)
 	title.position = Vector2(24, 18)
 	card.add_child(title)
-	var help := UiKit.label(
+	var help := UiKit.dev_label(
 		"Everyone who knows this password can open developer mode and save to the repo, without a token.\n" +
 		"1. GitHub token: github.com → Settings → Developer settings → Fine-grained tokens → only %s/%s, Contents = Read and write.\n" % [GitHubSave.OWNER, GitHubSave.REPO] +
 		"2. A long password (e.g. four random words). The token is stored in the repo encrypted with it.\n" +
@@ -211,18 +211,18 @@ static func setup_dialog(parent: Node, gh: GitHubSave, on_done: Callable) -> Con
 		fields.append(e)
 	if GitHubSave.has_token() and not is_set_up():
 		fields[0].placeholder_text = "GitHub token (empty = the one this browser already uses)"
-	var msg := UiKit.label("", 12, Color("#f87171"))
+	var msg := UiKit.dev_label("", 12, Color("#f87171"))
 	msg.position = Vector2(24, 336)
 	msg.size = Vector2(592, 40)
 	msg.autowrap_mode = TextServer.AUTOWRAP_WORD
 	card.add_child(msg)
-	var cancel := UiKit.button("Cancel", Vector2(110, 36), 12)
+	var cancel := UiKit.dev_button("Cancel", Vector2(110, 36), 12)
 	cancel.position = Vector2(370, 386)
 	cancel.pressed.connect(func():
 		root.queue_free()
 		on_done.call(false))
 	card.add_child(cancel)
-	var ok := UiKit.button("Save", Vector2(130, 36), 12, Color("#059669"))
+	var ok := UiKit.dev_button("Save", Vector2(130, 36), 12, Color("#059669"))
 	ok.position = Vector2(490, 386)
 	ok.pressed.connect(func():
 		var token: String = fields[0].text.strip_edges()
