@@ -248,10 +248,10 @@ func _build_shortcuts() -> void:
 			["Start", "", "runner", 0], ["Stage 2", "3 sun pieces found, after the memory game", "runner", 1],
 			["Stage 3", "6 pieces, after catch: flying notifications", "runner", 2],
 			["Stage 4", "9 pieces, after pairs: fastest + side traps", "runner", 3]]],
-		["3 · Summit", "ovulation · LH wave", Color.from_hsv(130.0 / 360, 0.65, 0.6), [
-			["Start", "", "checkpoint3", 1], ["After iron plate", "", "checkpoint3", 2],
-			["After rhythm", "", "checkpoint3", 3], ["After body signals", "", "checkpoint3", 4],
-			["LH wave", "The climb with the wave", "checkpoint3", 5]]],
+		["3 · Jackpot climb", "ovulation · up with the board", Color.from_hsv(130.0 / 360, 0.65, 0.6), [
+			["Start", "", "checkpoint5", 1], ["1st jackpot", "At the first jackpot row", "checkpoint5", 2],
+			["2nd jackpot", "", "checkpoint5", 3], ["3rd jackpot", "", "checkpoint5", 4],
+			["Near the top", "A few floors below the top", "checkpoint5", 5]]],
 		["4 · PMS", "luteal phase · right to left", Color.from_hsv(215.0 / 360, 0.7, 0.75), [
 			["Start", "Level 4 is not built yet (right to left, PMS; the sex-ed branch)", "", 0]]],
 	]
@@ -294,7 +294,7 @@ func _build_shortcuts() -> void:
 				iron_lbl.text = "Iron for the boss: %d" % _iron)
 			card.add_child(slider)
 
-	# Old and deprecated: the first level-2 draft (the meadow).
+	# Old and deprecated: the first level-2 draft (the meadow) and the old summit.
 	var sep := ColorRect.new()
 	sep.color = Color("#334155")
 	sep.position = Vector2(24, 404)
@@ -309,7 +309,10 @@ func _build_shortcuts() -> void:
 	old.position = Vector2(170, 412)
 	old.size = Vector2(300, 30)
 	var olds := [["Old meadow (level 2 draft): start", "checkpoint2", 1],
-		["Old meadow: after its minigames", "checkpoint2", 4], ["Old meadow: the gate", "checkpoint2", 5]]
+		["Old meadow: after its minigames", "checkpoint2", 4], ["Old meadow: the gate", "checkpoint2", 5],
+		["Old summit: start", "checkpoint3", 1], ["Old summit: after iron plate", "checkpoint3", 2],
+		["Old summit: after rhythm", "checkpoint3", 3], ["Old summit: after body signals", "checkpoint3", 4],
+		["Old summit: LH wave", "checkpoint3", 5]]
 	for o in olds:
 		old.add_item(o[0])
 	card.add_child(old)
@@ -321,7 +324,7 @@ func _build_shortcuts() -> void:
 	card.add_child(go)
 	_old_pick = old
 
-	var keys := UiKit.label("Keys while playing: 1–4 restart at a checkpoint · Shift+2–5 jump to the next minigame / boss / wave · 5 boss (summit: wave) · G summit with power-ups · C breathing + 20 iron · X skip a minigame · Esc pause", 11, Color("#64748b"))
+	var keys := UiKit.label("Keys while playing: 1–4 restart at a checkpoint · Shift+2–5 jump to the next minigame / boss / jackpot row · 5 boss (climb: near the top) · G old summit with power-ups · C breathing + 20 iron · X skip a minigame · Esc pause", 11, Color("#64748b"))
 	keys.autowrap_mode = TextServer.AUTOWRAP_WORD
 	keys.custom_minimum_size = Vector2(952, 0)
 	keys.position = Vector2(24, 458)

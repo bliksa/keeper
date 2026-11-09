@@ -143,7 +143,7 @@ func refresh() -> void:
 		editor.bg_changed())
 	_opts.add_child(col)
 	_opts.add_child(UiKit.label("Base colour", 11, Color("#cbd5e1")))
-	if editor.level_id in [2, 3]:
+	if editor.level_id in [2, 3, Game.CLIMB_ID]:
 		_opts.add_child(_check("Procedural sky", "procedural", "The level's code-drawn sky (behind the layers)"))
 	if editor.level_id == 1:
 		_opts.add_child(_check("Red tint", "tint", "The cave's pulsing red tint and vignette (in front of the layers)"))
@@ -365,7 +365,7 @@ func preview_cam() -> Vector2:
 		var lw := editor.cols() * LevelData.CELL_W
 		return Vector2(maxf(0, lw - 1066) * cam_k, 0)
 	var lh := rows * LevelData.ROW_H
-	# Vertical levels: the cave is played downwards, the summit upwards.
+	# Vertical levels: the cave is played downwards, the climbs (old summit, jackpot climb) upwards.
 	var k := cam_k if editor.level_id == 1 else 1.0 - cam_k
 	return Vector2(0, maxf(0, lh - 600) * k)
 

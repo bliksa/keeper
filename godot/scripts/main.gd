@@ -3,9 +3,11 @@ extends Node
 ##
 ## boot → title → intro (forest) → mg1 (breathing) → intro → platformer (cave)
 ##   → mg2 chocolate → platformer → mg3 pipes → platformer → mg4 prices
-##   → platformer → boss → level 2 (meadow, left → right): mg8 memory → mg9 catch
-##   → mg10 pairs → the gate → level 3 (summit, up): mg5 iron plate → mg6 rhythm
-##   → mg7 body signals → LH wave chase → summit → title
+##   → platformer → boss → level 2 (the forest run, runner): mg8 memory → mg9 catch
+##   → mg10 pairs → 2E → level 3 (the jackpot climb, id 5, up with the board)
+##   → climb_top → 3E → title
+## Old levels (developer menu only): the meadow (id 2) → the old summit (id 3:
+## mg5 iron plate → mg6 rhythm → mg7 body signals → LH wave chase → summit → title).
 ## plus the developer menu ("dev").
 
 var state := ""
@@ -77,6 +79,10 @@ func _ready() -> void:
 		var rq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('run') || ''")
 		if rq is String and rq == "hit":
 			_dev_runner_hits.call_deferred()
+		# ?climb=1: the jackpot climb from its start; ?climb=top: just below the top.
+		var cq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('climb') || ''")
+		if cq is String and cq != "":
+			_dev_action.call_deferred("checkpoint5", 5 if cq == "top" else 1)
 
 
 func _dev_boss_win() -> void:
@@ -294,8 +300,14 @@ func _dev_action(name: String, value: int) -> void:
 			Game.water = [0, 0, 30, 55, 80, 100][value]
 			Game.seeds = [0, 0, 3, 6, 8, Game.SEEDS_NEEDED][value]
 			_start_meadow(value, 10)
+		"checkpoint5":
+			# The jackpot climb: 1 start, 2..4 the 1st..3rd jackpot row, 5 near the top.
+			Game.reset_run()
+			Game.has_breathing = true
+			Game.intro_done = true
+			_start_climb(value)
 		"checkpoint3":
-			# Summit checkpoints: 1 start, 2..4 after its minigames, 5 the LH wave.
+			# Old summit checkpoints: 1 start, 2..4 after its minigames, 5 the LH wave.
 			Game.reset_run()
 			Game.has_breathing = true
 			Game.intro_done = true
@@ -389,9 +401,16 @@ func _start_meadow(checkpoint: int, iron: int, fade := true) -> void:
 	await _start_level(2, checkpoint, iron, fade)
 
 
-## (Re)start the summit (level 3): 1 start, 2–4 after its minigames, 5 the LH wave.
+## (Re)start the old summit (id 3): 1 start, 2–4 after its minigames, 5 the LH wave.
 func _start_summit(checkpoint: int, iron: int, fade := true) -> void:
 	await _start_level(3, checkpoint, iron, fade)
+
+
+## (Re)start the jackpot climb (level 3 of the game, id 5): 1 start, 2–4 the
+## 1st–3rd jackpot row, 5 near the top. No iron, no game over.
+func _start_climb(checkpoint := 1, fade := true) -> void:
+	Game.upgrades = {}
+	await _start_level(Game.CLIMB_ID, checkpoint, Game.iron, fade)
 
 
 func _start_level(lvl: int, checkpoint: int, iron: int, fade := true) -> void:
@@ -507,7 +526,7 @@ func _on_trigger(name: String) -> void:
 			# The chase starts when the dialog closes (a retry skips the dialog).
 			if Game.checkpoint < 5:
 				Game.checkpoint = 5
-				_dialog("3F")
+				_dialog("SF")
 		"wave_lost":
 			_set_dim(true)
 			var run2 := _run_id
@@ -523,9 +542,27 @@ func _on_trigger(name: String) -> void:
 			await get_tree().create_timer(2.5).timeout
 			if run3 != _run_id:
 				return
-			_dialog("3G", func():
+			_dialog("SG", func():
 				Game.reset_run()
 				_go_title())
+		"climb_top":
+			# The jackpot climb's top: the jackpot shows (platformer), then 3E, then the title.
+			Game.checkpoint = 5
+			var run5 := _run_id
+			await get_tree().create_timer(2.0).timeout
+			if run5 != _run_id:
+				return
+			_dialog("3E", func():
+				Game.reset_run()
+				_go_title())
+		"jackpot":
+			# A jackpot row in the climb is a checkpoint (2..4 = the 1st..3rd row).
+			var reached := 0
+			if platformer:
+				for e in platformer.level.entities:
+					if e.trigger_type == "jackpot" and e.collected:
+						reached += 1
+			Game.checkpoint = clampi(reached + 1, 2, 4)
 		"end":
 			Game.checkpoint = 5
 			Game.boss_iron = Game.iron
@@ -548,6 +585,9 @@ func _on_trigger(name: String) -> void:
 func _restart_cave() -> void:
 	_panel_box.close()
 	_set_dim(false)
+	if Game.level == Game.CLIMB_ID:
+		_start_climb(maxi(1, mini(Game.checkpoint, 4)))
+		return
 	if Game.level == 3:
 		_start_summit(maxi(1, mini(Game.checkpoint, 4)), 5)
 		return
@@ -740,8 +780,7 @@ func _runner_done() -> void:
 	if runner:
 		Game.water = int(runner.water)
 	_dialog("2E", func():
-		Game.upgrades = {}
-		_start_summit(1, maxi(Game.iron, 8)))
+		_start_climb(1))
 
 
 func _walk_to_meadow() -> void:
@@ -782,13 +821,19 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.shift_pressed and event.physical_keycode in [KEY_2, KEY_3, KEY_4, KEY_5]:
 		# Shift+2…5: jump to the minigame / boss (level 2: LH wave) trigger.
+		if platformer.is_climb():
+			# The climb: its checkpoints (jackpot rows, near the top).
+			platformer._place_at_checkpoint(event.physical_keycode - KEY_0)
+			return
 		platformer.teleport_to_trigger(platformer.progress_kinds()[event.physical_keycode - KEY_2])
 		return
 	match event.physical_keycode:
 		KEY_1, KEY_2, KEY_3, KEY_4:
 			_start_level(Game.level, event.physical_keycode - KEY_0, Game.iron)
 		KEY_5:
-			if Game.level == 3:
+			if Game.level == Game.CLIMB_ID:
+				_start_climb(5)
+			elif Game.level == 3:
 				_start_summit(5, maxi(Game.iron, 5))
 			elif Game.level == 2:
 				Game.water = 100
@@ -797,7 +842,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				_skip_to_boss(maxi(Game.iron, 20))
 		KEY_G:
-			# G: jump to the summit (level 3) with the power-ups.
+			# G: jump to the old summit (id 3) with the power-ups.
 			Game.upgrades = {"jump": true, "dash": true, "double": true}
 			_start_summit(1, maxi(Game.iron, 10))
 		KEY_H:

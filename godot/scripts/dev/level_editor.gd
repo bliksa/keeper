@@ -116,6 +116,12 @@ func is_runner() -> bool:
 	return level_id == ForestRunner.LEVEL_ID
 
 
+## Levels that start at the bottom of their map (the forest run, the climbs): the
+## editor opens scrolled to the bottom and "Add 20 rows" adds them at the top.
+func upward() -> bool:
+	return is_runner() or Game.LEVEL_DIRS.get(level_id, "down") == "up"
+
+
 ## Cell width on screen.
 func cw() -> float:
 	return 96.0 if is_runner() else CELL_W
@@ -149,8 +155,8 @@ func _load_initial() -> void:
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO if horizontal() else ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.scroll_horizontal = 0
 	_resize_grid()
-	if is_runner():
-		# The run starts at the bottom of the map.
+	if upward():
+		# The run / the climb starts at the bottom of the map.
 		_scroll_to_start.call_deferred()
 
 
@@ -158,7 +164,7 @@ func _scroll_to_start() -> void:
 	# The scroll range follows the grid's new size a frame later.
 	for i in 2:
 		await get_tree().process_frame
-	if is_runner():
+	if upward():
 		_scroll.scroll_vertical = int(_scroll.get_v_scroll_bar().max_value)
 
 
@@ -258,7 +264,15 @@ const GROUPS := [
 		["Q", "link", "Minigame: pairs (Q)"],
 		["G", "door-open", "Gate / level end (G)"],
 	]},
-	{"id": "garden", "name": "Summit (level 3)", "items": [
+	{"id": "climb", "name": "Jackpot climb (level 3)", "items": [
+		["!", "arrow-up", "Spring / boost (!): on the platform below it"],
+		["$", "circle", "Chip ($): a small win"],
+		["?", "sparkles", "Slot box (?): always pays out a power-up"],
+		["0", "flag-triangle-right", "Jackpot row (0): a jackpot + checkpoint"],
+		["~", "wind", "Updraft (~)"],
+		["E", "flag", "The top / level end (E)"],
+	]},
+	{"id": "garden", "name": "Summit (old level 3)", "items": [
 		["@", "circle", "Bubble platform (@)"],
 		["%", "circle-dashed", "Popping bubble (%)"],
 		["~", "wind", "Updraft (~)"],
@@ -303,12 +317,15 @@ func _build_sidebar() -> void:
 		if g.id == "events":
 			items.append_array(_letter_items())
 		for it in items:
-			_tool_info[it[0]] = [it[0], it[1], it[2], g.id]
+			# A char in two groups (~, E: climb and old summit) keeps the first; picking
+			# it from the other group's menu still lights that group (_select_tool).
+			if not _tool_info.has(it[0]):
+				_tool_info[it[0]] = [it[0], it[1], it[2], g.id]
 		var b := UiKit.icon_button(ICONS % items[0][1], "", ICON)
 		b.draw.connect(_draw_group_corner.bind(b, items.size() > 1))
 		var menu := PopupMenu.new()
 		_fill_menu(menu, items)
-		menu.id_pressed.connect(func(id): _select_tool(items[id][0]))
+		menu.id_pressed.connect(func(id): _select_tool(items[id][0], g.id))
 		b.add_child(menu)
 		if g.id == "events":
 			_events_items = items
@@ -320,6 +337,16 @@ func _build_sidebar() -> void:
 		_groups[g.id] = {"button": b, "menu": menu, "current": items[0], "name": g.name, "multi": items.size() > 1}
 	_build_header()
 	_select_tool("=")
+
+
+## The tools of a group (the events group with this level's dialog letters).
+func _group_items(id: String) -> Array:
+	if id == "events":
+		return _events_items
+	for g in GROUPS:
+		if g.id == id:
+			return g.items
+	return []
 
 
 ## Dialog letters a–x: in this level, letter c starts its dialog "<level>C".
@@ -386,7 +413,7 @@ func _draw_group_corner(b: Button, multi: bool) -> void:
 func _group_pressed(id: String) -> void:
 	# Select the group's current tool and, if it has more, show them right away.
 	var g: Dictionary = _groups[id]
-	_select_tool(g.current[0])
+	_select_tool(g.current[0], id)
 	if g.multi:
 		_open_group_menu(id)
 
@@ -445,11 +472,16 @@ func _build_header() -> void:
 	_test_button = bs[0]
 
 
-func _select_tool(t: String) -> void:
+## `group`: the group the tool was picked from (a char can be in more than one).
+func _select_tool(t: String, group := "") -> void:
 	if not _tool_info.has(t):
 		return
 	tool = t
 	var info: Array = _tool_info[t]
+	if group != "" and group != info[3] and _groups.has(group):
+		for it in _group_items(group):
+			if it[0] == t:
+				info = [it[0], it[1], it[2], group]
 	for id in _groups:
 		var g: Dictionary = _groups[id]
 		var on: bool = id == info[3]
@@ -549,6 +581,23 @@ func _draw_grid() -> void:
 					ci.draw_rect(cell.grow(-1), Color("#581c87", 0.8))
 					ci.draw_rect(cell.grow(-1), Color("#c084fc"), false, 1.0)
 					Draw.text_center(ci, font, mid, ch, 12, Color.WHITE)
+				"0":
+					# Jackpot row (the climb): a gold band across the row.
+					ci.draw_rect(Rect2(0, cell.position.y + cell.size.y / 2 - 2, w, 4), Color("#fbbf24", 0.35))
+					ci.draw_rect(cell.grow(-1), Color("#78350f", 0.9))
+					ci.draw_rect(cell.grow(-1), Color("#fbbf24"), false, 1.0)
+					Draw.text_center(ci, font, mid, "0", 12, Color("#fef3c7"))
+				"!":
+					ci.draw_rect(Rect2(cell.position.x + 6, cell.end.y - 8, cell.size.x - 12, 6), Color("#fbbf24"))
+					for k in 3:
+						var yy := cell.end.y - 12 - k * 6
+						ci.draw_line(Vector2(mid.x - 8, yy + 2), Vector2(mid.x + 8, yy - 2), Color("#fde68a"), 2.0)
+				"$":
+					ci.draw_circle(mid, 10, Color("#e11d48"))
+					ci.draw_circle(mid, 5, Color.WHITE)
+				"?":
+					ci.draw_rect(Rect2(mid - Vector2(12, 12), Vector2(24, 24)), Color("#f59e0b"))
+					Draw.text_center(ci, font, mid, "?", 14, Color("#78350f"))
 				"@":
 					ci.draw_circle(mid, 13, Color("#f9a8d4", 0.5))
 					ci.draw_arc(mid, 13, 0, TAU, 24, Color("#fbcfe8"), 2.0, true)
@@ -594,8 +643,8 @@ func _draw_grid() -> void:
 			ci.draw_line(Vector2(maxf(x, 0), level_h + (maxf(x, 0) - x)), Vector2(minf(x + END_PAD, w), level_h + END_PAD - (x + END_PAD - minf(x + END_PAD, w))), Color(1, 1, 1, 0.04), 2.0)
 			x += 18
 		ci.draw_line(Vector2(0, level_h), Vector2(w, level_h), frame_col, 3.0)
-		if is_runner():
-			Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "START  ·  she runs upwards  ·  %d rows" % rows.size(), 13, Color(frame_col, 0.9))
+		if upward():
+			Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "START  ·  she %s upwards  ·  %d rows" % ["runs" if is_runner() else "climbs", rows.size()], 13, Color(frame_col, 0.9))
 			Draw.text_center(ci, Text.font, Vector2(w / 2, level_h + END_PAD / 2 + 14), "“Add 20 rows” adds them at the top (the end)", 11, Color("#64748b"))
 			return
 		Draw.text_center(ci, font, Vector2(w / 2, level_h + END_PAD / 2 - 8), "END OF LEVEL  ·  %d rows" % rows.size(), 13, Color(frame_col, 0.9))
@@ -843,8 +892,8 @@ func _add_rows() -> void:
 		for i in rows.size():
 			var tail := "#" if rows[i].ends_with("#") else " "
 			rows[i] = rows[i] + tail.repeat(20)
-	elif is_runner():
-		# The end of the run is at the top.
+	elif upward():
+		# The end of the run / the climb is at the top.
 		for i in 20:
 			rows.insert(0, " ".repeat(cols()))
 	else:
@@ -1022,7 +1071,7 @@ func _start_runner_test() -> void:
 		_test_run.after_minigame.call_deferred())
 	_test_run.show_dialog.connect(func(id): _toast_msg("Dialog: " + id))
 	_test_run.finished.connect(func():
-		_toast_msg("The sun is whole: on to the summit!")
+		_toast_msg("The sun is whole: on to the jackpot climb!")
 		stop_test.call_deferred())
 	var layer := CanvasLayer.new()
 	layer.layer = 30
@@ -1064,6 +1113,14 @@ func stop_test() -> void:
 
 func _on_test_trigger(name: String) -> void:
 	if name in ["white_fade", "first_enemy", "dialog_a", "dialog_g"]:
+		return
+	if name == "climb_top":
+		_toast_msg("JACKPOT! The top — restarting test")
+		stop_test()
+		start_test.call_deferred()
+		return
+	if name == "jackpot":
+		_toast_msg("JACKPOT row (checkpoint)")
 		return
 	if name == "wave_lost":
 		_toast_msg("The LH wave caught you — restarting test")

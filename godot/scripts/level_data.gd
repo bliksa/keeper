@@ -29,7 +29,13 @@ extends RefCounted
 ##   N      distraction (floating "notification": slows the player on touch)
 ##   6 7 8  minigame trigger (6 iron plate, 7 rhythm, 8 body signals) — whole row
 ##   9      the LH wave starts rising — whole row
-##   E      summit / level end — whole row
+##   E      summit / level end — whole row (in the jackpot climb: the top, trigger "climb_top")
+## The jackpot climb (level 3 of the game, level_id 5, climbed upwards with the board) adds:
+##   !      spring / boost (sits on the platform cell below it, launches her up)
+##   $      chip (a casino chip: a small win)
+##   ?      slot box (spins the reels on the board, always pays out a power-up)
+##   0      jackpot row (a JACKPOT and a checkpoint) — whole row
+##   (~ updraft and E the top are shared with the old summit)
 
 const COLS := 25
 const ROW_H := 120.0
@@ -44,12 +50,16 @@ const PALETTE := {
 	"T": "Teleport to top", "I": "Hint text",
 	"@": "Bubble platform", "%": "Popping bubble", "~": "Updraft", "N": "Distraction",
 	"6": "Minigame: iron plate", "7": "Minigame: rhythm", "8": "Minigame: body signals",
-	"9": "LH wave", "E": "Summit",
+	"9": "LH wave", "E": "Summit / top",
+	"!": "Spring (boost)", "$": "Chip", "?": "Slot box", "0": "Jackpot row",
 	"#": "River", "Y": "Light seed", "K": "Minigame: memory", "M": "Minigame: catch", "Q": "Minigame: pairs", "G": "Gate",
 }
 
 ## Trigger kinds that mark progress, in level order (checkpoints 2..5).
-const PROGRESS := {1: ["mg2", "mg3", "mg4", "end"], 2: ["mg8", "mg9", "mg10", "gate"], 3: ["mg5", "mg6", "mg7", "wave"]}
+## Repeated kinds (the climb's jackpot rows) mean the 1st, 2nd, … row of that kind
+## in level order (in an upward level: counted from the bottom).
+const PROGRESS := {1: ["mg2", "mg3", "mg4", "end"], 2: ["mg8", "mg9", "mg10", "gate"], 3: ["mg5", "mg6", "mg7", "wave"],
+	5: ["jackpot", "jackpot", "jackpot", "climb_top"]}
 
 
 class Plat:
@@ -70,12 +80,12 @@ class Plat:
 
 class Ent:
 	var id: int
-	var type: String # iron | spike | enemy | trigger | text
+	var type: String # iron | spike | enemy | trigger | text | updraft | seed | spring | chip | slot
 	var x: float
 	var y: float
 	var w: float
 	var h: float
-	var trigger_type := "" # dialog | first_cramp | teleport | mg2..mg10 | end | wave | summit | gate
+	var trigger_type := "" # dialog | first_cramp | teleport | mg2..mg10 | end | wave | summit | gate | jackpot | climb_top
 	var dialog_id := ""
 	var target := Vector2.ZERO
 	var text := ""
@@ -185,14 +195,21 @@ static func build(level_rows: PackedStringArray, rh := ROW_H, horizontal := fals
 					L.spawn = Vector2(x + 5, y - 60)
 				"~":
 					e = _ent("updraft", x, y, CELL_W, rh)
+				"!":
+					# A spring pad standing on the platform cell below it.
+					e = _ent("spring", x + CELL_W / 2 - 18, y + rh - 22, 36, 22)
+				"$":
+					e = _ent("chip", x + CELL_W / 2 - 12, y + rh / 2 - 12, 24, 24)
+				"?":
+					e = _ent("slot", x + CELL_W / 2 - 20, y + rh - 70, 40, 40)
 				"#":
 					if L.water_top < 0 or y < L.water_top:
 						L.water_top = y
 				"Y":
 					e = _ent("seed", x + CELL_W / 2 - 14, y + rh / 2 - 14, 28, 28)
 					seeds.append(e)
-				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E", "K", "M", "Q", "G":
-					var tkind: String = {"1": "mg1", "2": "mg2", "3": "mg3", "4": "mg4", "5": "end", "B": "end",
+				"0", "1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E", "K", "M", "Q", "G":
+					var tkind: String = {"0": "jackpot", "1": "mg1", "2": "mg2", "3": "mg3", "4": "mg4", "5": "end", "B": "end",
 						"6": "mg5", "7": "mg6", "8": "mg7", "9": "wave", "E": "summit",
 						"K": "mg8", "M": "mg9", "Q": "mg10", "G": "gate"}[ch]
 					if horizontal:

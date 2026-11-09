@@ -16,6 +16,9 @@ extends Node2D
 ## instead of down, bubble platforms, updrafts, distractions instead of cramps,
 ## power-ups from its minigames (jump, dash, double) and the LH wave chase that
 ## replaces the boss (reach the summit before the wave catches you).
+## Level 5 (the jackpot climb, level 3 of the game) is climbed up with the board at the
+## bottom edge rising behind her (ticker, slot reels): springs, chips, slot-box power-ups,
+## a win counter with a multiplier and jackpots; caught by the board she sits, no death.
 
 signal trigger(name: String)
 signal boss_defeated
@@ -66,6 +69,36 @@ const WALL_KICK := 10.0
 const WALL_BOUNCE := 0.85
 const WAVE_START_SPEED := 0.55
 const WAVE_SPRINT := 1.2
+## The jackpot climb (level 5): the board at the bottom edge (same rect as a dialog box)
+## rises on its own (px per frame at 60 fps, accelerating per second) and catches her.
+const BOARD_H := 150.0
+const RISE_START := 0.7
+const RISE_ACCEL := 0.04
+const RISE_MAX := 2.6
+## After she jumps off the board it waits this long (s) before rising again.
+const RISE_GRACE := 1.0
+## Following her up keeps at least this much (px) above her head (boosts, the rocket).
+const CLIMB_TOP_MARGIN := 70.0
+## Spring launch: v² / (2 · GRAVITY) ≈ 550 px; the rocket ≈ 900 px.
+const SPRING_FORCE := 21.0
+const ROCKET_FORCE := 26.8
+## Timed power-ups (s), the magnet's reach (px), the slot reels (s until the win).
+const POWER_TIME := 12.0
+const ROCKET_TIME := 1.4
+const MAGNET_RANGE := 260.0
+const SLOT_SPIN := 1.2
+const SLOT_STOPS := [0.5, 0.85, 1.2]
+const POWERS := ["super_jump", "triple", "magnet", "rocket"]
+## The board's news ticker: speed (px/s), font size, the text area on the board.
+const TICKER_SPEED := 90.0
+const TICKER_FS := 22
+const TICKER_LEFT := 158.0
+const TICKER_GAP := 70.0
+## The multiplier grows every MULT_FLOORS floors climbed without being caught (max MULT_MAX);
+## every STREAK_JACKPOT floors of one streak is a JACKPOT.
+const MULT_FLOORS := 5
+const MULT_MAX := 10
+const STREAK_JACKPOT := 25
 
 
 ## Updated by Main.
@@ -117,6 +150,40 @@ var level_id := 1
 var wave := {"active": false, "y": 0.0, "speed": 0.0, "lost": false, "won": false}
 ## Seconds since the summit was reached (egg release animation).
 var summit_timer := 0.0
+## The jackpot climb (level 5): reached the top (E → "climb_top").
+var climb_won := false
+## The board: how fast it rises now (px/frame), the wait before it rises again, and
+## whether she is standing / sitting on it (caught).
+var rise := RISE_START
+var rise_wait := RISE_GRACE
+var on_board := false
+## Feet (world y) on the last platform she stood on: following her up never lifts the
+## board past it (only the board's own rise does), so a missed jump or the way down
+## from a boost still lands on a platform.
+var last_stand_y := 0.0
+## Winnings (chips), the multiplier (x1..x10) and the streak it comes from (floors).
+var climb_win := 0
+var climb_mult := 1
+var streak_floor0 := 0
+var streak_top := 0
+var _streak_jackpots := 0
+var jackpots := 0
+## Timed power-ups from the slot boxes: name → seconds left (not Game.upgrades).
+var climb_power := {}
+var _power_bag: Array = []
+## The reels on the board: {t, power, stops, paid}; empty = idle.
+var slot_spin := {}
+## Big centre banner ({text, t}), floating number pops in the world.
+var banner := {}
+var pops: Array[Dictionary] = []
+## A spring / rocket flight: letting go of jump doesn't cut it short.
+var boost_t := 0.0
+var _chip_note := 0
+## The news ticker: segments on the board ({text, x, w, event}) and event lines waiting.
+var ticker: Array[Dictionary] = []
+var ticker_queue: Array[String] = []
+var _tick_next := 0
+var _rest_ms := -1e9
 ## Level 3: touching a side wall in the air (wall jump), combo of higher landings.
 var on_wall := false
 var combo := 0
@@ -166,6 +233,15 @@ func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
 	level_w = level.width() if level.horizontal else W
 	level_id = lvl
 	last_landing_y = level_h
+	if is_climb():
+		# The jackpot climb's E row is its top, not the old summit.
+		for e in level.entities:
+			if e.trigger_type == "summit":
+				e.trigger_type = "climb_top"
+			elif e.trigger_type == "dialog":
+				# Dialog letters span their whole row here: she flies past them.
+				e.x = 0
+				e.w = W
 	for e in level.entities:
 		if e.trigger_type == "gate":
 			e.base_x = e.x
@@ -177,10 +253,25 @@ func setup(rows: PackedStringArray, checkpoint: int, lvl := 1) -> void:
 		# Icy Tower: the LH wave rises from the very start (slowly at first).
 		start_wave(WAVE_START_SPEED, H)
 		last_floor = floor_of(p.y + p.height)
+	if is_climb():
+		ticker.clear()
+		ticker_queue.clear()
+		_update_ticker(0.0)
 
 
 func is_summit() -> bool:
 	return level_id == 3
+
+
+## The jackpot climb (level 3 of the game, id Game.CLIMB_ID): up with the board.
+func is_climb() -> bool:
+	return level_id == Game.CLIMB_ID
+
+
+## Levels climbed upwards (the old summit and the jackpot climb): camera, background
+## anchor and checkpoint search look below.
+func is_up() -> bool:
+	return is_summit() or is_climb()
 
 
 func is_meadow() -> bool:
@@ -193,8 +284,8 @@ func bg_origin() -> Vector2:
 
 
 static func bg_origin_for(id: int, lh: float) -> Vector2:
-	# The summit is climbed from the bottom.
-	return Vector2(0, maxf(0, lh - H)) if id == 3 else Vector2.ZERO
+	# The summit and the jackpot climb are climbed from the bottom.
+	return Vector2(0, maxf(0, lh - H)) if id in [3, Game.CLIMB_ID] else Vector2.ZERO
 
 
 ## Snappier controls, coyote time, jump buffer and squash (levels 2 and 3).
@@ -214,7 +305,7 @@ func water_unlock(name: String) -> bool:
 
 
 func _max_jumps() -> int:
-	return 2
+	return 3 if is_climb() and climb_power.has("triple") else 2
 
 
 func thread_range() -> float:
@@ -268,26 +359,38 @@ func _place_at_checkpoint(cp: int) -> void:
 		p.x = s.x
 		p.y = s.y
 		camera_y = maxf(0, s.y - H / 2)
+		if is_climb():
+			_settle_on_ground()
+			_board_camera()
 		if level.horizontal:
 			camera_y = 0
 			camera_x = clampf(s.x - W * 0.4, 0, maxf(0, level_w - W))
 			last_ground = s
 		return
-	if cp >= 5 and not is_summit() and not level.horizontal:
+	if cp >= 5 and not is_up() and not level.horizontal:
 		return
 	var kinds := progress_kinds()
-	var want: String = kinds[mini(cp, 5) - 2]
+	var idx := mini(cp, 5) - 2
+	var want: String = kinds[idx]
+	# A repeated kind (the climb's jackpot rows): the n-th of them in level order.
+	var nth := kinds.slice(0, idx).count(want)
+	var found: Array[LevelData.Ent] = []
 	for e in level.entities:
 		if e.type == "trigger" and e.trigger_type == want:
-			# The wave / gate checkpoints re-arm; minigame checkpoints are done.
-			e.collected = not want in ["wave", "gate"]
-			_stand_at_trigger(e)
-			# Earlier triggers are done too (above in the cave, below in the summit, left in the meadow).
-			for e2 in level.entities:
-				var earlier: bool = e2.x < e.x if level.horizontal else (e2.y > e.y if is_summit() else e2.y < e.y)
-				if e2.type == "trigger" and earlier and e2.trigger_type in kinds.slice(0, 3):
-					e2.collected = true
-			return
+			found.append(e)
+	found.sort_custom(func(a: LevelData.Ent, b: LevelData.Ent) -> bool:
+		return a.x < b.x if level.horizontal else (a.y > b.y if is_up() else a.y < b.y))
+	if found.is_empty():
+		return
+	var e: LevelData.Ent = found[mini(nth, found.size() - 1)]
+	# The wave / gate / top checkpoints re-arm; minigame checkpoints are done.
+	e.collected = not want in ["wave", "gate", "climb_top"]
+	_stand_at_trigger(e)
+	# Earlier triggers are done too (above in the cave, below in upward levels, left in the meadow).
+	for e2 in level.entities:
+		var earlier: bool = e2.x < e.x if level.horizontal else (e2.y > e.y if is_up() else e2.y < e.y)
+		if e2.type == "trigger" and earlier and e2.trigger_type in kinds.slice(0, 3):
+			e2.collected = true
 
 
 func _reset_boss() -> void:
@@ -399,7 +502,7 @@ func teleport_to_trigger(kind: String) -> void:
 	for e in level.entities:
 		if e.type == "trigger" and e.trigger_type == kind:
 			e.collected = false
-			if is_summit() or level.horizontal:
+			if is_up() or level.horizontal:
 				_stand_at_trigger(e)
 			else:
 				p.x = W / 2 - 15
@@ -444,19 +547,27 @@ func _stand_at_trigger(e: LevelData.Ent) -> void:
 		camera_y = 0
 		last_ground = Vector2(p.x, p.y)
 		return
-	if is_summit():
+	if is_up():
+		# The climb's top: a few rows below it, so she isn't on the goal already.
+		var below := 340.0 if e.trigger_type == "climb_top" else 99.0
 		var best: LevelData.Plat = null
 		for pl in level.platforms:
-			if pl.base_y >= e.y + 99 and pl.x <= W / 2 + 60 and pl.x + pl.w >= W / 2 - 60 and (best == null or pl.base_y < best.base_y):
+			# The old summit: the row's own platform near the middle; the climb: the
+			# nearest platform below, wherever it is.
+			var near_mid := pl.x <= W / 2 + 60 and pl.x + pl.w >= W / 2 - 60
+			if pl.base_y >= e.y + below and (near_mid or is_climb()) and (best == null or pl.base_y < best.base_y):
 				best = pl
 		if best:
 			p.x = clampf(W / 2 - 15, best.x + 4, best.x + best.w - p.width - 4)
 			p.y = best.base_y - p.height
 	camera_y = maxf(0, p.y - H / 2)
+	if is_climb():
+		_board_camera()
 
 
 func _can_jump_in_dialog() -> bool:
-	return not dialog_open or active_dialog_id in ["1A", "1B", "3A", "MA"]
+	# The climb's dialogs sit on the board: she keeps jumping while they talk.
+	return not dialog_open or active_dialog_id in ["1A", "1B", "3A", "MA", "SA"] or (is_climb() and active_dialog_id.begins_with("3"))
 
 
 ## Jump impulse with the level-2 power-ups (jump: +15 %, double: second jump +20 %).
@@ -466,6 +577,8 @@ func _jump_force() -> float:
 		f *= 1.15
 	if has_upgrade("double") and p.jumps_left == 1:
 		f *= 1.2
+	if is_climb() and climb_power.has("super_jump"):
+		f *= 1.3
 	if is_summit():
 		# Icy Tower: a running start turns into height.
 		var run := clampf(absf(p.vx) / (MAX_SPEED * SUMMIT_SPEED), 0, 1)
@@ -506,7 +619,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			begin_focus()
 		elif event.is_action_released("focus"):
 			end_focus()
-	if event.is_action_released("jump") and feel() and p.vy < -4 and not in_water:
+	if event.is_action_released("jump") and feel() and p.vy < -4 and not in_water and boost_t <= 0:
 		# Variable jump height: let go early for a short hop.
 		p.vy *= 0.55
 	if event.is_action_pressed("jump") and not event.is_echo():
@@ -536,7 +649,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			p.slow_timer = 0
 			Audio.play_sfx("breathoff.wav", 0.4)
 	elif event.is_action_pressed("breathe") and not event.is_echo():
-		if dialog_open or (is_summit() and has_upgrade("dash")):
+		if dialog_open or is_climb() or (is_summit() and has_upgrade("dash")):
 			return
 		# Toggle the recharge sequence when out of breath charges.
 		if p.breath_charges == 0 and Game.has_breathing and p.breathing_cooldown <= 0:
@@ -583,6 +696,10 @@ func _hurt(from_x: float) -> void:
 	p.vy = -8
 	p.vx = -10.0 if p.x < from_x else 10.0
 	p.is_grounded = false
+	if is_climb():
+		# No losses in the climb: just a knock.
+		Audio.play_sfx("au%d.wav" % randi_range(1, 5), 0.5)
+		return
 	var lose := randi_range(3, 5)
 	var lost := mini(Game.iron, lose)
 	var left := maxi(0, Game.iron - lose)
@@ -670,7 +787,7 @@ func _update(dt: float) -> void:
 	var down := Input.is_action_pressed("move_down")
 	# Shift is the level's one ability: on the summit, once the dash is earned,
 	# it dashes instead of breathing.
-	var breathe := Input.is_action_pressed("breathe") and not (is_summit() and has_upgrade("dash"))
+	var breathe := Input.is_action_pressed("breathe") and not (is_summit() and has_upgrade("dash")) and not is_climb()
 	var breathe_pressed := breathe and not _prev_breathe
 	_prev_breathe = breathe
 
@@ -808,6 +925,8 @@ func _update(dt: float) -> void:
 			grounded = true
 			p.jumps_left = _max_jumps()
 			stood_on = pl
+	if stood_on != null:
+		last_stand_y = stood_on.y
 	for pl in level.platforms:
 		if pl.kind != "pop" or pl.regrow > 0:
 			continue
@@ -828,14 +947,29 @@ func _update(dt: float) -> void:
 				grounded = true
 				p.jumps_left = 2
 	var on_dialog_floor := false
-	if (dialog_open or boss.lost) and not level.horizontal:
-		var fy := camera_y + H - 150
+	# The top of the dialog box (and in the climb the board, always) is a floor.
+	if (dialog_open or boss.lost or is_climb()) and not level.horizontal:
+		var fy := camera_y + H - BOARD_H
 		if p.vy >= 0 and prev_bottom <= fy + 20 and p.y + p.height >= fy - 10:
 			p.y = fy - p.height
 			p.vy = 0
 			grounded = true
 			on_dialog_floor = true
-			p.jumps_left = 2
+			p.jumps_left = _max_jumps()
+		elif is_climb() and p.y + p.height > fy:
+			# The rising board pushes her up; she never ends up below it.
+			p.y = fy - p.height
+			if p.vy >= 0:
+				p.vy = 0
+				grounded = true
+				on_dialog_floor = true
+				p.jumps_left = _max_jumps()
+	if is_climb():
+		# Also while a dialog talks (she can jump in the climb's dialogs): a landing on
+		# the board is a catch, or it would slip past once the dialog closes.
+		if on_dialog_floor and not on_board and not climb_won:
+			_caught()
+		on_board = on_dialog_floor
 	p.is_grounded = grounded
 	if feel() and p.was_grounded and not grounded and not p.jumped_from_ground and p.vy >= 0 and not in_water:
 		# Walked off an edge: a moment of coyote time keeps the ground jump.
@@ -878,7 +1012,25 @@ func _update(dt: float) -> void:
 	if level.horizontal:
 		_update_meadow(dt, d60)
 	# --- camera (the summit is climbed, so keep more of the screen above the player)
-	var target := p.y - (H / 2 if is_summit() else H / 3)
+	if is_climb():
+		_climb_camera(dt, d60)
+	else:
+		_camera(dt, d60, down)
+
+	_update_entities(dt, d60)
+	_update_particles(dt, d60)
+	if is_climb():
+		_update_climb(dt, d60)
+	if boss.active:
+		_update_boss(dt, d60)
+	if wave.active:
+		_update_wave(dt, d60)
+	if summit_timer > 0:
+		summit_timer += dt
+
+
+func _camera(dt: float, d60: float, down: bool) -> void:
+	var target := p.y - (H / 2 if is_up() else H / 3)
 	if down and p.is_grounded and not p.is_sitting and absf(p.vx) < 0.5 and not p.is_recharging:
 		p.look_down_timer += dt
 	else:
@@ -905,15 +1057,6 @@ func _update(dt: float) -> void:
 		camera_y = 0
 		var tx := clampf(p.x - W * 0.4, 0, maxf(0, level_w - W))
 		camera_x += (tx - camera_x) * (1.0 - pow(0.88, d60))
-
-	_update_entities(dt, d60)
-	_update_particles(dt, d60)
-	if boss.active:
-		_update_boss(dt, d60)
-	if wave.active:
-		_update_wave(dt, d60)
-	if summit_timer > 0:
-		summit_timer += dt
 
 
 func _update_recharge(dt: float, up: bool, down: bool) -> void:
@@ -1019,10 +1162,30 @@ func _update_entities(dt: float, d60: float) -> void:
 			"trigger":
 				if touching and active:
 					_hit_trigger(e)
+			"spring":
+				if e.lunge_timer > 0:
+					e.lunge_timer -= dt
+				elif touching and p.vy >= 0 and not p.is_dead:
+					_spring(e)
+			"chip":
+				if not touching and climb_power.has("magnet"):
+					# The magnet pulls chips in.
+					var to := p.center() - Vector2(e.x + e.w / 2, e.y + e.h / 2)
+					var d := to.length()
+					if d < MAGNET_RANGE and d > 1:
+						var step := minf(d, (5.0 + (MAGNET_RANGE - d) * 0.06) * d60)
+						e.x += to.x / d * step
+						e.y += to.y / d * step
+						touching = prect.intersects(e.rect())
+				if touching:
+					_take_chip(e)
+			"slot":
+				if touching and not p.is_dead:
+					_start_slot(e)
 			"updraft":
 				if touching and not p.is_dead and not p.is_recharging and p.held_by_cramp == -1:
 					p.vy = maxf(p.vy - 1.1 * d60, -9.0)
-					p.jumps_left = 2
+					p.jumps_left = _max_jumps()
 					p.is_grounded = false
 
 
@@ -1114,7 +1277,7 @@ func _update_enemy(e: LevelData.Ent, dt: float, d60: float, touching: bool) -> v
 				Audio.play_sfx("krcoff.wav", 0.5)
 		return
 	if touching and not p.is_dead and p.hit_timer <= 0 and p.invuln_timer <= 0 and not e.defeated and Game.iron > 0 and not dialog_open and p.is_breathing <= 0:
-		if Game.has_breathing:
+		if Game.has_breathing and not is_climb():
 			if p.held_by_cramp == -1:
 				# A cramp grabs the player: breathe (▲■▼) to get free.
 				p.held_by_cramp = e.id
@@ -1144,8 +1307,20 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 	if e.trigger_type == "dialog":
 		trigger.emit("dialog_" + e.dialog_id)
 		return
+	if e.trigger_type == "jackpot":
+		# A jackpot row (the climb): the JACKPOT and a checkpoint; she keeps flying.
+		_jackpot()
+		trigger.emit("jackpot")
+		return
 	p.vx = 0
 	p.vy = 0
+	if e.trigger_type == "climb_top":
+		# The top: the egg is released — the biggest win of all.
+		climb_won = true
+		summit_timer = 0.01
+		climb_power.clear()
+		_jackpot(1000)
+		_coin_shower(90)
 	if e.trigger_type.begins_with("mg"):
 		# A minigame opens: put Kyra on the ground so she isn't frozen mid-jump.
 		_settle_on_ground()
@@ -1185,9 +1360,12 @@ func _update_particles(dt: float, d60: float) -> void:
 		q.x += q.vx * d60
 		q.y += q.vy * d60
 		q.rot += q.rot_speed * d60
-		if q.type in ["boss_body_part", "dash", "pollen", "splash", "sparkle"]:
+		if q.type in ["boss_body_part", "dash", "pollen", "splash", "sparkle", "glint"]:
 			q.vx *= pow(0.95, d60)
 			q.vy *= pow(0.95, d60)
+		elif q.type == "coin":
+			# Coins drift down slowly through the whole screen.
+			q.vy = minf(q.vy + GRAVITY * 0.2 * d60, 6.0)
 		else:
 			q.vy += GRAVITY * d60
 		if q.has("life"):
@@ -1447,8 +1625,10 @@ func _draw_bg() -> void:
 	var cfg := background if not background.is_empty() else BackgroundData.for_level(level_id)
 	ci.draw_rect(Rect2(0, 0, W, H), Color.from_string(cfg.get("base", "#101018"), Color("#101018")))
 	if cfg.get("procedural", false):
-		if is_summit():
+		if is_up():
 			_draw_garden_bg()
+			if is_climb():
+				_draw_casino_lights()
 		elif is_meadow():
 			_draw_meadow_bg()
 	BackgroundData.draw_layers(ci, cfg, Vector2(camera_x, camera_y), Vector2(W, H), level.horizontal, bg_origin())
@@ -1480,6 +1660,8 @@ func _draw_world() -> void:
 			_draw_bubble(ci, pl, t)
 		elif is_summit():
 			_draw_garden_platform(ci, pl, t)
+		elif is_climb():
+			_draw_climb_platform(ci, pl, t)
 		elif is_meadow():
 			_draw_meadow_platform(ci, pl, t)
 		else:
@@ -1508,12 +1690,20 @@ func _draw_world() -> void:
 					_draw_cramp(ci, e, t)
 			"updraft":
 				_draw_updraft(ci, e, t)
+			"spring":
+				_draw_spring(ci, e, t)
+			"chip":
+				_draw_chip(ci, e, t)
+			"slot":
+				_draw_slot(ci, e, t)
 			"trigger":
 				if e.trigger_type == "teleport":
 					ci.draw_rect(e.rect(), Color(190 / 255.0, 24 / 255.0, 93 / 255.0, 0.1))
 				elif e.trigger_type == "gate":
 					_draw_gate(ci, e, t)
-				elif e.trigger_type in ["mg2", "mg3", "mg4", "end", "mg5", "mg6", "mg7", "wave", "summit", "mg8", "mg9", "mg10"]:
+				elif e.trigger_type == "jackpot":
+					_draw_jackpot_row(ci, e, t)
+				elif e.trigger_type in ["mg2", "mg3", "mg4", "end", "mg5", "mg6", "mg7", "wave", "summit", "climb_top", "mg8", "mg9", "mg10"]:
 					_draw_orb(ci, e, t)
 			"text":
 				ci.draw_string(_font, Vector2(e.x, e.y + e.h / 2 + 8), Text.plain(Text.t(e.text)), HORIZONTAL_ALIGNMENT_LEFT, -1, 24, Color(1, 1, 1, 0.8))
@@ -1530,6 +1720,13 @@ func _draw_world() -> void:
 		_draw_meadow_front(ci, t, left, right)
 	for q in particles:
 		_draw_particle(ci, q)
+	for pp in pops:
+		var pk: float = clampf(1.0 - pp.t / pp.life, 0, 1)
+		var pos := Vector2(pp.x, pp.y)
+		var fs: int = pp.size
+		var tw := _font.get_string_size(pp.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		ci.draw_string_outline(_font, pos - Vector2(tw / 2, 0), pp.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 5, Color(0.3, 0.12, 0.02, pk))
+		ci.draw_string(_font, pos - Vector2(tw / 2, 0), pp.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(pp.col, pk))
 	if boss.defeated_timer > 1.5 and not hide_egg:
 		_draw_egg(ci, t)
 	if wave.active or wave.lost:
@@ -1586,7 +1783,7 @@ func _draw_orb(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var glow := Color(95 / 255.0, 155 / 255.0, 153 / 255.0, 0.6)
 	var core := Color("#c7e1e0")
 	var dots := Color("#9fcbcb")
-	if e.trigger_type in ["wave", "summit"]:
+	if e.trigger_type in ["wave", "summit", "climb_top"]:
 		glow = Color(250 / 255.0, 204 / 255.0, 21 / 255.0, 0.55)
 		core = Color("#fef3c7")
 		dots = Color("#fde68a")
@@ -1676,6 +1873,24 @@ func _draw_particle(ci: CanvasItem, q: Dictionary) -> void:
 		"sparkle":
 			var a: float = q.life / q.max_life
 			ci.draw_circle(pos, 1.5 + 3 * a, Color(1, 0.9, 0.5, 0.9 * a))
+		"coin":
+			var a: float = clampf(q.life / 0.5, 0, 1)
+			ci.draw_set_transform(pos, 0, Vector2(maxf(0.15, absf(cos(q.rot))), 1))
+			ci.draw_circle(Vector2.ZERO, 9, Color(0.85, 0.55, 0.05, a))
+			ci.draw_circle(Vector2.ZERO, 7, Color(1, 0.82, 0.2, a))
+			ci.draw_circle(Vector2(-2, -2), 2.5, Color(1, 1, 0.85, a))
+			ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+		"glint":
+			# A four-pointed gold star.
+			var a: float = q.life / q.max_life
+			var r := 3.0 + 7.0 * a
+			var col := Color(1, 0.93, 0.55, a)
+			ci.draw_line(pos - Vector2(r, 0), pos + Vector2(r, 0), col, 2.0)
+			ci.draw_line(pos - Vector2(0, r), pos + Vector2(0, r), col, 2.0)
+			ci.draw_circle(pos, 2.0, Color(1, 1, 0.9, a))
+		"flame":
+			var a: float = q.life / q.max_life
+			ci.draw_circle(pos, 3 + 7 * a, Color(1, 0.45 + 0.4 * a, 0.1, 0.8 * a))
 
 
 func _draw_egg(ci: CanvasItem, t: float) -> void:
@@ -2301,3 +2516,359 @@ func _draw_corridor(ci: CanvasItem, t: float) -> void:
 	# The rough edge of the opening.
 	ci.draw_rect(r, Color("#3b0a0a"), false, 6.0)
 	Draw.radial_glow(ci, Vector2(W / 2, hz), 60 * k, Color(1, 1, 0.9, 0.7 * k))
+
+
+# --- the jackpot climb (level 5): placeholder art (the gameplay pass replaces it) ---
+
+## Spring / boost pad: a gold coil on the platform below it.
+func _draw_spring(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var gold := Color("#fbbf24")
+	var base := Rect2(e.x, e.y + e.h - 6, e.w, 6)
+	ci.draw_rect(base, Color("#92400e"))
+	var squeeze := 1.0 + sin(t / 180.0 + e.id) * 0.08
+	var top_y := e.y + e.h - 6 - (e.h - 10) * squeeze
+	for i in 3:
+		var yy := lerpf(e.y + e.h - 8, top_y + 4, (i + 0.5) / 3.0)
+		ci.draw_line(Vector2(e.x + 6, yy + 3), Vector2(e.x + e.w - 6, yy - 3), gold, 3)
+	ci.draw_rect(Rect2(e.x - 2, top_y, e.w + 4, 6), gold)
+
+
+## Casino chip: a coloured disc with white notches, spinning flat.
+func _draw_chip(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 400.0 + e.id) * 3)
+	var sx := maxf(0.15, absf(cos(t / 350.0 + e.id * 0.7)))
+	var cols := [Color("#e11d48"), Color("#2563eb"), Color("#16a34a"), Color("#9333ea")]
+	var col: Color = cols[e.id % cols.size()]
+	ci.draw_set_transform(c, 0, Vector2(sx, 1))
+	ci.draw_circle(Vector2.ZERO, e.w / 2, col)
+	for i in 6:
+		var a := i * TAU / 6
+		ci.draw_circle(Vector2(cos(a), sin(a)) * (e.w / 2 - 3), 2.5, Color.WHITE)
+	ci.draw_circle(Vector2.ZERO, e.w / 4, Color(1, 1, 1, 0.85))
+	ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+
+
+## Slot box: a bobbing golden box with "?".
+func _draw_slot(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var r := Rect2(e.x, e.y + sin(t / 300.0 + e.id) * 4, e.w, e.h)
+	Draw.radial_glow(ci, r.get_center(), e.w, Color(250 / 255.0, 204 / 255.0, 21 / 255.0, 0.35))
+	ci.draw_rect(r, Color("#f59e0b"))
+	ci.draw_rect(r.grow(-3), Color("#fbbf24"))
+	ci.draw_rect(r, Color("#78350f"), false, 2)
+	Draw.text_center(ci, _font, r.get_center() + Vector2(0, 9), "?", 26, Color("#78350f"))
+
+
+## Jackpot row: a gold line across the level.
+func _draw_jackpot_row(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var y := e.y + e.h / 2
+	var a := 0.35 if e.collected else 0.6 + sin(t / 200.0) * 0.25
+	ci.draw_line(Vector2(0, y), Vector2(W, y), Color(250 / 255.0, 204 / 255.0, 21 / 255.0, a), 4)
+	for i in 13:
+		var x := fposmod(i * W / 12.0 + t * 0.05, W)
+		ci.draw_circle(Vector2(x, y), 4, Color(1, 0.95, 0.6, a))
+
+
+# --- the jackpot climb (level 5): the board, wins, springs, chips, slot boxes ---------
+
+## Camera with the board's top edge a little below her feet (start / checkpoints).
+func _board_camera() -> void:
+	camera_y = maxf(0, p.y + p.height + 60 - (H - BOARD_H))
+	last_stand_y = p.y + p.height
+	_reset_streak()
+
+
+## The board's top edge in world coordinates (she stands / sits on it).
+func board_y() -> float:
+	return camera_y + H - BOARD_H
+
+
+## A fresh streak (start, checkpoint, caught): x1 from the floor she is on.
+func _reset_streak() -> void:
+	streak_floor0 = floor_of(p.y + p.height)
+	streak_top = streak_floor0
+	_streak_jackpots = 0
+	climb_mult = 1
+	rise = RISE_START
+	rise_wait = RISE_GRACE
+	on_board = false
+
+
+## The board caught her: she sits down, the multiplier goes back to x1, the board waits.
+func _caught() -> void:
+	var was := climb_mult
+	_reset_streak()
+	on_board = true
+	# Hopping on the board doesn't repeat the calm line (or the sound) every time; under a
+	# dialog (which covers the board) only when the streak was actually lost.
+	if was > 1 or (time_ms - _rest_ms > 8000.0 and not dialog_open):
+		_rest_ms = time_ms
+		Audio.play_sfx("breathok.wav", 0.25)
+		ticker_say(Text.plain(Text.t("CLIMB_REST")))
+
+
+## The camera rises on its own (the board chases her) and follows her up; never down.
+func _climb_camera(dt: float, d60: float) -> void:
+	# Follow her up to the middle, but don't lift the board past the platform she last
+	# stood on (it would catch every fall back from a boost or a missed jump) unless
+	# she would leave the top of the screen.
+	var follow := maxf(p.y - H / 2, last_stand_y - (H - BOARD_H))
+	if follow < camera_y:
+		camera_y += (follow - camera_y) * (1.0 - pow(0.85, d60))
+	camera_y = minf(camera_y, p.y - CLIMB_TOP_MARGIN)
+	if not dialog_open and not on_board and not climb_won and camera_y > 0:
+		if rise_wait > 0:
+			rise_wait -= dt
+		else:
+			rise = minf(RISE_MAX, rise + RISE_ACCEL * dt)
+			camera_y -= rise * d60
+	camera_y = clampf(camera_y, 0, level_h)
+
+
+func _update_climb(dt: float, d60: float) -> void:
+	if boost_t > 0:
+		boost_t -= dt
+	# Timed power-ups (paused while a dialog talks).
+	if not dialog_open:
+		for k in climb_power.keys():
+			climb_power[k] -= dt
+			if climb_power[k] <= 0:
+				climb_power.erase(k)
+	if climb_power.has("rocket") or (boost_t > 0 and p.vy < -6):
+		var flame := climb_power.has("rocket")
+		for i in 2:
+			particles.append({"x": p.x + p.width / 2 + (randf() - 0.5) * 14, "y": p.y + p.height + 4,
+				"vx": (randf() - 0.5) * 2, "vy": 2 + randf() * 3, "rot": 0.0, "rot_speed": 0.0,
+				"type": "flame" if flame else "glint", "life": 0.4, "max_life": 0.4})
+	# The streak: floors climbed since the last catch → multiplier and streak jackpots.
+	floor_now = floor_of(p.y + p.height)
+	if not on_board and not climb_won:
+		streak_top = maxi(streak_top, floor_now)
+		var climbed := streak_top - streak_floor0
+		var m := mini(MULT_MAX, 1 + climbed / MULT_FLOORS)
+		if m > climb_mult:
+			climb_mult = m
+			_pop(p.center() + Vector2(0, -50), "x%d" % m, Color("#fde047"), 30)
+			Audio.play_sfx("cink-%02d.wav" % clampi(m + 1, 1, 11), 0.45)
+			if m % 2 == 0:
+				ticker_say("x%d !" % m)
+		if climbed / STREAK_JACKPOT > _streak_jackpots:
+			_streak_jackpots = climbed / STREAK_JACKPOT
+			_jackpot()
+	best_floor = maxi(best_floor, floor_now)
+	# Gold glints around her while the streak is hot.
+	if climb_mult >= 3 and randf() < 0.05 * climb_mult * d60:
+		particles.append({"x": p.x + p.width / 2 + (randf() - 0.5) * 70, "y": p.y + randf() * p.height,
+			"vx": (randf() - 0.5) * 1.5, "vy": -randf() * 1.5, "rot": 0.0, "rot_speed": 0.0,
+			"type": "glint", "life": 0.6, "max_life": 0.6})
+	_update_slot(dt)
+	if not banner.is_empty():
+		banner.t += dt
+		if banner.t > 1.8:
+			banner = {}
+	for i in range(pops.size() - 1, -1, -1):
+		var pp: Dictionary = pops[i]
+		pp.t += dt
+		pp.y -= 45.0 * dt
+		if pp.t >= pp.life:
+			pops.remove_at(i)
+	_update_ticker(dt)
+
+
+## Adds a win (× the multiplier) and pops the number where it happened.
+func _win(amount: int, at: Vector2) -> int:
+	var v := amount * climb_mult
+	climb_win += v
+	_pop(at, "+%d" % v, Color("#fde68a"), 20 if amount < 100 else 28)
+	return v
+
+
+func _pop(at: Vector2, text: String, col: Color, size := 22) -> void:
+	pops.append({"x": at.x, "y": at.y, "text": text, "col": col, "size": size, "t": 0.0, "life": 1.0})
+	if pops.size() > 24:
+		pops.pop_front()
+
+
+func _say_banner(text: String) -> void:
+	banner = {"text": text, "t": 0.0}
+
+
+func _sparkles(at: Vector2, n: int, kind := "glint") -> void:
+	for i in n:
+		var a := randf() * TAU
+		var v := 2.0 + randf() * 4.0
+		particles.append({"x": at.x, "y": at.y, "vx": cos(a) * v, "vy": sin(a) * v, "rot": 0.0, "rot_speed": 0.0,
+			"type": kind, "life": 0.7, "max_life": 0.7})
+
+
+## Gold coins rain from the top of the screen.
+func _coin_shower(n: int) -> void:
+	for i in n:
+		particles.append({"x": randf() * W, "y": camera_y - 20 - randf() * 200, "vx": (randf() - 0.5) * 3,
+			"vy": randf() * 3, "rot": randf() * TAU, "rot_speed": 0.15 + randf() * 0.2, "type": "coin",
+			"life": 2.6 + randf() * 0.8, "max_life": 3.4})
+
+
+## JACKPOT: a jackpot row, every STREAK_JACKPOT floors of a streak, the top.
+func _jackpot(amount := 500) -> void:
+	jackpots += 1
+	var v := _win(amount, p.center() + Vector2(0, -70))
+	_say_banner(Text.plain(Text.t("CLIMB_JACKPOT")))
+	_coin_shower(60)
+	_sparkles(p.center(), 24)
+	shake_timer = maxf(shake_timer, 0.2)
+	Audio.play_sfx("finished.wav", 0.6)
+	Audio.play_sfx("cink-11.wav", 0.5)
+	ticker_say("%s +%d" % [Text.plain(Text.t("CLIMB_JACKPOT")), v])
+
+
+## A spring pad: a big launch up, jumps refilled, BOOST!
+func _spring(e: LevelData.Ent) -> void:
+	e.lunge_timer = 0.5
+	p.vy = -SPRING_FORCE
+	p.is_grounded = false
+	p.was_grounded = false
+	p.jumped_from_ground = true
+	p.coyote = 0
+	p.jump_buffer = 0
+	p.jumps_left = _max_jumps()
+	p.is_sitting = false
+	p.squash = -0.8
+	boost_t = 1.0
+	var at := Vector2(e.x + e.w / 2, e.y)
+	_sparkles(at, 16)
+	_pop(at + Vector2(0, -40), Text.plain(Text.t("CLIMB_BOOST")), Color("#fbbf24"), 26)
+	_win(25, at + Vector2(0, -10))
+	Audio.jump_sound(true)
+	Audio.play_sfx("cink-10.wav", 0.4)
+	ticker_say(Text.plain(Text.t("CLIMB_BOOST")))
+
+
+## A chip: +10 (× the multiplier), a rising cink.
+func _take_chip(e: LevelData.Ent) -> void:
+	e.collected = true
+	_chip_note = _chip_note % 11 + 1
+	Audio.play_sfx("cink-%02d.wav" % _chip_note, 0.35)
+	var at := Vector2(e.x + e.w / 2, e.y)
+	_win(10, at)
+	_sparkles(at + Vector2(0, e.h / 2), 5)
+
+
+## A slot box: the reels on the board spin and always pay out a power-up.
+func _start_slot(e: LevelData.Ent) -> void:
+	e.collected = true
+	if not slot_spin.is_empty() and not slot_spin.paid:
+		_pay_slot()
+	slot_spin = {"t": 0.0, "power": _next_power(), "stops": 0, "paid": false}
+	_sparkles(Vector2(e.x + e.w / 2, e.y + e.h / 2), 14)
+	Audio.play_sfx("click.wav", 0.5)
+	ticker_say("? ? ?")
+
+
+## The next power-up from a shuffled bag (every one comes up).
+func _next_power() -> String:
+	if _power_bag.is_empty():
+		_power_bag = POWERS.duplicate()
+		_power_bag.shuffle()
+	return _power_bag.pop_back()
+
+
+func _update_slot(dt: float) -> void:
+	if slot_spin.is_empty():
+		return
+	slot_spin.t += dt
+	while slot_spin.stops < SLOT_STOPS.size() and slot_spin.t >= SLOT_STOPS[slot_spin.stops]:
+		slot_spin.stops += 1
+		Audio.play_sfx("click.wav", 0.6)
+	if not slot_spin.paid and slot_spin.t >= SLOT_SPIN:
+		_pay_slot()
+	if slot_spin.t > SLOT_SPIN + 1.8:
+		slot_spin = {}
+
+
+func _pay_slot() -> void:
+	slot_spin.paid = true
+	slot_spin.stops = SLOT_STOPS.size()
+	grant_power(slot_spin.power)
+	_win(100, p.center() + Vector2(0, -40))
+	_coin_shower(30)
+	Audio.play_sfx("finished.wav", 0.45)
+
+
+## Gives a power-up: super_jump / triple / magnet last POWER_TIME s, the rocket fires now.
+func grant_power(name: String) -> void:
+	if name == "rocket":
+		p.vy = -ROCKET_FORCE
+		p.is_grounded = false
+		p.was_grounded = false
+		p.jumped_from_ground = true
+		p.coyote = 0
+		p.is_sitting = false
+		p.jumps_left = _max_jumps()
+		boost_t = ROCKET_TIME
+		climb_power["rocket"] = ROCKET_TIME
+		Audio.play_sfx("breathoff.wav", 0.5)
+	else:
+		climb_power[name] = POWER_TIME
+	var label := Text.plain(Text.t("CLIMB_PU_" + name.to_upper()))
+	_say_banner(label)
+	_sparkles(p.center(), 20)
+	ticker_say(label)
+
+
+## Puts an event line on the board's ticker (it comes next, the ticker hurries to it).
+func ticker_say(s: String) -> void:
+	ticker_queue.append(s)
+	while ticker_queue.size() > 4:
+		ticker_queue.pop_front()
+
+
+## Scrolls the ticker right → left and feeds it: event lines first, then the facts.
+func _update_ticker(dt: float) -> void:
+	var speed := TICKER_SPEED * (2.5 if not ticker_queue.is_empty() else 1.0)
+	for seg in ticker:
+		seg.x -= speed * dt
+	while not ticker.is_empty() and ticker[0].x + ticker[0].w < TICKER_LEFT:
+		ticker.pop_front()
+	var guard := 0
+	while guard < 8:
+		guard += 1
+		var x := TICKER_LEFT + 12.0
+		if not ticker.is_empty():
+			x = ticker[-1].x + ticker[-1].w + TICKER_GAP
+		if x > W:
+			break
+		var event := not ticker_queue.is_empty()
+		var text := ""
+		if event:
+			text = ticker_queue.pop_front()
+		else:
+			text = Text.plain(Text.t("CLIMB_TICK_%d" % (_tick_next % 8 + 1)))
+			_tick_next += 1
+		var w := Text.font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, TICKER_FS).x
+		ticker.append({"text": text, "x": x, "w": w, "event": event})
+
+
+func _draw_casino_lights() -> void:
+	var ci := _bg
+	var t := time_ms
+	# Twinkling lights drifting down slowly (parallax), gold and pink.
+	for i in 40:
+		var px := fmod(i * 263.0 + 17.0 * i * i, W)
+		var py := fposmod(i * 151.0 - camera_y * (0.08 + 0.02 * (i % 4)), H)
+		var tw := 0.5 + 0.5 * sin(t / (220.0 + 13.0 * (i % 7)) + i)
+		var col := Color(1, 0.85, 0.35) if i % 3 else Color(1, 0.55, 0.8)
+		ci.draw_circle(Vector2(px, py), 1.5 + 2.0 * tw, Color(col, 0.25 + 0.5 * tw))
+		if tw > 0.92:
+			ci.draw_line(Vector2(px - 6, py), Vector2(px + 6, py), Color(col, 0.6), 1.0)
+			ci.draw_line(Vector2(px, py - 6), Vector2(px, py + 6), Color(col, 0.6), 1.0)
+
+
+## A platform in the climb: a purple casino step with a gold edge and running lights.
+func _draw_climb_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
+	var r := Rect2(pl.x + 2, pl.y, pl.w - 4, 18)
+	Draw.panel(ci, Rect2(r.position + Vector2(0, 4), r.size), Color(0, 0, 0, 0.25), 9)
+	Draw.panel(ci, r, Color("#4c1d95"), 9, Color("#fbbf24"), 2)
+	var n := int(r.size.x / 18)
+	for i in n:
+		var on := (i + int(t / 160.0)) % 3 == 0
+		ci.draw_circle(Vector2(r.position.x + 9 + i * 18, r.position.y + 9), 3, Color("#fef08a") if on else Color("#a78bfa", 0.7))

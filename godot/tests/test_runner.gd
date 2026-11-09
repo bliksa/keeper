@@ -124,6 +124,21 @@ func _run() -> void:
 		check(types2.has(t), "garden has " + t)
 	check(kinds.has("bubble") and kinds.has("pop") and kinds.has("rock"), "garden has rock, bubble and popping platforms")
 	check(LevelData.parse_text(LevelData.to_text(rows2)) == rows2, "garden text round-trips")
+	# The jackpot climb (level 3 of the game, id 5): up from P at the bottom to E at the top.
+	var rows5: PackedStringArray = Game.level_rows(Game.CLIMB_ID)
+	var L5 := LevelData.build(rows5)
+	check(rows5.size() > 30 and L5.has_spawn() and L5.spawn.y > L5.height() - 400, "the jackpot climb has %d rows and a spawn at the bottom" % rows5.size())
+	var c5 := {}
+	var top_y := L5.height()
+	for e in L5.entities:
+		var k5: String = e.trigger_type if e.type == "trigger" else e.type
+		c5[k5] = int(c5.get(k5, 0)) + 1
+		if e.trigger_type == "summit":
+			top_y = minf(top_y, e.y)
+	check(top_y < 600, "the climb's top (E) is near the top")
+	check(c5.get("spring", 0) > 0 and c5.get("chip", 0) > 0 and c5.get("slot", 0) > 0 and c5.get("jackpot", 0) == 3, "the climb has springs, chips, slot boxes and 3 jackpot rows")
+	check(LevelData.parse_text(LevelData.to_text(rows5)) == rows5, "climb text round-trips")
+	check(LevelData.PALETTE.has("!") and LevelData.PALETTE.has("$") and LevelData.PALETTE.has("?") and LevelData.PALETTE.has("0"), "the climb's legend has labels")
 
 	step("pipes layouts are solvable")
 	_check_pipe_layouts()
@@ -346,6 +361,7 @@ func _run() -> void:
 	rn.vy = 0
 	await frames(3)
 	check(rn.bump_t > 0, "running into a root bounces her off")
+	check(rn.invuln > 2.9, "after a hit she blinks: nothing can hit her for 3 s")
 	check(rn.water <= w_before - ForestRunner.HIT_WATER + 0.01 or w_before < ForestRunner.HIT_WATER, "a hit costs focus (water)")
 	await seconds(0.45)
 	check(rn.dist < root0.z - 4 and not root0.hit, "the path rolls back and the root waits for her again")
@@ -355,6 +371,12 @@ func _run() -> void:
 	check(rn.recover_t > 0 and absf(rn.dist - d_stand) < 0.01, "after the roll-back she stands a moment")
 	await seconds(1.0)
 	check(rn.recover_t <= 0 and rn.dist > d_stand + 2, "then she runs again")
+	rn.jump_to(root0.z - 0.4)
+	rn.invuln = 1.0
+	rn.py = 0
+	rn.vy = 0
+	await frames(3)
+	check(rn.bump_t <= 0 and not root0.hit, "while she blinks she runs through an obstacle")
 	rn.jump_to(root0.z - 3.0)
 	rn.water = 50
 	rn.jump()
@@ -421,6 +443,32 @@ func _run() -> void:
 	await frames(3)
 	check(not rn.slow, "no slow-down without water")
 	Input.action_release("slow_time")
+	# Focus switches on only from SLOW_MIN; a double jump needs DOUBLE_MIN.
+	rn.water = ForestRunner.SLOW_MIN - 5
+	Input.action_press("slow_time")
+	await frames(3)
+	check(not rn.slow and rn.short_for == "focus", "focus needs %d water to switch on (its mark blinks)" % int(ForestRunner.SLOW_MIN))
+	Input.action_release("slow_time")
+	await frames(2)
+	rn.objects.clear()
+	rn.py = 0
+	rn.vy = 0
+	rn.jumps = 2
+	rn.water = ForestRunner.DOUBLE_MIN - 10
+	rn.jump()
+	var w_one := rn.water
+	rn.jump()
+	check(rn.jumps == 1 and rn.water == w_one and rn.short_for == "double", "a double jump needs %d water (its mark blinks)" % int(ForestRunner.DOUBLE_MIN))
+	rn.py = 0
+	rn.vy = 0
+	rn.jumps = 2
+	rn.water = 95
+	rn._add_water(ForestRunner.DROP_WATER * 2)
+	check(rn.water == 100 and absf(rn.reserve - 5) < 0.01, "water over a full tank goes into the reserve")
+	rn.water = 50
+	await seconds(0.5)
+	check(rn.reserve < 5 and rn.water > 50, "the reserve pours back into the tank")
+	rn.reserve = 0
 	# Side traps: placed ones, and random ones in the last stage.
 	rn.build_course()
 	rn.water = 0
@@ -471,8 +519,8 @@ func _run() -> void:
 	var fin := await until(func(): return node_box().node_id() == "2E", 5)
 	check(fin and rn.sun == ForestRunner.SUN_TOTAL, "the 12th piece completes the sun and ends the level")
 	await finish_dialog("2E")
-	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
-	check(summit, "the summit (level 3) starts after the forest run")
+	var climb := await until(func(): return main.state == "platformer" and Game.level == Game.CLIMB_ID and main.platformer != null, 6)
+	check(climb, "the jackpot climb (level 3) starts after the forest run")
 
 	step("forest run – a repeat is laid out behind what she sees")
 	var lmap: Array = []
@@ -569,8 +617,197 @@ func _run() -> void:
 	check(er.stage == 2 and said.is_empty(), "then stage 3; the dialog it skipped stays unsaid")
 	er.queue_free()
 
-	step("level 3 – the summit")
+	step("level 3 – the jackpot climb")
 	await finish_dialog("3A")
+	pf = main.platformer
+	check(pf.is_climb() and pf.is_up() and not pf.is_summit() and pf.p.y > pf.level_h - 500, "the jackpot climb starts at the bottom")
+	check(not pf.wave.active and pf.camera_y > pf.level_h - 1200, "no LH wave; the camera starts at the bottom")
+	await seconds(0.5)
+	check(pf.p.is_grounded, "stands on the climb's floor")
+	var climb_events: Array = []
+	pf.trigger.connect(func(n): climb_events.append(n))
+	check(not pf.on_board and pf.climb_mult == 1 and pf.climb_win == 0 and pf.ticker.size() > 0 and pf.hud.visible, "the board's ticker runs, she starts just above the board at x1")
+	check(pf.board_y() > pf.p.y + pf.p.height and pf.board_y() - (pf.p.y + pf.p.height) < 120, "the board's top edge is right below her feet")
+	# Dialog letters span their row: 3B (slot boxes), 3C (LH surge), 3D (almost there).
+	for letter in ["b", "c", "d"]:
+		var dlg_ent: LevelData.Ent = null
+		for e in pf.level.entities:
+			if e.trigger_type == "dialog" and e.dialog_id == letter:
+				dlg_ent = e
+		check(dlg_ent != null and dlg_ent.w >= 1000, "dialog letter %s spans its row" % letter)
+		if dlg_ent:
+			_climb_put(pf, 300, dlg_ent.y + 60)
+			await finish_dialog("3" + letter.to_upper())
+	# The multiplier: floors climbed without being caught.
+	var base: LevelData.Plat = _climb_plat(pf, pf.level_h - 300)
+	_climb_put(pf, base.x + base.w / 2, base.base_y)
+	await frames(2)
+	pf._reset_streak()
+	_climb_put(pf, 500, pf.p.y + pf.p.height - 11 * LevelData.ROW_H)
+	await frames(2)
+	check(pf.climb_mult >= 3 and pf.streak_top - pf.streak_floor0 >= 10, "10 floors without a catch: multiplier x%d" % pf.climb_mult)
+	# Caught: the board rises past her feet → she stands on it, sits, x1, a calm line.
+	pf.camera_y = pf.p.y + pf.p.height - (Platformer.H - Platformer.BOARD_H) - 40
+	pf.p.vy = 0
+	await frames(3)
+	check(pf.on_board and pf.p.is_grounded and absf(pf.p.y + pf.p.height - pf.board_y()) < 2, "the rising board catches her: she stands on its top edge")
+	var rest := Text.plain(Text.t("CLIMB_REST"))
+	check(pf.climb_mult == 1 and (pf.ticker_queue.has(rest) or pf.ticker.any(func(sg): return sg.text == rest)), "caught: the multiplier is back to x1, the board says take a breath")
+	await seconds(0.4)
+	var cy := pf.camera_y
+	check(pf.p.is_sitting and not pf.p.is_dead, "on the board she sits down (no death)")
+	await seconds(0.5)
+	check(pf.camera_y == cy and pf.on_board, "the board stops rising while she sits on it")
+	# Frame spike: even far below the board she ends up on it.
+	pf.p.y = pf.board_y() + 200
+	pf.p.vy = 14
+	await frames(1)
+	check(pf.p.y + pf.p.height <= pf.board_y() + 0.5, "she never falls below the board")
+	await frames(3)
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	check(pf.p.vy < 0 and not pf.on_board and not pf.p.is_sitting, "a jump takes her off the board any time")
+	# Off the board (on a platform above it) the board rises again after RISE_GRACE.
+	var hold: LevelData.Plat = _climb_plat(pf, pf.p.y - 400)
+	_climb_put(pf, hold.x + hold.w / 2, hold.base_y)
+	pf.camera_y = hold.base_y - 400
+	await frames(2)
+	check(not pf.on_board and pf.rise_wait > 0, "on a platform above the board it waits a moment")
+	cy = pf.camera_y
+	await seconds(Platformer.RISE_GRACE + 0.4)
+	check(pf.camera_y < cy - 5 and pf.rise >= Platformer.RISE_START, "then the board rises again (the camera climbs on its own)")
+	# Following her up never lifts the board past the platform she jumped from, so a
+	# missed jump (or the way down from a boost) lands on a platform, not the board.
+	var from: LevelData.Plat = _climb_plat(pf, pf.p.y - 600)
+	_climb_put(pf, from.x + from.w / 2, from.base_y)
+	await frames(3)
+	pf.rise_wait = 30.0
+	var stand_y := pf.p.y + pf.p.height
+	pf.p.vy = Platformer.JUMP_FORCE
+	pf.p.is_grounded = false
+	var peaked := await until(func(): return pf.p.vy > 0, 3)
+	check(peaked and pf.board_y() >= stand_y - 8 and not pf.on_board, "a plain jump: the camera follows but the board stays below the platform she jumped from")
+	_climb_put(pf, from.x + from.w / 2, from.base_y)
+	await frames(3)
+	pf.p.vy = -Platformer.SPRING_FORCE
+	pf.p.is_grounded = false
+	peaked = await until(func(): return pf.p.vy > 0, 4)
+	var gap := pf.board_y() - (pf.p.y + pf.p.height)
+	check(peaked and gap > 250 and pf.p.y > pf.camera_y + 60, "a boost: at her highest the board is %d px below her (room for the rows under the peak), she stays on screen" % int(gap))
+	# Landing on the board while a climb dialog talks is a catch too (x1, the board waits).
+	_climb_put(pf, 500, from.base_y - 60)
+	pf.camera_y = from.base_y - 60 - (Platformer.H - Platformer.BOARD_H) + 30
+	pf.climb_mult = 4
+	main._dialog("3C")
+	var caught_in_dialog := await until(func(): return pf.on_board, 3)
+	check(caught_in_dialog and node_box().is_open() and pf.climb_mult == 1 and pf.rise_wait > Platformer.RISE_GRACE - 0.1, "caught under a dialog: the multiplier is back to x1 and the board waits")
+	await finish_dialog("3C")
+	await frames(3)
+	# A spring launches her.
+	var spring: LevelData.Ent = _climb_ent(pf, "spring")
+	_climb_put(pf, spring.x + spring.w / 2, spring.y + spring.h)
+	var win0 := pf.climb_win
+	await frames(2)
+	check(pf.p.vy < -15 and pf.boost_t > 0 and pf.climb_win > win0, "a spring launches her (vy %.1f) and pays a bonus" % pf.p.vy)
+	await frames(20)
+	check(pf.p.y < spring.y - 250, "the spring sends her several rows up")
+	# Chips.
+	var chip: LevelData.Ent = _climb_ent(pf, "chip")
+	win0 = pf.climb_win
+	_climb_put(pf, chip.x + chip.w / 2, chip.y + 30)
+	await frames(2)
+	check(chip.collected and pf.climb_win >= win0 + 10, "a chip adds to the WIN counter (%d)" % pf.climb_win)
+	# The bag: every power-up comes up.
+	pf._power_bag.clear()
+	var drawn: Array = []
+	for i in 4:
+		drawn.append(pf._next_power())
+	drawn.sort()
+	var all_powers: Array = Platformer.POWERS.duplicate()
+	all_powers.sort()
+	check(drawn == all_powers, "the slot bag holds every power-up once")
+	# A slot box spins the reels on the board and always pays a power-up.
+	pf.climb_power.clear()
+	var slot: LevelData.Ent = _climb_ent(pf, "slot")
+	win0 = pf.climb_win
+	_climb_put(pf, slot.x + slot.w / 2, slot.y + slot.h + 25)
+	await frames(2)
+	check(slot.collected and not pf.slot_spin.is_empty() and not pf.slot_spin.paid, "a slot box spins the reels")
+	await seconds(Platformer.SLOT_SPIN + 0.2)
+	check(pf.slot_spin.get("paid", false) and pf.climb_power.size() > 0 and pf.climb_win >= win0 + 100, "the reels stop and pay a power-up (%s)" % pf.slot_spin.get("power", "?"))
+	# Each power-up works.
+	var stand: LevelData.Plat = _climb_plat(pf, pf.level_h - 1200)
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	pf.climb_power.clear()
+	await frames(3)
+	var jf := pf._jump_force()
+	pf.grant_power("super_jump")
+	check(pf._jump_force() < jf * 1.25 and pf.banner.get("text", "") == Text.plain(Text.t("CLIMB_PU_SUPER_JUMP")), "super jump: jumps 30 % higher, a banner")
+	pf.climb_power.clear()
+	pf.grant_power("triple")
+	await frames(3)
+	check(pf._max_jumps() == 3 and pf.p.jumps_left == 3, "triple jump: three jumps")
+	for i in 3:
+		_key(KEY_SPACE, true)
+		await frames(2)
+		_key(KEY_SPACE, false)
+		await frames(5)
+	check(pf.p.jumps_left == 0 and pf.p.vy < 0, "three jumps in a row")
+	pf.climb_power.clear()
+	await frames(60)
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	pf.grant_power("magnet")
+	var pull: LevelData.Ent = _climb_ent(pf, "chip")
+	pull.x = pf.p.x + 200
+	pull.y = pf.p.y
+	var magnet_pulled := await until(func(): return pull.collected, 2)
+	check(magnet_pulled, "the magnet pulls a chip in")
+	pf.climb_power.clear()
+	var ry0 := pf.p.y
+	pf.grant_power("rocket")
+	check(pf.p.vy < -25, "the rocket fires her up")
+	await frames(40)
+	check(ry0 - pf.p.y > 500, "the rocket lifts her %d px" % int(ry0 - pf.p.y))
+	# Hazards (if the editor places any) never end the run.
+	var iron0 := Game.iron
+	pf._hurt(pf.p.x)
+	check(Game.iron == iron0 and not pf.p.is_dead, "a hit only knocks her back in the climb")
+	await frames(30)
+	pf.p.hit_timer = 0
+	check(not climb_events.has("game_over") and not climb_events.has("game_over_boss"), "no game over in the climb")
+	# A jackpot row: the JACKPOT (banner, coins, +500 × multiplier).
+	var jp0 := pf.jackpots
+	win0 = pf.climb_win
+	var jrows: Array = pf.level.entities.filter(func(e): return e.type == "trigger" and e.trigger_type == "jackpot")
+	jrows.sort_custom(func(a, b): return a.y > b.y)
+	await _go_trigger(pf, "jackpot")
+	check(Game.checkpoint >= 2 and Game.level == Game.CLIMB_ID and main.state == "platformer", "a jackpot row is a checkpoint (%d)" % Game.checkpoint)
+	check(pf.jackpots > jp0 and pf.climb_win >= win0 + 500 and pf.banner.get("text", "") == Text.plain(Text.t("CLIMB_JACKPOT")) and pf.particles.any(func(q): return q.type == "coin"), "a jackpot row pays the JACKPOT with a coin shower")
+	pf._place_at_checkpoint(3)
+	check(absf(pf.p.y + pf.p.height - jrows[1].y) < 400 and jrows[0].collected and jrows[1].collected, "checkpoint 3 = the 2nd jackpot row from the bottom")
+	await _go_trigger(pf, "climb_top")
+	await frames(3)
+	check(pf.climb_won and pf.summit_timer > 0, "the top of the climb (E) is reached")
+	await finish_dialog("3E")
+	await frames(5)
+	check(main.state == "title" and Game.level == 1, "back to the title after the jackpot climb")
+
+	main._dev_action("checkpoint5", 5)
+	var near_top := await until(func(): return main.state == "platformer" and Game.level == Game.CLIMB_ID and main.platformer != null, 8)
+	await frames(3)
+	check(near_top and main.platformer.p.y < 1200 and not main.platformer.climb_won and not node_box().is_open(), "the developer menu starts the climb near the top")
+	main._quit_to_title()
+	await frames(3)
+
+	step("old summit (developer menu)")
+	main._dev_action("checkpoint3", 1)
+	var old_summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 8)
+	check(old_summit, "the old summit still starts from the developer menu")
+
+	step("old level 3 – the summit")
+	await finish_dialog("SA")
 	pf = main.platformer
 	check(pf.is_summit() and pf.p.y > pf.level_h - 500, "starts at the bottom of the summit")
 	check(pf.wave.active and pf.wave.y > pf.p.y + 300, "the LH wave rises from the start, well below the player")
@@ -719,7 +956,7 @@ func _run() -> void:
 
 	step("LH wave and the summit")
 	await _go_trigger(pf, "wave")
-	await finish_dialog("3F")
+	await finish_dialog("SF")
 	await frames(2)
 	check(pf.wave.active and Game.checkpoint == 5, "the LH wave rises")
 	var wy: float = pf.wave.y
@@ -735,9 +972,9 @@ func _run() -> void:
 	await _go_trigger(pf, "summit")
 	await frames(3)
 	check(pf.wave.won and pf.summit_timer > 0, "reaching the summit stops the wave")
-	await finish_dialog("3G")
+	await finish_dialog("SG")
 	await frames(5)
-	check(main.state == "title" and Game.level == 1, "back to the title after the summit")
+	check(main.state == "title" and Game.level == 1, "back to the title after the old summit")
 
 	step("old meadow (developer menu)")
 	main._dev_action("checkpoint2", 1)
@@ -915,8 +1152,8 @@ func _run() -> void:
 	await frames(3)
 	check(pf.meadow_end > 0 and Game.checkpoint == 5, "the gate opens with a full vessel and ten seeds")
 	await finish_dialog("MG")
-	summit = await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
-	check(summit, "the summit (level 3) starts after the meadow")
+	var summit := await until(func(): return main.state == "platformer" and Game.level == 3 and main.platformer != null, 6)
+	check(summit, "the old summit starts after the old meadow")
 	main._quit_to_title()
 	await frames(5)
 
@@ -976,7 +1213,7 @@ func _run() -> void:
 	check(not main._pause.is_open(), "no pause menu on the title screen")
 
 	step("developer menu + level editor")
-	for i in [1, 2, 3]:
+	for i in [1, 2, 3, Game.CLIMB_ID]:
 		var path := LevelEditor.AUTOSAVE if i == 1 else LevelEditor.AUTOSAVE_FMT % i
 		if FileAccess.file_exists(path):
 			DirAccess.remove_absolute(path)
@@ -1054,6 +1291,25 @@ func _run() -> void:
 	check(not ed.horizontal() and ed.rows.size() == Game.level_rows(3).size() and ed._tool_info.has("@") and ed._tool_info.has("E"), "editor switches to the summit and has its tools")
 	check(ed.rows == Game.level_rows(3), "an old autosave's dialog letters are moved to the new names (h → b)")
 	DirAccess.remove_absolute(LevelEditor.AUTOSAVE_FMT % 3)
+	# The jackpot climb: its tools, it opens at the bottom, new rows go on top.
+	ed.select_level(Game.CLIMB_ID)
+	await frames(4)
+	var vbar := ed._scroll.get_v_scroll_bar()
+	check(ed.upward() and not ed.horizontal() and ed.rows == Game.level_rows(Game.CLIMB_ID) and ["!", "$", "?", "0"].all(func(ch): return ed._tool_info.has(ch)), "editor switches to the jackpot climb and has its tools")
+	check(ed._scroll.scroll_vertical > 0 and ed._scroll.scroll_vertical >= int(vbar.max_value - vbar.page) - 2, "the climb opens scrolled to its start at the bottom")
+	# ~ and E are in both the climb's group and the old summit's: the group it was picked from lights up.
+	ed._select_tool("E", "climb")
+	check(ed.tool == "E" and _icon_on(ed._groups.climb.button) and not _icon_on(ed._groups.garden.button), "E from the Jackpot climb menu keeps that group active")
+	ed._select_tool("~", "garden")
+	check(ed.tool == "~" and _icon_on(ed._groups.garden.button) and not _icon_on(ed._groups.climb.button), "~ from the old summit's menu lights the old summit's group")
+	ed._select_tool("=")
+	var bottom_row := ed.rows[ed.rows.size() - 1]
+	var n5 := ed.rows.size()
+	ed._add_rows()
+	check(ed.rows.size() == n5 + 20 and ed.rows[ed.rows.size() - 1] == bottom_row and ed.rows[0].strip_edges() == "", "Add 20 rows adds them at the top of the climb")
+	ed.rows = Game.level_rows(Game.CLIMB_ID)
+	ed._autosave()
+	DirAccess.remove_absolute(LevelEditor.AUTOSAVE_FMT % Game.CLIMB_ID)
 	if FileAccess.file_exists(LevelEditor.AUTOSAVE_FMT % ForestRunner.LEVEL_ID):
 		DirAccess.remove_absolute(LevelEditor.AUTOSAVE_FMT % ForestRunner.LEVEL_ID)
 	ed.select_level(ForestRunner.LEVEL_ID)
@@ -1101,7 +1357,7 @@ func _run() -> void:
 	_clean_bg_state()
 	var cave_bg := BackgroundData.of_bundled(1)
 	check(cave_bg.layers.size() == 5 and cave_bg.tint and not cave_bg.procedural, "the cave's bundled background has 5 parallax layers")
-	check(BackgroundData.of_bundled(2).procedural and BackgroundData.of_bundled(3).procedural, "meadow and summit keep their procedural skies")
+	check(BackgroundData.of_bundled(2).procedural and BackgroundData.of_bundled(3).procedural and BackgroundData.of_bundled(Game.CLIMB_ID).procedural, "meadow, old summit and the jackpot climb keep their procedural skies")
 	# Uploads: stored in this browser, listed, downloadable, deletable.
 	var run_png := FileAccess.get_file_as_bytes("res://assets/images/run3.png")
 	var big := Image.create(5000, 40, false, Image.FORMAT_RGBA8)
@@ -1124,7 +1380,7 @@ func _run() -> void:
 	var bp: BackgroundPanel = ed.bg_panel
 	check(bp != null and bp.layers().size() == 5 and not ed.bg_dirty(), "the background panel shows the cave's 5 layers")
 	check(ed.bg_edit.is_empty() and not FileAccess.file_exists(LevelEditor.BG_AUTOSAVE), "just looking at a background stores nothing")
-	check(Platformer.bg_origin_for(3, 28200) == Vector2(0, 27600) and Platformer.bg_origin_for(1, 28200) == Vector2.ZERO, "summit layers are anchored to its start at the bottom")
+	check(Platformer.bg_origin_for(3, 28200) == Vector2(0, 27600) and Platformer.bg_origin_for(Game.CLIMB_ID, 20000) == Vector2(0, 19400) and Platformer.bg_origin_for(1, 28200) == Vector2.ZERO, "summit and climb layers are anchored to their start at the bottom")
 	bp.open_browser(-1)
 	await frames(30)
 	var br: AssetBrowser = bp.browser
@@ -1357,6 +1613,12 @@ func _run() -> void:
 		DirAccess.remove_absolute(LevelEditor.AUTOSAVE)
 
 	step("dialog editor")
+	var old_edits := {"nodes": {"3A": {"lines": [{"key": "3A1", "speaker": "Kyra", "text": {}, "voice": ""}]}, "2C": {"lines": []}}, "saved": {"3F": null}, "deleted": {"3G": true}}
+	DialogEditor._migrate_edits(old_edits)
+	check(old_edits.nodes.has("SA") and not old_edits.nodes.has("3A") and old_edits.nodes.SA.lines[0].key == "SA1" and old_edits.nodes.has("2C") and old_edits.saved.has("SF") and old_edits.deleted.has("SG") and old_edits.version == DialogEditor.EDIT_VERSION, "older local edits of the old summit's 3A..3G move to SA..SG")
+	var new_edits := {"version": DialogEditor.EDIT_VERSION, "nodes": {"3A": {"lines": []}}}
+	DialogEditor._migrate_edits(new_edits)
+	check(new_edits.nodes.has("3A"), "current edits of the climb's 3A stay")
 	if FileAccess.file_exists(DialogEditor.EDIT_PATH):
 		DirAccess.remove_absolute(DialogEditor.EDIT_PATH)
 	dev._show("dialogs")
@@ -1364,7 +1626,7 @@ func _run() -> void:
 	var de: DialogEditor = dev._dialogs
 	check(dev.actions.get_child_count() == 4 and (dev.actions.get_child(3) as Button).icon.resource_path.ends_with("save.svg"), "test / use in game / save (floppy) on the right of the bar")
 	check(de != null and de.ids_in("2") == ["2A", "2B", "2C", "2E"] and de.ids_in("0").size() == 4, "the Dialogs tab lists each level's dialogs (2A–2E, 0A–0D)")
-	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", 3) == "3B" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
+	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", Game.CLIMB_ID) == "3B" and Text.dialog_for_letter("b", 3) == "SB" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
 	check(de.ids_in("mg").has("mg8_start") and not DialogEditor.is_story("mg8_start"), "minigame talk is listed apart, under its own names")
 	# Saving the files as they are changes nothing (same format as in the repo).
 	var bundled := {"godot/data/dialogs.json": FileAccess.get_file_as_string("res://data/dialogs.json"),
@@ -1515,6 +1777,40 @@ func _clean_bg_state() -> void:
 			DirAccess.remove_absolute(AssetBrowser.UPLOAD_DIR + f)
 		DirAccess.remove_absolute(AssetBrowser.UPLOAD_DIR)
 	Game.custom_backgrounds = {}
+
+
+## A tool group button lit as active (UiKit.set_icon_active).
+func _icon_on(b: Button) -> bool:
+	return (b.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.a > 0.5
+
+
+## The climb: put Kyra with her feet at (cx, feet_y), the board a little below.
+func _climb_put(pf: Platformer, cx: float, feet_y: float) -> void:
+	pf.p.x = cx - pf.p.width / 2
+	pf.p.y = feet_y - pf.p.height
+	pf.p.vx = 0
+	pf.p.vy = 0
+	pf.camera_y = feet_y - 300
+	pf.last_stand_y = feet_y
+	pf.on_board = false
+
+
+## The climb: the platform nearest to (above) y.
+func _climb_plat(pf: Platformer, y: float) -> LevelData.Plat:
+	var best: LevelData.Plat = null
+	for pl in pf.level.platforms:
+		if pl.base_y <= y and (best == null or pl.base_y > best.base_y):
+			best = pl
+	return best
+
+
+## The climb: the lowest entity of a type not taken yet.
+func _climb_ent(pf: Platformer, type: String) -> LevelData.Ent:
+	var best: LevelData.Ent = null
+	for e in pf.level.entities:
+		if e.type == type and not e.collected and (best == null or e.y > best.y):
+			best = e
+	return best
 
 
 func _go_trigger(pf: Platformer, kind: String) -> void:

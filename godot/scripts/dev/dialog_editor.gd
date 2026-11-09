@@ -17,10 +17,13 @@ extends Control
 
 const DIALOGS := "res://data/dialogs.json"
 const EDIT_PATH := "user://dialogs_edit.json"
+## Version of the local edits file: 2 = the old summit's dialogs are SA..SG (3A..3G
+## are the jackpot climb's now); older edits are migrated on load (_migrate_edits).
+const EDIT_VERSION := 2
 const LANGS := ["sk", "en", "pt"]
 const LANG_NAMES := {"sk": "SK", "en": "EN", "pt": "PT"}
 const GROUPS := [["0", "0 · Prologue (forest)"], ["1", "1 · Cave"], ["2", "2 · Forest run"],
-	["3", "3 · Summit"], ["M", "M · Old meadow"], ["mg", "Minigames"]]
+	["3", "3 · Jackpot climb"], ["M", "M · Old meadow"], ["S", "S · Old summit"], ["mg", "Minigames"]]
 const CHARACTERS := "res://data/characters.json"
 const LIST_W := 270.0
 ## Dialogs the game starts by name (not by a map letter): they can't be deleted
@@ -30,8 +33,9 @@ const BY_GAME := {
 	"0D": "the end of the breathing minigame", "1A": "the start of the cave", "1B": "the first cramp (X in the cave)",
 	"1C": "the boss fight (start)", "1D": "the boss defeated (then the corridor)", "1E": "the boss lost",
 	"2A": "the start of the forest run", "2E": "the full sun (end of level 2)",
-	"3A": "the start of the summit", "3F": "the LH wave", "3G": "the summit (end)",
+	"3A": "the start of the jackpot climb", "3E": "the top of the jackpot climb (end of level 3)",
 	"MA": "the start of the old meadow", "MF": "the locked gate", "MG": "the open gate (end)",
+	"SA": "the start of the old summit", "SF": "the LH wave (old summit)", "SG": "the old summit (end)",
 }
 const ICONS := "res://assets/ui/icons/%s.svg"
 
@@ -144,6 +148,7 @@ func load_data() -> void:
 		_bundled[id] = JSON.stringify(nodes[id])
 	var e: Variant = _read(EDIT_PATH)
 	if e is Dictionary:
+		_migrate_edits(e)
 		# Saved to the repo but not in this build yet: the new base.
 		var saved: Variant = e.get("saved", {})
 		if saved is Dictionary:
@@ -192,6 +197,31 @@ func load_data() -> void:
 	_apply_characters()
 
 
+## Edits made before the old summit's dialogs were renamed (3A..3G → SA..SG): move
+## them to the new ids so they don't override (or bring back) the climb's 3A..3G.
+static func _migrate_edits(e: Dictionary) -> void:
+	if int(e.get("version", 1)) >= EDIT_VERSION:
+		return
+	for section in ["nodes", "saved", "deleted"]:
+		var src: Variant = e.get(section, {})
+		if not src is Dictionary:
+			continue
+		var out := {}
+		for id in src:
+			var v: Variant = src[id]
+			var nid := str(id)
+			if is_story(nid) and nid[0] == "3" and nid[1] <= "G":
+				nid = "S" + nid.substr(1)
+				if v is Dictionary:
+					v = v.duplicate(true)
+					for l in v.get("lines", []):
+						if l is Dictionary and str(l.get("key", "")).begins_with(str(id)):
+							l.key = nid + str(l.key).substr(2)
+			out[nid] = v
+		e[section] = out
+	e["version"] = EDIT_VERSION
+
+
 func _read(path: String) -> Variant:
 	if not FileAccess.file_exists(path):
 		return null
@@ -211,7 +241,7 @@ func _model(node: Dictionary, strings: Dictionary, vo: Dictionary) -> Dictionary
 
 ## Story dialogs are named <level><letter> (1C, MA); the rest is minigame talk.
 static func is_story(id: String) -> bool:
-	return id.length() == 2 and "0123456789M".contains(id[0]) and id[1] >= "A" and id[1] <= "Z"
+	return id.length() == 2 and "0123456789MS".contains(id[0]) and id[1] >= "A" and id[1] <= "Z"
 
 
 static func group_of(id: String) -> String:
@@ -338,7 +368,7 @@ func add_character(id: String, names: Dictionary) -> String:
 
 
 func _save_local() -> void:
-	var out := {"nodes": {}, "deleted": deleted, "saved": _saved, "characters": changed_characters(), "buttons": changed_buttons(), "saved_characters": _saved_chars}
+	var out := {"version": EDIT_VERSION, "nodes": {}, "deleted": deleted, "saved": _saved, "characters": changed_characters(), "buttons": changed_buttons(), "saved_characters": _saved_chars}
 	for id in changed_ids():
 		out.nodes[id] = _normalized(id)
 	var f := FileAccess.open(EDIT_PATH, FileAccess.WRITE)
@@ -490,7 +520,7 @@ func discard() -> void:
 	# Dialogs already saved to the repo stay (they are in the next build).
 	var f := FileAccess.open(EDIT_PATH, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"saved": _saved, "saved_characters": _saved_chars}, " ", false))
+		f.store_string(JSON.stringify({"version": EDIT_VERSION, "saved": _saved, "saved_characters": _saved_chars}, " ", false))
 		f.close()
 	load_data()
 	if _used:
@@ -561,7 +591,7 @@ func build_commit(remote: Dictionary) -> Dictionary:
 	for k in changed_buttons():
 		for l in LANGS:
 			strings[l][k] = button_texts[k][l]
-	# Story dialogs in level order (0, 1, 2, 3, M; A–Z), then the minigame talk.
+	# Story dialogs in level order (0, 1, 2, 3, M, S; A–Z), then the minigame talk.
 	var sorted := {}
 	for g in GROUPS:
 		var ids: Array = rnodes.keys().filter(func(id): return group_of(id) == g[0])
