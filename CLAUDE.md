@@ -19,7 +19,7 @@ godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
   scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4),
                            iron_plate (mg5), rhythm (mg6), signals (mg7) — level 2; fertility_wheel
                            (mg11, FertilityWheel: the wheel of the cycle in the jackpot climb)
-  scripts/ui/              dialog_box, platformer_hud, player_art (sprite anim), draw helpers
+  scripts/ui/              dialog_box, platformer_hud, player_art (sprite anim), draw helpers, meter_hud (the water / heart meter reserve + reload)
   scripts/dev/             dev_menu + level_editor (in-game, DEV button on the first/boot screen)
   scripts/level_data.gd    level text → platforms/entities (THE LEGEND lives here)
   data/levels/cave.txt     the cave level, one text row per 120 px band, 25 columns
@@ -244,7 +244,7 @@ repeat). A stage whose pieces can no longer all be found repeats
 (`_check_loop` → `_loop_stage`, queued as soon as its end comes into view: a copy is laid out beyond `dist + VIEW`, nothing in view moves; what already shows of the next stage is run through first and copied after the repeat; `_enter_loop` at the old end moves the missed pieces into the repeat). A hit's lost slice tumbles out of her (`lost_flyers`) and blinks red in the sun (`sun_lost`). Web shortcut `?run=hit` shows it (`?run=end`: the level's end, `dev_last_piece`; dev menu "End → climb"). Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`; the double jump needs two drops, else `water_short` + `short_for`), hits (then `invuln` = `INVULN_TIME` 3 s: she blinks and nothing hits her):
 `bump()` (roll back `BUMP_BACK`, not before the stage start; −`HIT_DROPS` and `_lose_slice()`: the stage's last found piece goes back onto the track, never below the last minigame's count), a flying notification in the air =
 `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass again,
-except within `GRACE`. Water works like the jackpot climb's hearts (one model, `scripts/meter_model.gd` `MeterModel`: the run keeps an instance `meter`, the climb's `add_heart_fill` calls `MeterModel.settle`): 4 ready drops (`drops` = `meter.ready`, HUD top-right, `draw_water_pill`) and the bar `water` (= `meter.bar`, 0–100, the line round the pill fills like the cave's breath ring, `progress_outline`); every path drop `D`/`U` fills it by `DROP_WATER` = `Platformer.HEART_FILL` (20 %), a full bar = one more ready drop (`_add_water`), with all four ready the bar stays full and refills the next one spent. No reload. A jump is free, a double jump costs `DOUBLE_DROPS` = 2 (`meter.spend`), focus (`slow_time`) burns `FOCUS_DRAIN` = 1 drop/s, a hit `HIT_DROPS` = 1 (`meter.drain`). The map comes from `tools/gen_forest_run.py` (fluid: every obstacle row has `min_gap` rows of reaction time at the stage speed, the free path moves one over; the generator checks it). `jump_to(z)` moves her (and the stage) for tests / the dev menu
+except within `GRACE`. Water works like the jackpot climb's hearts, like a gun's magazine in a shooter (one model, `scripts/meter_model.gd` `MeterModel`, drawn by `scripts/ui/meter_hud.gd` `MeterHud`; the run keeps `meter`, the climb `Platformer.meter`): the **magazine** `mag` (4 drops, fractional: `drops`, the four drops in the pill top-right, `draw_water_pill`) is what the abilities spend; the **reserve** `reserve` (up to `reserve_max` = 4 more: the line round the pill, `MeterHud.draw_reserve`, a notch per unit, a badge "+N" left of the pill). Every path drop `D`/`U` (`DROP_WATER` = `Platformer.HEART_FILL`, 20 % of a drop, `_add_water` → `meter.fill`) goes into the magazine first (the part-filled drop fills), only a full magazine sends it into the reserve (the flying pickup goes to its slot, `meter.last_slot`, / to the badge and lights it up on arrival: the run calls `fill(n, false)`, no flash at pickup). **Reload** (`meter.update(dt)` every frame of play, returns the units landed: a click each): when the magazine is empty at once, when part-empty after `RELOAD_DELAY` (1.2 s) without spending; one unit leaves the reserve every `RELOAD_GAP` (0.45 s; the part-filled slot is topped up first) and flies `RELOAD_FLY` (0.38 s) from the badge in an arc into its slot (`meter.flyers`, a part of a unit flies smaller; the slot pops: `land_flash`; a shimmer sweeps the pill, `reload_glow`). Spending (`spend` / `drain` / `hold`) stops a part-empty reload (units in the air still land) and restarts the wait; a reload that began with an empty magazine (`reload_from_empty`) runs to the end in whole units, so held focus doesn't flicker. The badge shows whole units ("+N"; under one unit it is dim and its icon part-filled). `meter.reset(mag, reserve)` for starts, dev shortcuts and tests (web `?run=reload` / `?climb=reload`: an empty magazine with a full reserve every 4 s). The run starts with 4 + `START_RESERVE` (1). A jump is free, a double jump costs `DOUBLE_DROPS` = 2 (`meter.spend`), focus (`slow_time`) burns `FOCUS_DRAIN` = 1 drop/s, a hit `HIT_DROPS` = 1 (`meter.drain`). The map comes from `tools/gen_forest_run.py` (fluid: every obstacle row has `min_gap` rows of reaction time at the stage speed, the free path moves one over; the generator checks it). `jump_to(z)` moves her (and the stage) for tests / the dev menu
 ("Forest run", "Stage 2", "Stage 3"). Level editor: tool group "Forest run",
 `_draw_runner_row/_cell`, test play `_start_runner_test` (minigames skipped).
 Level start (from the boss: `main._on_boss_defeated` plays dialog 1D in the arena while the nuts form their ring into the grain; then `_into_forest` waits for the ring to close, the floor is gone and Kyra hops up and over to the middle, then falls, growing towards us (`Platformer.start_exit_fall`, `EXIT_HOP`, `EXIT_GROW`, PlayerArt option `grow`), the camera following, then `_start_runner(..., over_cave = true)` fades the run in over the arena (`start_intro(null, true)`, `Platformer.hide_egg`): when the arena goes, the run takes Kyra over where she was on screen (`Platformer.exit_visual` → `ForestRunner.handoff`) and she falls on onto the path, growing to her size there (`HANDOFF_FALL`, `land_t`) and lands with her back to us, the grain flies to the top-left and opens into the sun (`_draw_grain`, `_draw_intro_hud`), the trees appear from the screen centre (`_intro_k`, `INTRO_TREES`), then `intro_done` → `show_controls` (instead of 2A). Web shortcut `?boss=win` opens the arena with the boss just beaten. Dialogs 2A (start from the dev menu), 2B (notifications, letter b), 2C (side traps, letter c), 2E (end). No seeds in the run.
@@ -336,7 +336,7 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   `board_dialog_done(id)` and the next one from `board_queue`. `board_talking(id)`,
   `board_next()` (tests). The first grant of each power-up in a climb (`grant_power`,
   `powers_explained`, `POWER_DIALOG`) explains it: 3A super jump (+ jokers always
-  pay), 3B triple, 3C magnet, 3D rocket (the LH surge); 3E = the end. A timed
+  pay), 3B triple, 3C magnet, 3D rocket (the LH surge); 3E = the end; 3F (`RESERVE_DIALOG`) the first heart of a climb that goes into the reserve (`add_heart_fill`): hearts fill your four first, the rest goes to the reserve, which refills them. A timed
   power-up's clock stops while its explanation talks or waits on the board, so it never
   runs out mid-explanation; the first joker of a climb always pays the super jump (3A
   introduces the jokers). In the climb `_hit_trigger` ignores every trigger except
@@ -361,9 +361,11 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   settles on three jokers (`spin_rest` = what it rests on), pays at `SLOT_SPIN` via `_pay_slot` → `grant_power` from a shuffled bag
   `_next_power`: `super_jump` ×1.3, `triple` 3 jumps (`_max_jumps`), `magnet` pulls hearts in
   `MAGNET_RANGE`, each `POWER_TIME` s in `climb_power`; `rocket` ≈ 900 px now; sprite `joker`), `~` updrafts.
-- **The heart meter** (like the forest run's water): `hearts` ready (0..`HEART_SLOTS` = 4) fed by `heart_bar`
-  (0–100; every heart `HEART_FILL` = 20 %, `add_heart_fill`: a full bar = one more ready heart; with all four
-  ready it stays full and refills the next one spent). Ready hearts buy (`spend_hearts`; too few → `heart_short`,
+- **The heart meter** (the forest run's water model, `MeterModel` `meter`: a magazine of `HEART_SLOTS` = 4
+  hearts, a reserve of 4 more round the pill that reloads it; see "Level 2"): `hearts` = whole hearts in the magazine
+  (`meter.whole()`; setting it, for dev / tests, also empties the reserve); every heart `HEART_FILL` = 20 % of one
+  (`add_heart_fill` → `meter.fill`: magazine first, then the reserve), a bell one whole heart; the climb calls
+  `meter.update(dt)` (the reload). Rocket fuel burns the magazine itself (`meter.drain(dt / FUEL_HEART_TIME)`, no separate burn: a part-burnt heart is filled by the next pickup and topped up by the reload); the thrusters light with more than `FUEL_MIN` (0.2) of a heart, burn it down to 0 and then stop (a new press relights them; the empty magazine reloads at once); a burn holds a part-empty reload. Ready hearts buy (`spend_hearts`; too few → `heart_short`,
   the empty slots blink): **rocket fuel** (jump held once a jump's rise has run out, `vy` ≥ `FUEL_IGNITE_VY`,
   in the air with ≥ 1 ready heart: the thrusters ignite, `thrusting`, `_update_fuel` after gravity; she climbs at
   `FUEL_SPEED` = 12 px/frame (`FUEL_ACCEL`), flames under her feet (180/s, `_flame_acc`), a whoosh every 0.28 s;
@@ -388,8 +390,8 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
 - HUD (`PlatformerHud._draw_climb`, screen space, not zoomed): the spinner top-left (`_draw_reels` in
   `SPINNER`: three separate white rounded cards with a soft shadow, no frame or borders, big symbols, as high as the heart meter; still when idle on
   `spin_rest`; a bell or a joker spins it (a steady scroll, the symbols shrink near the card edges like a drum, each card stops with a small bounce), clicks as each card stops; the power-up's name only on the
-  ticker), no floor counter (floors stay internal), the heart meter top-right (`draw_heart_pill`: four hearts, the bar as a line round the pill,
-  `ForestRunner.progress_outline`) with the ability hints under it, the banner.
+  ticker), no floor counter (floors stay internal), the heart meter top-right (`draw_heart_pill`: the magazine's four hearts, part-filled from the
+  bottom, rocket fuel drains the top one; the reserve, its badge and the reload's flying hearts by `MeterHud`) with the ability hints under it, the banner.
 - Map: `python3 tools/gen_climb.py` (seeded; reads GRAVITY / JUMP_FORCE / MAX_SPEED from
   `platformer.gd`; 36 columns: two routes wander up side by side, merge and split, plus
   side ledges with hearts, so there are real choices; springs have a two-cell heart fan
@@ -487,7 +489,7 @@ breath pill, which may follow Kyra), `HINT_RUN_FOCUS` / `HINT_RUN_DOUBLE` (fores
 `ForestRunner._wanted_hints`: focus with ≥ 1 drop and no reload, double jump with ≥ 2),
 `HINT_CLIMB_*` (jackpot climb, under the heart meter: `HINT_CLIMB_HEART_BOOST` / `_FUEL` only
 while the ready hearts afford them, `HINT_CLIMB_FUEL_BURN` with the fuel left while the thrusters burn, then the active `climb_power` with its time), `HINT_PMS_BREATHE` / `HINT_PMS_CALM` (the PMS maze, under its breath pill). The old meadow / summit don't use it. Web shortcuts: `?cave=N` (cave at
-checkpoint N), `?climb=power` (the climb with three ready hearts, a super jump and the magnet, then a joker spins the reels).
+checkpoint N), `?climb=power` (the climb with three ready hearts and some in reserve, a super jump and the magnet, then a joker spins the reels).
 
 ## Game feel (levels 2 and 3)
 

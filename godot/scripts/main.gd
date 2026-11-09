@@ -80,6 +80,10 @@ func _ready() -> void:
 		var rq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('run') || ''")
 		if rq is String and rq == "hit":
 			_dev_runner_hits.call_deferred()
+		elif rq is String and rq == "reload":
+			# ?run=reload (?climb=reload): an empty magazine and a full reserve every few
+			# seconds, so the reload can be watched.
+			_dev_meter_reload.call_deferred(true)
 		elif rq is String and rq == "end":
 			# ?run=end: the last stage, the 12th piece taken: the sun, 2E, the climb.
 			_dev_action.call_deferred("runner_end", 0)
@@ -92,6 +96,8 @@ func _ready() -> void:
 			_dev_action.call_deferred("checkpoint5", 5 if cq == "top" else 1)
 			if cq == "power":
 				_dev_climb_powers.call_deferred()
+			elif cq == "reload":
+				_dev_meter_reload.call_deferred(false)
 		# ?pms=1: the PMS maze from its start (?pms=door: all three items found).
 		var pq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('pms') || ''")
 		if pq is String and pq != "":
@@ -108,13 +114,34 @@ func _dev_climb_powers() -> void:
 	await get_tree().create_timer(2.0).timeout
 	if platformer and platformer.is_climb():
 		platformer.powers_explained = {"super_jump": true, "magnet": true, "triple": true, "rocket": true}
-		platformer.hearts = 3
-		platformer.heart_bar = 55.0
+		platformer.meter.reset(3.0, 2.2)
 		platformer.grant_power("super_jump")
 		platformer.grant_power("magnet")
 	await get_tree().create_timer(1.5).timeout
 	if platformer and platformer.is_climb():
 		platformer._take_joker(LevelData.Ent.new())
+
+
+## ?run=reload / ?climb=reload: the water's / the hearts' magazine emptied with a full
+## reserve every few seconds: the reload plays drop by drop / heart by heart.
+func _dev_meter_reload(run_level: bool) -> void:
+	var run := _run_id
+	if run_level:
+		await _start_runner(false, 1)
+		_node_box.close()
+	else:
+		await get_tree().create_timer(2.5).timeout
+	while run == _run_id:
+		var m: MeterModel = null
+		if run_level and runner:
+			m = runner.meter
+		elif not run_level and platformer and platformer.is_climb():
+			m = platformer.meter
+			platformer.rise_wait = 99.0
+		if m == null:
+			return
+		m.reset(0.0, 4.0)
+		await get_tree().create_timer(4.0).timeout
 
 
 func _dev_boss_win() -> void:
@@ -995,7 +1022,7 @@ func _runner_minigame(n: int) -> void:
 ## dialog box turns into the climb's board and the climb comes in (_into_climb).
 func _runner_done() -> void:
 	if runner:
-		Game.water = int(runner.water)
+		Game.water = int(runner.meter.reserve / runner.meter.reserve_max * 100.0)
 	_dialog("2E", _into_climb)
 
 

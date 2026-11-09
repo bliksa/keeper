@@ -237,7 +237,7 @@ func _run() -> void:
 	Text.language = lang0
 	Game.control_mode = mode0
 	check(board_long.is_empty(), "every board dialog (3A..3E) fits the board's text area (smallest size %d) %s" % [board_smallest, str(board_long)])
-	check(["3A", "3B", "3C", "3D", "3E"].all(func(id): return Text.dialogs.has(id) and not Text.dialogs[id].has("buttons")), "the climb's dialogs have no buttons")
+	check(["3A", "3B", "3C", "3D", "3E", "3F"].all(func(id): return Text.dialogs.has(id) and not Text.dialogs[id].has("buttons")), "the climb's dialogs have no buttons")
 
 	step("game font")
 	# KeeperDyslexic is the default font of every player-facing text: Text.font(_bold)
@@ -566,16 +566,14 @@ func _run() -> void:
 	var rdrop: Dictionary = drops[0]
 	rn.lane = 0 if rdrop.lane == -9 else rdrop.lane
 	rn.px = rn.lane * ForestRunner.LANE
-	rn.water = 10
-	rn.drops = 4
+	rn.meter.reset(4.0, 0.4)
 	rn.py = 0
 	rn.jump_to(rdrop.z - 0.3)
 	await frames(3)
-	check(rdrop.taken and rn.water > 10 and rn.flyers.any(func(f): return f.kind == "drop"), "a water drop fills the bar (it flies up to it)")
+	check(rdrop.taken and rn.reserve > 0.5 and rn.flyers.any(func(f): return f.kind == "drop" and f.into == "reserve"), "a water drop with a full magazine goes into the reserve (it flies up to the reserve badge)")
 	# Slowed time: the world runs slower while the water drains.
 	rn.objects.clear()
-	rn.drops = 4
-	rn.water = 0
+	rn.meter.reset(4.0, 0.0)
 	var t0 := rn.dist
 	await seconds(0.5)
 	var normal := rn.dist - t0
@@ -587,8 +585,7 @@ func _run() -> void:
 	Input.action_release("slow_time")
 	await frames(3)
 	check(rn.slow == false and slowed < normal * 0.6 and rn.drops < 4 and rn.drops > 3.0, "holding focus slows time (%.1f m vs %.1f m) and burns a drop a second" % [slowed, normal])
-	rn.drops = 0
-	rn.water = 0
+	rn.meter.reset(0.0, 0.0)
 	Input.action_press("slow_time")
 	await frames(3)
 	check(not rn.slow, "no slow-down without water")
@@ -603,60 +600,63 @@ func _run() -> void:
 	rn.drops = 4
 	await frames(2)
 	check(rn.hint_lines() == ["HINT_RUN_FOCUS", "HINT_RUN_DOUBLE"], "two drops or more: focus and the double jump %s" % str(rn.hint_lines()))
-	rn.drops = 0
-	rn.water = 0
-	# The water meter works like the climb's hearts (MeterModel): a double jump costs two
-	# ready drops, a full bar refills one spent, every path drop fills the bar by HEART_FILL.
+	# The water meter is a magazine and a reserve (MeterModel, as the climb's hearts): a
+	# double jump costs two drops from the magazine, pickups fill the magazine first, then
+	# the reserve, and the reserve reloads the magazine.
 	rn.objects.clear()
 	rn.py = 0
 	rn.vy = 0
 	rn.jumps = 2
-	rn.drops = 4
-	rn.water = 0
+	rn.meter.reset(4.0, 0.0)
 	rn.jump()
 	rn.jump()
 	check(rn.jumps == 0 and absf(rn.drops - 2) < 0.01, "a double jump costs two drops")
-	rn.py = 0
-	rn.vy = 0
-	rn.jumps = 2
-	rn.drops = 4
-	rn.water = 100
-	rn.jump()
-	rn.jump()
-	check(absf(rn.drops - 3) < 0.01 and rn.water < 0.01, "with a full bar the double jump costs two, the bar refills one (3 ready)")
-	rn.drops = 0
-	rn.water = 0
-	await frames(5)
-	check(rn.drops == 0 and rn.water == 0, "no reload: empty drops stay empty until water is collected")
-	check(absf(ForestRunner.DROP_WATER - Platformer.HEART_FILL) < 0.01, "a path drop fills the bar by the same share as a heart")
-	for k in int(100.0 / ForestRunner.DROP_WATER) - 1:
-		rn._add_water(ForestRunner.DROP_WATER)
-	check(rn.drops == 0 and rn.water > 75, "the bar fills drop by drop (%.0f)" % rn.water)
+	check(absf(ForestRunner.DROP_WATER - Platformer.HEART_FILL) < 0.01, "a path drop is the same share of a drop as a heart of a heart")
+	rn.meter.reset(2.0, 0.0)
 	rn._add_water(ForestRunner.DROP_WATER)
-	check(absf(rn.drops - 1) < 0.01 and rn.water < 0.01, "a full bar = one more ready drop")
-	rn.drops = 4
-	rn.water = 60
-	rn._add_water(60)
-	check(absf(rn.drops - 4) < 0.01 and absf(rn.water - 100) < 0.01, "all four ready: the bar stays full")
-	rn.drops = 3.5
-	rn.water = 100
-	rn.meter.drain(0.0)
-	check(absf(rn.drops - 3.5) < 0.01 and absf(rn.water - 100) < 0.5, "a full bar waits for a whole free slot (3.5 + 100 stays %.2f, %.0f)" % [rn.drops, rn.water])
-	# Focus from four ready drops and a full bar: the first drop drains, then the full bar
-	# refills it whole (no fractional top-up that would freeze the bar below 100).
-	var fm := MeterModel.new(4.0, 4.0, 100.0)
-	for k in 72:
-		fm.drain(1.0 / 60.0)
-	check(absf(fm.ready - 3.8) < 0.02 and fm.bar < 0.01, "focus 1.2 s from 4 ready + a full bar: %.2f ready, bar %.0f" % [fm.ready, fm.bar])
-	var tap := MeterModel.new(4.0, 3.98, 90.0)
-	check(tap.fill(15.0) == 0.0 and absf(tap.ready - 3.98) < 0.001 and absf(tap.bar - 100) < 0.01, "a pickup after a short focus tap makes no fractional drop (no chime)")
-	var mm := MeterModel.new(4.0, 2.0, 90.0)
-	check(not mm.spend(3) and mm.spend(2) and mm.ready == 0 and mm.fill(10.0) == 1.0 and mm.ready == 1, "MeterModel: spend / fill")
-	rn.drops = 0
-	rn.water = 0
+	check(absf(rn.drops - 2.2) < 0.01 and rn.reserve == 0.0, "a drop fills the magazine first (%.2f in it, %.2f in reserve)" % [rn.drops, rn.reserve])
+	for k in 10:
+		rn._add_water(ForestRunner.DROP_WATER)
+	check(absf(rn.drops - 4) < 0.01 and absf(rn.reserve - 0.2) < 0.01, "a full magazine sends the rest into the reserve (%.2f, %.2f)" % [rn.drops, rn.reserve])
+	rn.meter.fill(1000.0)
+	check(rn.drops == 4 and rn.reserve == rn.meter.reserve_max, "the reserve holds %d more, then the meter is full" % int(rn.meter.reserve_max))
+	_meter_model_checks()
+	# The run reloads its magazine while it plays (the drops fly into the pill).
+	rn.meter.reset(0.0, 2.0)
+	await frames(3)
+	check(rn.meter.reloading and not rn.meter.flyers.is_empty() and rn.drops == 0.0, "an empty magazine: the run reloads it at once, a drop flies from the reserve")
+	await seconds(1.4)
+	check(absf(rn.drops - 2) < 0.01 and rn.reserve < 0.01 and not rn.meter.reloading, "… the reserve's two drops are in the magazine (%.2f, %.2f)" % [rn.drops, rn.reserve])
+	rn.meter.reset(0.0, 0.0)
+	await frames(5)
+	check(rn.drops == 0 and rn.reserve == 0 and rn.meter.flyers.is_empty(), "nothing in reserve: no reload, the drops stay empty until water is collected")
+	# Focus held with an empty magazine and a full reserve: the reload from empty runs to
+	# the end (focus doesn't cancel it), so slowed time comes on once and stays on.
+	rn.objects.clear()
+	rn.meter.reset(0.0, 4.0)
+	Input.action_press("slow_time")
+	var toggles := 0
+	var was_slow := rn.slow
+	for i in 150:
+		await frames(1)
+		if rn.slow != was_slow:
+			toggles += 1
+			was_slow = rn.slow
+	Input.action_release("slow_time")
+	var held_mag := rn.drops
+	await seconds(1.5)
+	check(toggles <= 1 and was_slow and held_mag > 0.5, "focus held while an empty magazine reloads: slowed time comes on once and stays (%d toggles, %.2f drops)" % [toggles, held_mag])
+	check(rn.reserve < 0.01 and rn.meter.flyers.is_empty() and not rn.meter.reloading and absf(rn.drops - held_mag) < 0.01 and held_mag > 1.5, "… the whole reserve went into the magazine, what focus didn't burn stays (%.2f)" % rn.drops)
+	# A drop taken while another drop's flash shows doesn't cut that flash short.
+	rn.meter.reset(2.0, 0.0)
+	rn.meter.slot_flash = MeterModel.FLASH
+	rn.meter.slot_flash_i = 1
+	var into_w := rn._add_water(ForestRunner.DROP_WATER)
+	check(into_w == "mag" and rn.meter.slot_flash == MeterModel.FLASH and rn.meter.slot_flash_i == 1 and rn.meter.last_slot == 2, "a new drop leaves the last one's flash alone (its own comes when it lands, slot %d)" % rn.meter.last_slot)
+	rn.meter.reset(0.0, 0.0)
 	# Side traps: placed ones, and random ones in the last stage.
 	rn.build_course()
-	rn.water = 0
+	rn.reserve = 0
 	var vines: Array = rn.objects.filter(func(o): return o.kind == "vine" and not o.get("random", false))
 	check(vines.size() > 0 and rn.objects.filter(func(o): return o.kind == "vine" and o.get("random", false)).is_empty(), "side traps from the map; no random ones before the last stage")
 	var vine: Dictionary = vines[0]
@@ -822,8 +822,7 @@ func _run() -> void:
 	er.bump_t = 0
 	er.recover_t = 0
 	take_next.call()
-	er.drops = 1
-	er.water = 0
+	er.meter.reset(1.0, 0.0)
 	er.jumps = 1
 	er.vy = 0
 	er.jump()
@@ -856,7 +855,7 @@ func _run() -> void:
 	check(pf.p.is_grounded, "stands on the climb's floor")
 	var climb_events: Array = []
 	pf.trigger.connect(func(n): climb_events.append(n))
-	check(not pf.on_board and pf.hearts == 0 and pf.heart_bar == 0.0 and pf.ticker.size() > 0 and pf.hud.visible, "the board's ticker runs, she starts just above the board with an empty heart meter")
+	check(not pf.on_board and pf.meter.mag == 0.0 and pf.meter.reserve == 0.0 and pf.ticker.size() > 0 and pf.hud.visible, "the board's ticker runs, she starts just above the board with an empty heart meter")
 	check(not ("climb_win" in pf) and not ("climb_mult" in pf) and not Text._strings.get("en", {}).has("CLIMB_WIN"), "no score in the climb (no win counter, no multiplier)")
 	# The sun of the forest run shines in the climb's sky (opaque), rising as she climbs.
 	var sun0: Array = pf.sun_screen()
@@ -960,8 +959,11 @@ func _run() -> void:
 	await seconds(0.4)
 	check(pf.camera_y < cy - 5 and pf.on_board and pf.board_talking("3C"), "the board keeps rising while its dialog talks")
 	check(pf.board_talk.speaker == "Estrogenka" and pf.board_talk.dur >= Platformer.BOARD_READ_MIN and pf.board_talk.dur <= Platformer.BOARD_READ_MAX and pf.ticker.size() > 0, "the board shows the line for its reading time (%.1f s)" % pf.board_talk.dur)
-	pf.board_talk.t = pf.board_talk.dur - 0.01
-	await frames(4)
+	for part in 4:
+		if not pf.board_talking("3C"):
+			break
+		pf.board_talk.t = pf.board_talk.dur - 0.01
+		await frames(4)
 	check(talked == ["3C"] and not pf.board_talking(), "after its reading time the board dialog ends (board_dialog_done) and the ticker comes back")
 	await frames(3)
 	# A spring launches her.
@@ -2201,14 +2203,13 @@ func _climb_put(pf: Platformer, cx: float, feet_y: float) -> void:
 	pf.on_board = false
 
 
-## The climb's heart meter: hearts fill the bar, five make a ready heart (up to four),
-## a bell adds one; rocket fuel (jump held past a jump's top burns hearts) and the heart
+## The climb's heart meter: hearts fill the magazine (five make a whole heart, up to four),
+## then the reserve, which reloads the magazine; a bell adds one; rocket fuel (jump held past a jump's top burns hearts) and the heart
 ## boost (Shift, 2), their hints only while affordable.
 func _climb_hearts(pf: Platformer) -> void:
 	var stand: LevelData.Plat = _climb_plat(pf, pf.level_h - 900)
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	pf.hearts = 0
-	pf.heart_bar = 0.0
 	pf.climb_power.clear()
 	pf.rise_wait = 30.0
 	await frames(3)
@@ -2218,11 +2219,11 @@ func _climb_hearts(pf: Platformer) -> void:
 	_climb_put(pf, h.x + h.w / 2, h.y + 30)
 	await frames(2)
 	var got := pf.hearts_taken - taken0
-	check(h.collected and got >= 1 and absf(pf.heart_bar - Platformer.HEART_FILL * got) < 0.01 and pf.hearts == 0, "a heart fills the heart meter's bar (%.0f %%)" % pf.heart_bar)
-	pf.heart_bar = 0.0
+	check(h.collected and got >= 1 and absf(pf.meter.mag - Platformer.HEART_FILL / 100.0 * got) < 0.01 and pf.hearts == 0 and pf.meter.reserve == 0.0, "a heart fills the magazine's first heart part-way (%.2f)" % pf.meter.mag)
+	pf.hearts = 0
 	for i in 5:
 		pf._take_heart(LevelData.Ent.new())
-	check(pf.hearts == 1 and pf.heart_bar < 0.01, "five hearts: one ready heart")
+	check(pf.hearts == 1 and absf(pf.meter.mag - 1.0) < 0.001, "five hearts: one whole heart in the magazine")
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
 	check(pf.hud.hint_lines() == ["HINT_CLIMB_FUEL"], "one heart: rocket fuel is offered, not the boost (2) %s" % str(pf.hud.hint_lines()))
@@ -2259,7 +2260,6 @@ func _climb_hearts(pf: Platformer) -> void:
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
 	pf.hearts = 0
-	pf.fuel_burn = 0.0
 	_key(KEY_SPACE, true)
 	var past_top := await until(func(): return pf.p.vy > 0.5, 2)
 	await frames(4)
@@ -2270,7 +2270,6 @@ func _climb_hearts(pf: Platformer) -> void:
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
 	pf.hearts = 2
-	pf.fuel_burn = 0.0
 	_key(KEY_SPACE, true)
 	await frames(4)
 	var vy_rise := pf.p.vy
@@ -2278,7 +2277,7 @@ func _climb_hearts(pf: Platformer) -> void:
 	await frames(1)
 	check(not pf.thrusting and vy_rise < -6 and pf.p.vy > vy_rise + 2.5, "let go early: the jump is cut (vy %.1f → %.1f), no thrusters" % [vy_rise, pf.p.vy])
 	await until(func(): return pf.p.is_grounded, 3)
-	check(pf.hearts == 2 and pf.fuel_burn == 0.0, "… and no fuel burnt (%d hearts, burn %.2f)" % [pf.hearts, pf.fuel_burn])
+	check(pf.meter.mag == 2.0, "… and no fuel burnt (%.2f hearts)" % pf.meter.mag)
 	# Held past the top: the thrusters climb fast and burn hearts.
 	_key(KEY_SPACE, true)
 	var lit := await until(func(): return pf.thrusting, 2)
@@ -2304,7 +2303,6 @@ func _climb_hearts(pf: Platformer) -> void:
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
 	pf.hearts = 1
-	pf.fuel_burn = 0.0
 	_key(KEY_SPACE, true)
 	await frames(2)
 	_key(KEY_SPACE, false)
@@ -2316,7 +2314,7 @@ func _climb_hearts(pf: Platformer) -> void:
 	check(lit and pf.p.jumps_left == 0, "held past the double jump's top: the thrusters")
 	# Out of fuel: they stop and she falls.
 	var out := await until(func(): return not pf.thrusting, 2)
-	check(out and pf.hearts == 0 and pf.fuel_burn == 0.0, "the last heart burnt: the thrusters stop (%d hearts)" % pf.hearts)
+	check(out and pf.meter.mag <= MeterModel.EPS, "the last heart burnt: the thrusters stop (%.2f hearts)" % pf.meter.mag)
 	await frames(30)
 	check(pf.p.vy > 0 and not pf.thrusting, "… and she falls (vy %.1f)" % pf.p.vy)
 	_key(KEY_SPACE, false)
@@ -2331,7 +2329,6 @@ func _climb_hearts(pf: Platformer) -> void:
 	_climb_put(pf, pf.level_w / 2, 700.0)
 	pf.camera_y = 300.0
 	pf.hearts = Platformer.HEART_SLOTS
-	pf.fuel_burn = 0.0
 	pf.p.vy = 0.0
 	var min_y := pf.p.y
 	var min_sy := 9999.0
@@ -2361,7 +2358,6 @@ func _climb_hearts(pf: Platformer) -> void:
 	# … also when the key stays down: a press while falling (no jump left) never lights
 	# the thrusters, it stays the buffered ground jump.
 	pf.hearts = 2
-	pf.fuel_burn = 0.0
 	pf.p.jumps_left = 0
 	pf.p.y = stand.y - pf.p.height - 40
 	pf.p.vy = 8.0
@@ -2376,12 +2372,11 @@ func _climb_hearts(pf: Platformer) -> void:
 			jumped = true
 			break
 		lit_falling = lit_falling or pf.thrusting
-	check(jumped and not lit_falling and pf.hearts == 2 and pf.fuel_burn == 0.0, "jump held down while falling: buffered into the ground jump, no thrusters (hearts %d)" % pf.hearts)
+	check(jumped and not lit_falling and pf.meter.mag == 2.0, "jump held down while falling: buffered into the ground jump, no thrusters (hearts %d)" % pf.hearts)
 	_key(KEY_SPACE, false)
 	await until(func(): return pf.p.is_grounded, 3)
 	# A heart boost during a burn: the thrusters wait (no fuel burnt for nothing).
 	pf.hearts = Platformer.HEART_SLOTS
-	pf.fuel_burn = 0.0
 	_key(KEY_SPACE, true)
 	await until(func(): return pf.thrusting, 2)
 	var h_before := pf.fuel_left()
@@ -2398,7 +2393,6 @@ func _climb_hearts(pf: Platformer) -> void:
 	await frames(3)
 	pf.rise_wait = 99.0
 	pf.hearts = 1
-	pf.fuel_burn = 0.0
 	_key(KEY_SPACE, true)
 	await until(func(): return pf.thrusting, 2)
 	await frames(10)
@@ -2410,7 +2404,6 @@ func _climb_hearts(pf: Platformer) -> void:
 	pf.rise_wait = 0.0
 	# After the wheel, the key that confirmed it doesn't light the thrusters.
 	pf.hearts = 2
-	pf.fuel_burn = 0.0
 	pf.p.y = stand.y - pf.p.height - 200
 	pf.p.vy = -0.5
 	pf.p.is_grounded = false
@@ -2424,22 +2417,66 @@ func _climb_hearts(pf: Platformer) -> void:
 	pf.board_queue.clear()
 	await until(func(): return pf.p.is_grounded, 4)
 	# A bell with a full meter gives nothing, and says so.
-	pf.hearts = Platformer.HEART_SLOTS
-	pf.heart_bar = 100.0
+	pf.meter.reset(Platformer.HEART_SLOTS, pf.meter.reserve_max)
 	pf.ticker_queue.clear()
 	var full_bell := LevelData.Ent.new()
 	full_bell.x = pf.p.x
 	full_bell.y = pf.p.y
 	pf._ring_bell(full_bell)
 	check(pf.hearts == Platformer.HEART_SLOTS and pf.ticker_queue.has(Text.plain(Text.t("CLIMB_BELL_FULL"))) and not pf.ticker_queue.has(Text.plain(Text.t("CLIMB_BELL"))), "a bell on a full meter doesn't promise +1 heart")
-	# The meter holds four; a full bar refills the next one spent.
+	# The magazine holds four, the rest goes to the reserve, which reloads it.
 	pf.hearts = 0
-	pf.heart_bar = 0.0
-	pf.add_heart_fill(600.0)
-	check(pf.hearts == Platformer.HEART_SLOTS and pf.heart_bar == 100.0, "the meter holds %d ready hearts, then the bar stays full" % Platformer.HEART_SLOTS)
-	check(pf.spend_hearts(1) and pf.hearts == Platformer.HEART_SLOTS and pf.heart_bar == 0.0, "spending one refills it from the full bar")
+	var bell2 := LevelData.Ent.new()
+	bell2.x = pf.p.x
+	bell2.y = pf.p.y
+	pf._ring_bell(bell2)
+	check(pf.hearts == 1 and pf.meter.reserve == 0.0, "a bell: one heart into the magazine first")
+	pf.add_heart_fill(500.0)
+	check(pf.hearts == Platformer.HEART_SLOTS and absf(pf.meter.reserve - 2.0) < 0.001, "a full magazine (%d) sends the rest into the reserve (%.1f)" % [pf.hearts, pf.meter.reserve])
+	check(pf.spend_hearts(3) and pf.hearts == 1 and not pf.meter.reloading, "spending three: one left, the reserve waits a moment")
+	await seconds(0.5)
+	check(pf.hearts == 1 and pf.meter.flyers.is_empty(), "… no reload right after spending")
+	var re := await until(func(): return not pf.meter.flyers.is_empty(), 1.5)
+	check(re and pf.meter.reloading, "then the reserve reloads the magazine, a heart flies into the pill")
+	await until(func(): return not pf.meter.reloading and pf.meter.flyers.is_empty(), 3)
+	check(pf.hearts == 3 and pf.meter.reserve < 0.001, "the reserve's two hearts are in the magazine (%d, reserve %.2f)" % [pf.hearts, pf.meter.reserve])
+	check(pf.powers_explained.has(Platformer.RESERVE_DIALOG) and (pf.board_talking(Platformer.RESERVE_DIALOG) or pf.board_queue.has(Platformer.RESERVE_DIALOG) or pf.board_talk.is_empty()), "the first heart into the reserve: the board explains the reserve (3F)")
+	pf.board_talk = {}
+	pf.board_queue.clear()
+	# Rocket fuel burns the magazine itself: half a heart burnt is half a heart missing.
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	pf.hearts = Platformer.HEART_SLOTS
+	_key(KEY_SPACE, true)
+	await until(func(): return pf.thrusting, 2)
+	await until(func(): return pf.meter.mag <= Platformer.HEART_SLOTS - 0.5, 2)
+	_key(KEY_SPACE, false)
+	await frames(1)
+	var burnt := pf.meter.mag
+	check(burnt < Platformer.HEART_SLOTS - 0.3 and burnt > Platformer.HEART_SLOTS - 0.8 and not pf.thrusting, "a short burn takes part of the top heart from the magazine (%.2f)" % burnt)
+	var hr := pf.add_heart_fill(Platformer.HEART_FILL)
+	check(hr.x > 0.19 and hr.y == 0.0 and pf.meter.reserve == 0.0, "… a heart picked up then fills that part-burnt heart, not the reserve (%.2f)" % pf.meter.mag)
+	await until(func(): return pf.p.is_grounded, 4)
+	pf.meter.reset(2.5, 2.0)
+	await until(func(): return not pf.meter.reloading and pf.meter.flyers.is_empty() and pf.meter.mag >= 4.0 - 0.001, 4)
+	check(absf(pf.meter.mag - 4.0) < 0.001 and absf(pf.meter.reserve - 0.5) < 0.001, "the reload tops the part-burnt heart up to a full magazine (%.2f, reserve %.2f)" % [pf.meter.mag, pf.meter.reserve])
+	# A part of a heart is fuel too; burnt down to empty, the magazine reloads at once.
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	pf.rise_wait = 99.0
+	pf.meter.reset(0.6, 2.0)
+	_key(KEY_SPACE, true)
+	var lit_part := await until(func(): return pf.thrusting, 2)
+	var out_part := await until(func(): return not pf.thrusting, 2)
+	check(lit_part and out_part and pf.meter.mag <= MeterModel.EPS + 0.01, "0.6 of a heart lights the thrusters and burns down to empty (%.2f)" % pf.meter.mag)
+	await frames(2)
+	check(pf.meter.reloading and pf.meter.reload_from_empty, "… then the empty magazine reloads at once")
+	_key(KEY_SPACE, false)
+	await until(func(): return pf.p.is_grounded, 4)
+	pf.rise_wait = 0.0
+	pf.board_talk = {}
+	pf.board_queue.clear()
 	pf.hearts = 0
-	pf.heart_bar = 0.0
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	pf.rise_wait = 0.0
 	await frames(3)
@@ -2734,3 +2771,72 @@ func _check_pipe_layouts() -> void:
 		var ok := _solve_pipes(g)
 		check(ok, "layout %d solvable" % li)
 		g.free()
+
+
+## MeterModel (the run's water, the climb's hearts) on its own, at a steady 60 fps:
+## pickups into the magazine first, then the reserve; spending; the reload (at once when
+## empty, after RELOAD_DELAY when part-empty, unit by unit, postponed by spending).
+func _meter_model_checks() -> void:
+	var dt := 1.0 / 60.0
+	var mm := MeterModel.new(4.0, 2.0, 0.0)
+	var r := mm.fill(30.0)
+	check(r.x > 0.29 and r.y == 0.0 and absf(mm.mag - 2.3) < 0.001 and mm.slot_flash > 0 and mm.slot_flash_i == 2, "MeterModel: a pickup fills the magazine's part-filled slot (it flashes)")
+	r = mm.fill(200.0)
+	check(mm.mag == 4.0 and absf(mm.reserve - 0.3) < 0.001 and mm.reserve_flash > 0, "MeterModel: past a full magazine the pickup goes to the reserve (it flashes)")
+	check(not mm.spend(4.5) and mm.spend(4.0) and mm.mag == 0.0, "MeterModel: spending empties the magazine, never more than it holds")
+	mm.reset(0.0, 4.0)
+	mm.update(dt)
+	check(mm.reloading and mm.flyers.size() == 1 and absf(mm.reserve - 3.0) < 0.001 and mm.mag == 0.0, "MeterModel: an empty magazine reloads at once, one unit leaves the reserve (still on its way)")
+	var t := dt
+	var first := -1.0
+	var full := -1.0
+	while t < 4.0 and full < 0:
+		mm.update(dt)
+		t += dt
+		if first < 0 and mm.mag >= 1.0:
+			first = t
+		if mm.mag >= 4.0:
+			full = t
+	check(first > 0.3 and first < 0.5, "MeterModel: the unit lands in the magazine after its flight (%.2f s)" % first)
+	check(full > 1.4 and full < 2.0 and mm.reserve < 0.001 and not mm.reloading, "MeterModel: a full reload takes time, unit by unit (%.2f s)" % full)
+	mm.reset(4.0, 4.0)
+	mm.spend(1.5)
+	for i in 60:
+		mm.update(dt)
+	check(mm.mag == 2.5 and not mm.reloading and mm.flyers.is_empty(), "MeterModel: a part-empty magazine waits before reloading")
+	mm.spend(0.5)
+	for i in 60:
+		mm.update(dt)
+	check(mm.mag == 2.0 and mm.flyers.is_empty(), "MeterModel: spending during the wait postpones the reload")
+	for i in 20:
+		mm.update(dt)
+	check(mm.reloading and mm.flyers.size() == 1 and int(mm.flyers[0].slot) == 2, "MeterModel: … then it reloads, into the first empty slot")
+	for i in 120:
+		mm.update(dt)
+	check(mm.mag == 4.0 and absf(mm.reserve - 2.0) < 0.001, "MeterModel: two units moved from the reserve into the magazine")
+	mm.reset(1.4, 3.0)
+	mm.update(dt)
+	check(mm.flyers.size() == 1 and absf(float(mm.flyers[0].amount) - 0.6) < 0.001 and int(mm.flyers[0].slot) == 1, "MeterModel: the part-filled slot is topped up first")
+	mm.reset(2.0, 3.0)
+	for i in 120:
+		mm.update(dt)
+		if not mm.flyers.is_empty():
+			break
+	var in_air := mm.flyers.size()
+	mm.spend(1.0)
+	for i in 30:
+		mm.update(dt)
+	check(in_air == 1 and not mm.reloading and mm.flyers.is_empty() and mm.mag == 2.0 and absf(mm.reserve - 2.0) < 0.001, "MeterModel: spending stops a part-empty reload, the unit in the air still lands (%.1f, %.1f)" % [mm.mag, mm.reserve])
+	mm.reset(0.0, 4.0)
+	for i in 30:
+		mm.update(dt)
+	mm.spend(1.0)
+	mm.drain(0.2)
+	check(mm.reloading and mm.reload_from_empty, "MeterModel: a reload from an empty magazine goes on while she spends (as in a shooter)")
+	for i in 180:
+		mm.update(dt)
+	check(absf(mm.mag - 3.0) < 0.001 and mm.reserve < 0.001 and not mm.reloading, "MeterModel: … to the end: the whole reserve is in the magazine (%.2f)" % mm.mag)
+	mm.reset(2.0, 0.0)
+	mm.slot_flash = 0.0
+	r = mm.fill(20.0, false)
+	check(r.x > 0.19 and mm.slot_flash == 0.0 and mm.last_slot == 2, "MeterModel: fill(…, false) fills without its own flash (the caller flashes on arrival)")

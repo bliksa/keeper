@@ -115,9 +115,11 @@ const TICKER_SPEED := 90.0
 const TICKER_FS := 22
 const TICKER_LEFT := 158.0
 const TICKER_GAP := 70.0
-## The heart meter (like the forest run's water): HEART_SLOTS ready hearts, fed by the bar
-## that every heart picked up fills by HEART_FILL (%); a full bar is one more ready heart.
-## Ready hearts buy the abilities: rocket fuel (jump held past a jump's top: the thrusters
+## The heart meter (MeterModel, like the forest run's water and a gun's magazine):
+## HEART_SLOTS hearts in the magazine and a reserve of as many more (the line round the
+## pill). Every heart picked up is HEART_FILL (%) of one: it fills the magazine first, a
+## full magazine sends it into the reserve, which reloads the magazine (at once when it is
+## empty, else after a moment without spending), heart by heart. Ready hearts buy the abilities: rocket fuel (jump held past a jump's top: the thrusters
 ## burn hearts, FUEL_HEART_TIME s each) and the heart boost (Shift / B: a launch up like a
 ## spring, HEART_BOOST_COST).
 const HEART_SLOTS := 4
@@ -130,6 +132,8 @@ const FUEL_SPEED := 12.0
 const FUEL_ACCEL := 1.5
 const FUEL_HEART_TIME := 0.8
 const FUEL_CEIL := 60.0
+## The least of a heart in the magazine that lights the thrusters.
+const FUEL_MIN := 0.2
 ## While the thrusters burn the camera keeps this share of the view above her.
 const FUEL_VIEW_LEAD := 0.38
 ## … but a short burn keeps the board this far under the platform she jumped from.
@@ -157,6 +161,8 @@ const SUN_MELT := 3.0
 const SUN_MELT_POS := Vector2(533, 200)
 ## The dialog that explains a power-up, said on the board the first time it is won.
 const POWER_DIALOG := {"super_jump": "3A", "triple": "3B", "magnet": "3C", "rocket": "3D"}
+## The board dialog that explains the heart reserve (the first heart into it in a climb).
+const RESERVE_DIALOG := "3F"
 
 # --- the transformation (the climb's end) and the PMS maze (level 6) -------------------
 ## The transformation: the casino winds down, then the view turns upside down.
@@ -259,18 +265,21 @@ var on_board := false
 ## from a boost still lands on a platform.
 var last_stand_y := 0.0
 var jackpots := 0
-## The heart meter: ready hearts (0..HEART_SLOTS), the bar that fills the next one (0..100),
+## The heart meter (`meter`: the magazine and the reserve); `hearts` = whole hearts ready in
+## the magazine (setting it, for dev shortcuts and tests, also empties the reserve);
 ## hearts picked up and bells rung in this climb; heart_short > 0 blinks the missing hearts
 ## (an ability tried without enough).
-var hearts := 0
-var heart_bar := 0.0
+var meter := MeterModel.new(HEART_SLOTS, 0.0, 0.0)
+var hearts: int:
+	get:
+		return meter.whole()
+	set(v):
+		meter.reset(float(v), 0.0)
 var hearts_taken := 0
 var bells := 0
 var heart_short := 0.0
-## Rocket fuel: the thrusters burn now; how much of the last ready heart they have burnt
-## (0..1, the HUD shrinks it); the thruster sound's clock.
+## Rocket fuel: the thrusters burn now (they drain the magazine); the thruster sound's clock.
 var thrusting := false
-var fuel_burn := 0.0
 var _thrust_sfx := 0.0
 ## Only a hold that carries on a launch (a jump, a spring, the heart boost, the rocket)
 ## ignites the thrusters: a press while falling stays a buffered jump.
@@ -3119,6 +3128,9 @@ func _update_climb(dt: float, d60: float) -> void:
 	floor_now = floor_of(p.y + p.height)
 	best_floor = maxi(best_floor, floor_now)
 	heart_short = maxf(0.0, heart_short - dt)
+	# The reserve reloads the magazine (a click per heart that lands).
+	if meter.update(dt) > 0:
+		Audio.play_sfx("cink-%02d.wav" % (4 + 2 * mini(meter.land_i, 3)), 0.32)
 	# Pink sparks around her while she has hearts ready to spend.
 	if hearts > 0 and randf() < 0.025 * hearts * d60:
 		particles.append({"x": p.x + p.width / 2 + (randf() - 0.5) * 60, "y": p.y + randf() * p.height,
@@ -3209,7 +3221,7 @@ func _spring(e: LevelData.Ent) -> void:
 	ticker_say(Text.plain(Text.t("CLIMB_BOOST")))
 
 
-## A heart: the meter's bar fills by HEART_FILL; a full bar is one more ready heart.
+## A heart: HEART_FILL of one, into the magazine (or the reserve when it is full).
 func _take_heart(e: LevelData.Ent) -> void:
 	e.collected = true
 	hearts_taken += 1
@@ -3219,33 +3231,34 @@ func _take_heart(e: LevelData.Ent) -> void:
 	_sparkles(Vector2(e.x + e.w / 2, e.y + e.h / 2), 5, "heart")
 
 
-## Fills the heart meter's bar; every full bar is a ready heart (up to HEART_SLOTS; with
-## all of them ready the bar stays full and refills the next one spent).
-func add_heart_fill(amount: float) -> void:
-	# The same meter as the forest run's water (MeterModel).
-	var r := MeterModel.settle(hearts, heart_bar + amount, HEART_SLOTS)
-	hearts = int(roundf(r.x))
-	heart_bar = r.y
-	if r.z > 0:
+## Fills the heart meter by `amount` % of a heart: the magazine first, then the reserve
+## (the same meter as the forest run's water, MeterModel). A chime when a heart in the
+## magazine becomes whole.
+func add_heart_fill(amount: float) -> Vector2:
+	var before := hearts
+	var r := meter.fill(amount)
+	if hearts > before:
 		Audio.play_sfx("cink-11.wav", 0.3)
+	# The first heart of a climb that goes into the reserve: the board explains the rule.
+	if r.y > MeterModel.EPS and not powers_explained.has(RESERVE_DIALOG) and is_climb():
+		powers_explained[RESERVE_DIALOG] = true
+		board_dialog(RESERVE_DIALOG)
+	return r
 
 
-## Spends ready hearts (refilled from a full bar); false (and the missing ones blink) if
-## there aren't enough.
+## Spends hearts from the magazine (the reserve reloads it later); false (and the missing
+## ones blink) if there aren't enough.
 func spend_hearts(n: int) -> bool:
-	if hearts < n:
+	if not meter.spend(float(n)):
 		heart_short = 0.6
 		return false
-	hearts -= n
-	if hearts <= 0:
-		fuel_burn = 0.0
-	add_heart_fill(0.0)
 	return true
 
 
-## Ready hearts left as rocket fuel (the last one part-burnt).
+## Hearts left as rocket fuel: the magazine (the top one may be part-burnt; the burn
+## drains the magazine itself, MeterModel.drain).
 func fuel_left() -> float:
-	return maxf(0.0, hearts - fuel_burn)
+	return meter.mag
 
 
 ## Rocket fuel (after gravity, every frame in the climb): jump held once her rise has run
@@ -3257,7 +3270,9 @@ func _update_fuel(dt: float, d60: float) -> void:
 		# Let go: a later press in the air (with no jump left) is only a buffered jump.
 		_fuel_wait_release = false
 		_fuel_armed = false
-	var can := held and hearts > 0 and not climb_won and not p.is_grounded and p.hit_timer <= 0 and p.y > FUEL_CEIL and prerod_t < 0
+	# Ignite with at least FUEL_MIN of a heart in the magazine; burn it down to empty.
+	var fuel_ok := meter.mag > (MeterModel.EPS if thrusting else FUEL_MIN)
+	var can := held and fuel_ok and not climb_won and not p.is_grounded and p.hit_timer <= 0 and p.y > FUEL_CEIL and prerod_t < 0
 	if thrusting and not can:
 		thrusting = false
 	elif not thrusting and can and _fuel_armed and not _fuel_wait_release and p.vy >= FUEL_IGNITE_VY:
@@ -3274,13 +3289,14 @@ func _update_fuel(dt: float, d60: float) -> void:
 		return
 	if p.vy > -FUEL_SPEED:
 		p.vy = maxf(p.vy - FUEL_ACCEL * d60, -FUEL_SPEED)
-	fuel_burn += dt / FUEL_HEART_TIME
-	while fuel_burn >= 1.0 and hearts > 0:
-		fuel_burn -= 1.0
-		spend_hearts(1)
-	if hearts <= 0:
-		# Out of fuel: she falls.
+	# The burn drains the magazine itself (a part-burnt heart is part of the meter: the next
+	# pickup fills it, the reload tops it up); spending holds a part-empty reload.
+	meter.drain(dt / FUEL_HEART_TIME)
+	if meter.mag <= MeterModel.EPS:
+		# Out of fuel: she falls (the empty magazine reloads at once); a new press lights
+		# the thrusters again.
 		thrusting = false
+		_fuel_wait_release = true
 		heart_short = 0.4
 		Audio.play_sfx("breath_after.wav", 0.35)
 	# The flame under her feet (flickering), the thruster's hum.
@@ -3297,14 +3313,13 @@ func _update_fuel(dt: float, d60: float) -> void:
 		Audio.play_sfx("breathoff.wav", 0.18)
 
 
-## A bell: one more ready heart at once (a full meter: the bar fills), a chime.
+## A bell: one more heart at once (into the magazine, or the reserve when it is full), a chime.
 func _ring_bell(e: LevelData.Ent) -> void:
 	e.collected = true
 	bells += 1
-	var before := hearts * 100.0 + heart_bar
-	add_heart_fill(100.0)
+	var got := add_heart_fill(100.0)
 	# A full meter takes nothing: then no "+1 heart", just the chime.
-	var key := "CLIMB_BELL" if hearts * 100.0 + heart_bar > before else "CLIMB_BELL_FULL"
+	var key := "CLIMB_BELL" if got.x + got.y > 0.001 else "CLIMB_BELL_FULL"
 	var at := Vector2(e.x + e.w / 2, e.y)
 	_sparkles(at + Vector2(0, e.h / 2), 14)
 	_sparkles(at + Vector2(0, e.h / 2), 6, "heart")

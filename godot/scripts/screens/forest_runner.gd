@@ -101,11 +101,13 @@ const JUMP_V := 7.0
 const DOUBLE_V := 6.2
 const LANE_SPEED := 11.0
 const SLOW_SCALE := 0.4
-## Water works like the climb's hearts (MeterModel, `meter`): DROPS_MAX ready drops
-## (`drops`, the HUD shows them) and the bar round the pill (`water`, 0–100) that every
-## drop on the path fills by DROP_WATER (= the climb's HEART_FILL); a full bar is one
-## more ready drop, with all four ready it stays full and refills the next one spent.
-## A double jump costs DOUBLE_DROPS, focus burns FOCUS_DRAIN drops a second, a hit
+## Water works like the climb's hearts and like a gun's magazine (MeterModel, `meter`):
+## DROPS_MAX drops in the magazine (`drops`, the pill's four drops: what the abilities
+## spend) and the reserve (`reserve`, up to four more: the line round the pill). Every
+## drop on the path (DROP_WATER = the climb's HEART_FILL, a fifth of a drop) fills the
+## magazine first, a full magazine sends it into the reserve; the reserve reloads the
+## magazine (at once when it is empty, else after a moment without spending), drop by
+## drop. A double jump costs DOUBLE_DROPS, focus burns FOCUS_DRAIN drops a second, a hit
 ## HIT_DROPS.
 const DROPS_MAX := 4.0
 const DOUBLE_DROPS := 2.0
@@ -137,14 +139,17 @@ var py := 0.0
 var vy := 0.0
 var jumps := 2
 var slow := false
-## The water meter (shared model with the climb's hearts): `drops` = its ready drops,
-## `water` = its bar.
-var meter := MeterModel.new(DROPS_MAX, DROPS_MAX, 30.0)
-var water: float:
+## The water meter (shared model with the climb's hearts): `drops` = its magazine,
+## `reserve` = its reserve.
+var meter := MeterModel.new(DROPS_MAX, DROPS_MAX, START_RESERVE)
+## Drops in the reserve at the start (when Game.water doesn't say).
+const START_RESERVE := 1.0
+var reserve: float:
 	get:
-		return meter.bar
+		return meter.reserve
 	set(v):
-		meter.bar = clampf(v, 0.0, 100.0)
+		meter.reserve = clampf(v, 0.0, meter.reserve_max)
+		meter.shown_reserve = meter.reserve
 var time := 0.0
 ## Rolling back after a bump (s left) or being carried by a bird (s left).
 var bump_t := 0.0
@@ -171,17 +176,16 @@ var sun_flash := 0.0
 ## Slices drawn in the sun: a found piece flies up first, then fills its slice.
 var sun_shown := 0
 var sun_pulse := 0.0
-var water_flash := 0.0
 ## Too little water for a jump: the pill shakes red for a moment.
 var water_short := 0.0
 ## Which mark the missing water was for ("jump", "focus", "double"): it blinks.
 var short_for := ""
-## Ready drops (0–DROPS_MAX; fractional while focus drains them).
+## Drops in the magazine (0–DROPS_MAX; fractional while focus drains them).
 var drops: float:
 	get:
-		return meter.ready
+		return meter.mag
 	set(v):
-		meter.ready = clampf(v, 0.0, DROPS_MAX)
+		meter.mag = clampf(v, 0.0, DROPS_MAX)
 ## Seconds left of the blinking after a hit (nothing hits her meanwhile).
 var invuln := 0.0
 ## A slice lost in a hit: its place in the sun blinks red (s left).
@@ -245,7 +249,7 @@ const RECOVER_RAMP := 0.7
 
 func _ready() -> void:
 	_font = Text.font_bold
-	water = Game.water if Game.water > 0 else 40.0
+	meter.reset(DROPS_MAX, Game.water / 100.0 * meter.reserve_max if Game.water > 0 else START_RESERVE)
 	build_course()
 	_tree_rng.seed = 7
 	_extend_trees()
@@ -421,7 +425,6 @@ func _process(delta: float) -> void:
 	flash = maxf(0, flash - dt)
 	sun_flash = maxf(0, sun_flash - dt)
 	sun_pulse = maxf(0, sun_pulse - dt)
-	water_flash = maxf(0, water_flash - dt)
 	water_short = maxf(0, water_short - dt)
 	sun_lost = maxf(0, sun_lost - dt)
 	invuln = maxf(0, invuln - dt)
@@ -489,6 +492,10 @@ func _update(dt: float) -> void:
 	var wdt := dt * (SLOW_SCALE if slow else 1.0)
 	if slow:
 		meter.drain(FOCUS_DRAIN * dt)
+	# The reserve reloads the magazine (a click per drop that lands).
+	var landed := meter.update(dt)
+	if landed > 0:
+		Audio.play_sfx("cink-%02d.wav" % (4 + 2 * mini(meter.land_i, 3)), 0.32)
 	# Moving sideways uses real time (the focus advantage).
 	px = move_toward(px, lane * LANE, LANE_SPEED * dt)
 	if carry_t > 0:
@@ -732,8 +739,8 @@ func _hits(wdt: float) -> void:
 			"drop":
 				if absf(py - o.y) < 0.8:
 					o.taken = true
-					_add_water(DROP_WATER)
-					_fly("drop", o)
+					var into := _add_water(DROP_WATER)
+					_fly("drop", o, into)
 					Audio.play_sfx("cink-%02d.wav" % (1 + int(time * 7) % 11), 0.35)
 			"vine":
 				if py < VINE_H:
@@ -746,12 +753,15 @@ func _hits(wdt: float) -> void:
 					_sun_piece()
 
 
-## Water from a drop on the path: the bar round the pill fills; a full bar is one more
-## ready drop (a chime, the pill flashes).
-func _add_water(n: float) -> void:
-	if meter.fill(n) > 0:
-		Audio.play_sfx("cink-11.wav", 0.3)
-		water_flash = 0.45
+## Water from a drop on the path: into the magazine first (its part-filled drop fills),
+## a full magazine sends it into the reserve (the line round the pill). Returns where it
+## went: "mag" / "reserve" / "" (all full).
+func _add_water(n: float) -> String:
+	# The pill lights up where it went when the flying drop gets there (_update_flyers).
+	var r := meter.fill(n, false)
+	if r.x > 0.0001:
+		return "mag"
+	return "reserve" if r.y > 0.0001 else ""
 
 
 ## A sun piece: one more slice of the sun. Every SUN_PER_GAME a minigame, the
@@ -853,16 +863,23 @@ func _intro_k(z: float) -> float:
 	return 1.0 - pow(1.0 - t, 3)
 
 
-## A pickup flies from where it was to its indicator (sun top-left, water top-right).
-func _fly(kind: String, o: Dictionary) -> void:
+## A pickup flies from where it was to its indicator (sun top-left, water top-right: the
+## drop it fills, or the reserve badge when the magazine is full).
+func _fly(kind: String, o: Dictionary, into := "") -> void:
 	var c := project(_lane_x(o), o.y, o.z)
 	var from := Vector2(c.x, c.y) if c.z > 0 else Vector2(W / 2, H / 2)
-	flyers.append({"kind": kind, "from": from, "t": 0.0})
+	flyers.append({"kind": kind, "from": from, "t": 0.0, "into": into, "slot": meter.last_slot})
 
 
 ## Where a flyer lands.
-func fly_target(kind: String) -> Vector2:
-	return SUN_HUD if kind == "sun" else Vector2(WATER_HUD.position.x + 26, WATER_HUD.get_center().y)
+func fly_target(kind: String, f := {}) -> Vector2:
+	if kind == "sun":
+		return SUN_HUD
+	if f.get("into", "") == "mag":
+		return MeterHud.slot_center(WATER_HUD, int(f.get("slot", 0)), int(DROPS_MAX))
+	if f.get("into", "") == "reserve":
+		return MeterHud.badge_icon(WATER_HUD)
+	return Vector2(WATER_HUD.position.x + 26, WATER_HUD.get_center().y)
 
 
 func _update_flyers(dt: float) -> void:
@@ -875,8 +892,12 @@ func _update_flyers(dt: float) -> void:
 				sun_flash = 1.0
 				sun_pulse = 0.45
 				Audio.play_sfx("finished.wav", 0.35)
-			else:
-				water_flash = 0.45
+			elif f.get("into", "") == "mag":
+				# The drop it filled lights up as it arrives.
+				meter.slot_flash = MeterModel.FLASH
+				meter.slot_flash_i = int(f.slot)
+			elif f.get("into", "") == "reserve":
+				meter.reserve_flash = MeterModel.FLASH
 	if not flyers.any(func(f): return f.kind == "sun"):
 		sun_shown = sun
 		_land_pending()
@@ -1353,7 +1374,7 @@ func _draw_flyers() -> void:
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	for f in flyers:
 		var k: float = f.t * f.t * (3 - 2 * f.t)
-		var to := fly_target(f.kind)
+		var to := fly_target(f.kind, f)
 		# An arc: up and over towards the indicator.
 		var mid: Vector2 = (f.from + to) / 2 + Vector2(0, -120)
 		var p: Vector2 = f.from.lerp(mid, k).lerp(mid.lerp(to, k), k)
@@ -1397,7 +1418,7 @@ func _draw_intro_hud() -> void:
 			Draw.radial_glow(self, SUN_HUD, 90 * grow, Color(1, 0.9, 0.5, 0.5 * (1.0 - a)))
 		SpriteArt.draw_sun(self, SUN_HUD, 46 * maxf(0.05, grow), 0, 0.0, time)
 	if e > INTRO_FALL_AT:
-		draw_water_pill(self, WATER_HUD, drops, water / 100.0, false, time)
+		draw_water_pill(self, WATER_HUD, meter, false, time)
 
 
 ## The controls, for a few seconds at the start (when Iskra's dialog is skipped).
@@ -1440,13 +1461,9 @@ func _draw_hud() -> void:
 	# Hydration at the top-right (where the breath is in the cave): the water
 	# that feeds slowed time.
 	var wr := WATER_HUD
-	if water_flash > 0:
-		var g := 6.0 * sin(water_flash / 0.45 * PI)
-		wr = wr.grow(g)
-		Draw.radial_glow(self, Vector2(wr.position.x + 26, wr.get_center().y), 50, Color(0.37, 0.7, 0.94, 0.6 * water_flash / 0.45))
 	if water_short > 0:
 		wr.position.x += sin(water_short * 60.0) * 5.0
-	draw_water_pill(self, wr, drops, water / 100.0, slow, time, short_for if water_short > 0 else "")
+	draw_water_pill(self, wr, meter, slow, time, short_for if water_short > 0 else "")
 	if water_short > 0:
 		Draw.panel(self, wr.grow(2), Color(0, 0, 0, 0), 18, Color(0.94, 0.27, 0.27, water_short / 0.5), 3)
 	hints.draw(self, Vector2(WATER_HUD.end.x, WATER_HUD.end.y))
@@ -1471,23 +1488,25 @@ func _draw_end_sun() -> void:
 	SpriteArt.draw_sun(self, c, r, SUN_TOTAL, maxf(sun_flash, 0.4 * glow), time)
 
 
-## The hydration pill: a drop and how full the water is (slowed time pulses it).
-## The water: four ready drops (a part-used one keeps only its lower part) and,
-## as a line round the pill that fills up like the cave's breath ring, the bar
-## whose every fill is one more ready drop (as the climb's hearts). `blink` =
+## The hydration pill (slowed time pulses it): the magazine's four drops (a part-used
+## one keeps only its lower part) and the reserve as a line round the pill with its
+## badge and the reload's flying drops (MeterHud, as the climb's hearts). `blink` =
 ## "double" / "focus": the missing drops blink red.
-static func draw_water_pill(ci: CanvasItem, r: Rect2, n: float, bar_k: float, slowing: bool, t: float, blink := "") -> void:
+static func draw_water_pill(ci: CanvasItem, r: Rect2, m: MeterModel, slowing: bool, t: float, blink := "") -> void:
 	Draw.panel(ci, r, Color("#f0eee9"), 16, Color(0.37, 0.61, 0.6, 0.2), 2)
+	var n := m.mag
+	var col_line := Color("#2563eb").lerp(Color("#5fb3f0"), 0.35)
+	MeterHud.draw_shimmer(ci, r, m, t)
 	var red := Color(0.94, 0.27, 0.27)
 	var on := fmod(t, 0.2) < 0.12
-	var step := (r.size.x - 24) / 4.0
 	for i in 4:
-		var c := Vector2(r.position.x + 12 + step * (i + 0.5), r.get_center().y + 1)
+		var c := MeterHud.slot_center(r, i)
+		MeterHud.draw_slot_glow(ci, m, i, c, col_line)
 		var fill := clampf(n - i, 0, 1)
 		var empty := Color(0.58, 0.64, 0.72, 0.35)
 		if blink != "" and on and fill < 1.0 and (blink == "focus" or i < 2):
 			empty = Color(red, 0.75)
-		var pts := _drop_pts(c, 1.05)
+		var pts := _drop_pts(c, 1.05 * (1.0 + MeterHud.slot_pop(m, i)))
 		Draw.polygon_safe(ci, pts, empty)
 		if fill > 0.01:
 			var col := Color("#5fb3f0")
@@ -1502,9 +1521,8 @@ static func draw_water_pill(ci: CanvasItem, r: Rect2, n: float, bar_k: float, sl
 				for part in Geometry2D.intersect_polygons(pts, below):
 					Draw.polygon_safe(ci, part, col)
 			ci.draw_circle(c + Vector2(-3, 1) * 1.05, 2.5 * 1.05, Color(1, 1, 1, 0.8))
-	# The bar as a line round the pill (like the breath ring in the cave).
-	var col_line := Color("#2563eb").lerp(Color("#5fb3f0"), 0.35)
-	progress_outline(ci, r, bar_k, col_line)
+	# The reserve as a line round the pill (like the breath ring in the cave).
+	MeterHud.draw_reserve(ci, r, m, col_line, "drop", t)
 
 
 ## A drop's outline (as SpriteArt.draw_drop draws it).
@@ -1518,30 +1536,6 @@ static func _drop_pts(c: Vector2, k: float) -> PackedVector2Array:
 
 ## A line round a rounded rect, filled to `k` (0–1) clockwise from the top left.
 static func progress_outline(ci: CanvasItem, rect: Rect2, k: float, col: Color) -> void:
-	var r := rect.grow(-2)
-	var rad := 14.0
-	var path := PackedVector2Array([Vector2(r.position.x + rad, r.position.y)])
-	var corners := [[Vector2(r.end.x - rad, r.position.y + rad), -PI / 2], [Vector2(r.end.x - rad, r.end.y - rad), 0.0], [Vector2(r.position.x + rad, r.end.y - rad), PI / 2], [Vector2(r.position.x + rad, r.position.y + rad), PI]]
-	for cr in corners:
-		var cc: Vector2 = cr[0]
-		var a0: float = cr[1]
-		for j in 9:
-			var a := a0 + j / 8.0 * PI / 2
-			path.append(cc + Vector2(cos(a), sin(a)) * rad)
-	path.append(Vector2(r.position.x + rad, r.position.y))
-	var total := 0.0
-	for i in range(1, path.size()):
-		total += path[i - 1].distance_to(path[i])
-	var left := total * clampf(k, 0, 1)
-	var out := PackedVector2Array([path[0]])
-	for i in range(1, path.size()):
-		var seg := path[i - 1].distance_to(path[i])
-		if left >= seg:
-			out.append(path[i])
-			left -= seg
-		else:
-			if seg > 0:
-				out.append(path[i - 1].lerp(path[i], left / seg))
-			break
+	var out := MeterHud.outline_part(rect, k)
 	if out.size() > 1:
 		ci.draw_polyline(out, col, 4.0, true)
