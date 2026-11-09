@@ -164,6 +164,8 @@ var water_short := 0.0
 ## Which mark the missing water was for ("jump", "focus", "double"): it blinks.
 var short_for := ""
 var reserve := 0.0
+## Seconds left of the blinking after a hit (nothing hits her meanwhile).
+var invuln := 0.0
 ## A slice lost in a hit: its place in the sun blinks red (s left).
 var sun_lost := 0.0
 const LOST_TIME := 1.4
@@ -216,6 +218,8 @@ var _pending_lane := 0
 var _pending_jump := false
 ## Obstacles closer than this to where a roll-back lands stay disarmed.
 const GRACE := 5.0
+## After a hit she blinks and nothing can hit her for this long (s).
+const INVULN_TIME := 3.0
 ## After a hit or a carry: standing still, then speeding up again (s).
 const RECOVER_STAND := 0.5
 const RECOVER_RAMP := 0.7
@@ -399,6 +403,7 @@ func _process(delta: float) -> void:
 	water_flash = maxf(0, water_flash - dt)
 	water_short = maxf(0, water_short - dt)
 	sun_lost = maxf(0, sun_lost - dt)
+	invuln = maxf(0, invuln - dt)
 	for f in lost_flyers.duplicate():
 		f.t += dt / LOST_FLY
 		if f.t >= 1.0:
@@ -623,6 +628,8 @@ func _hits(wdt: float) -> void:
 		var in_lane: bool = o.lane == -9 or absf(px - o.lane * LANE) < LANE * 0.6
 		if not in_lane:
 			continue
+		if invuln > 0 and o.kind in ["root", "branch", "bird", "vine"]:
+			continue
 		match o.kind:
 			"root":
 				if py < ROOT_H:
@@ -832,6 +839,7 @@ func _lose_slice() -> void:
 
 ## Ran into a root or a branch: bounce back, the path rolls back a bit.
 func bump() -> void:
+	invuln = INVULN_TIME
 	water = maxf(0, water - HIT_WATER)
 	_lose_slice()
 	bump_t = 0.45
@@ -844,6 +852,7 @@ func bump() -> void:
 
 ## Caught by a bird in the air: carried back along the path.
 func carried() -> void:
+	invuln = INVULN_TIME + 1.2
 	water = maxf(0, water - HIT_WATER)
 	carry_t = 1.2
 	_roll_to = maxf(_stage_start(), dist - CARRY_BACK)
@@ -913,6 +922,7 @@ func jump_to(z: float) -> void:
 	bump_t = 0
 	carry_t = 0
 	recover_t = 0
+	invuln = 0
 
 
 func _stage_start() -> float:
@@ -1163,6 +1173,9 @@ func _draw_player() -> void:
 	if c.z <= 0:
 		return
 	var k := c.z / 100.0
+	# After a hit she blinks (nothing hits her meanwhile).
+	if invuln > 0 and carry_t <= 0 and fmod(invuln, 0.24) < 0.1:
+		return
 	var handing := _over_cave and intro > 0 and not _landed
 	if handing and _handoff_at < 0:
 		return
