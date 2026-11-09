@@ -14,9 +14,9 @@ var breath_error := false
 var _last_iron := -1
 var _bounce := 0.0
 var _spin := 0.0
-## The climb's WIN counter rolls up towards the real value; a bump when it grows.
-var _win_shown := 0.0
-var _win_bump := 0.0
+## The climb's heart meter: a pop when a ready heart is added; the last count seen.
+var _heart_pop := 0.0
+var _hearts_seen := 0
 ## The abilities usable right now, under the top-right indicator (AbilityHints).
 var hints := AbilityHints.new()
 ## The climb's counters fade during the transformation (colours through _a()).
@@ -38,13 +38,10 @@ func _process(delta: float) -> void:
 		_bounce = 0.3
 	_bounce = maxf(0, _bounce - delta)
 	if platformer and platformer.is_climb():
-		var target := float(platformer.climb_win)
-		if target < _win_shown:
-			_win_shown = target
-		elif target > _win_shown:
-			_win_shown = minf(target, _win_shown + maxf(1.0, (target - _win_shown) * minf(1.0, delta * 5.0)) + 60.0 * delta)
-			_win_bump = 0.25
-	_win_bump = maxf(0, _win_bump - delta)
+		if platformer.hearts > _hearts_seen:
+			_heart_pop = 0.4
+		_hearts_seen = platformer.hearts
+	_heart_pop = maxf(0, _heart_pop - delta)
 	if platformer and platformer.is_pms():
 		for i in 3:
 			if platformer.pms_found[i] and not _items_seen[i]:
@@ -61,7 +58,8 @@ func hint_lines() -> Array:
 
 
 ## Cave: what the breath can do now (attack / charge it / the rhythm while charging).
-## Climb: the active power-ups with their time. Other levels: none.
+## Climb: what the ready hearts can buy now (heart boost / heart jump, only while
+## affordable), then the active power-ups with their time. Other levels: none.
 func _wanted_hints() -> Array:
 	var pf := platformer
 	if pf.is_pms():
@@ -75,6 +73,12 @@ func _wanted_hints() -> Array:
 		return []
 	if pf.is_climb():
 		var out: Array = []
+		if pf.climb_won or pf.hold_input or pf.phase_showing():
+			return out
+		if pf.hearts >= Platformer.HEART_BOOST_COST:
+			out.append("HINT_CLIMB_HEART_BOOST")
+		if pf.hearts >= Platformer.HEART_JUMP_COST:
+			out.append("HINT_CLIMB_HEART_JUMP")
 		for k in Platformer.POWERS:
 			if pf.climb_power.has(k):
 				var full := Platformer.ROCKET_TIME if k == "rocket" else Platformer.POWER_TIME
@@ -343,53 +347,31 @@ func _draw_meadow(font: Font) -> void:
 
 
 
-## The jackpot climb (level 5): the board at the bottom edge (ticker, marquee, reels),
-## the WIN counter with the multiplier, the floor, active power-ups and the banner.
+## The jackpot climb (level 5): the board at the bottom edge (ticker, marquee), the reels
+## top-left (a joker spins them), the floor top-centre, the heart meter top-right with the
+## ability hints under it, and the banner. No score.
 func _draw_climb(font: Font) -> void:
 	var pf := platformer
 	var t := pf.time_ms
 	_draw_board(font, t)
 	# The transformation: the counters fade out (the casino winds down).
-	_alpha = 1.0 - pf.wind
+	_alpha = (1.0 - pf.wind) * pf.counters_in()
 	if _alpha <= 0.01:
 		return
-	# Floor (top-left).
+	# The reels (top-left): idle they rest, a joker spins them.
+	_draw_reels(font, t, Rect2(16, 14, 206, 74))
+	# Floor (top centre).
 	var fl := pf.floor_of(pf.p.y + pf.p.height)
 	var fmt := Text.plain(Text.t("CLIMB_FLOOR"))
 	var ft := fmt % fl if fmt.contains("%d") else "%s %d" % [fmt, fl]
 	var fw := font.get_string_size(ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
-	var fr := Rect2(16, 16, fw + 28, 34)
+	var fr := Rect2(1066 / 2 - (fw + 28) / 2, 16, fw + 28, 34)
 	Draw.panel(self, fr, _a(BG), 17, _a(Color("#fbbf24")), 2)
 	draw_string(font, Vector2(fr.position.x + 14, fr.position.y + 24), ft, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, _a(INK))
-	# Active power-ups: the shared ability hints in the top-right corner.
-	hints.draw(self, Vector2(1066 - 16, 16 - 6))
-	# WIN counter (top centre): rolls up towards the real value, the multiplier beside it.
-	var label := Text.plain(Text.t("CLIMB_WIN"))
-	var num := "%d" % int(_win_shown)
-	var nw := font.get_string_size(num, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
-	var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
-	var wr := Rect2(1066 / 2 - (nw + lw + 52) / 2, 10, nw + lw + 52, 50)
-	var hot := _win_bump > 0
-	Draw.panel(self, wr, _a(Color("#2e1065", 0.92)), 25, _a(Color("#fde047") if hot else Color("#fbbf24")), 3)
-	for i in 14:
-		# Little bulbs around the counter.
-		var a := i * TAU / 14
-		var bp := wr.get_center() + Vector2(cos(a) * (wr.size.x / 2 + 2), sin(a) * (wr.size.y / 2 + 2))
-		var on := (i + int(t / 120.0)) % 2 == 0 and pf.prerod_t < 0
-		draw_circle(bp, 3, _a(Color("#fef08a") if on else Color("#b45309")))
-	draw_string(font, Vector2(wr.position.x + 18, wr.position.y + 31), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, _a(Color("#fde68a")))
-	var s := 1.0 + 0.15 * _win_bump / 0.25
-	var np := Vector2(wr.position.x + 30 + lw, wr.position.y + 36)
-	draw_set_transform(np, 0, Vector2(s, s))
-	draw_string_outline(font, Vector2.ZERO, num, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, 5, _a(Color("#78350f")))
-	draw_string(font, Vector2.ZERO, num, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, _a(Color("#fef3c7")))
-	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-	var mt := "x%d" % pf.climb_mult
-	var mw := font.get_string_size(mt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x
-	var mr := Rect2(wr.end.x + 10, 16, mw + 24, 38)
-	var mcol := Color("#e11d48") if pf.climb_mult >= 5 else (Color("#ea580c") if pf.climb_mult >= 2 else Color("#64748b"))
-	Draw.panel(self, mr, _a(mcol), 19, _a(Color("#fde047")), 2)
-	draw_string(font, Vector2(mr.position.x + 12, mr.position.y + 28), mt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, _a(Color.WHITE))
+	# The heart meter (top-right) and what the hearts can buy under it.
+	var pill := Rect2(1066 - 16 - HEART_PILL.x, 16, HEART_PILL.x, HEART_PILL.y)
+	draw_heart_pill(self, pill, pf.hearts, pf.heart_bar / 100.0, t / 1000.0, pf.heart_short > 0, _heart_pop, _alpha)
+	hints.draw(self, Vector2(pill.end.x, pill.end.y))
 	# The banner (JACKPOT!, SUPER JUMP! …).
 	if not pf.banner.is_empty() and pf.prerod_t < 0:
 		var bt: float = pf.banner.t
@@ -405,8 +387,38 @@ func _draw_climb(font: Font) -> void:
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 
 
-## The board: a dialog-box panel (Estrogenka on the left) with a casino marquee, the
-## news ticker running right → left and the slot reels on the right while they spin.
+const HEART_PILL := Vector2(176, 48)
+
+
+## The heart meter (like the forest run's water pill): HEART_SLOTS hearts, the ready ones
+## filled; the bar that fills the next one as a line round the pill. `short`: the missing
+## hearts blink red (an ability tried without enough); `pop` > 0: the newest one pops.
+static func draw_heart_pill(ci: CanvasItem, r: Rect2, ready: int, bar_k: float, t: float, short := false, pop := 0.0, alpha := 1.0) -> void:
+	Draw.panel(ci, r, Color(BG, alpha), 16, Color(0.96, 0.25, 0.37, 0.25 * alpha), 2)
+	var step := (r.size.x - 24) / Platformer.HEART_SLOTS
+	var blink := short and fmod(t, 0.2) < 0.12
+	for i in Platformer.HEART_SLOTS:
+		var c := Vector2(r.position.x + 12 + step * (i + 0.5), r.get_center().y + 1)
+		if i < ready:
+			var s := 12.0 * (1.0 + (0.35 * sin(clampf(pop / 0.4, 0, 1) * PI) if i == ready - 1 else 0.0))
+			SpriteArt.draw_heart(ci, c, s, 1.0, alpha)
+		else:
+			var empty := Color(0.94, 0.27, 0.27, 0.75 * alpha) if blink else Color(0.58, 0.5, 0.6, 0.3 * alpha)
+			_heart_shape(ci, c, 11.0, empty)
+	var col := Color("#f43f5e").lerp(Color("#f9a8d4"), 0.3)
+	ForestRunner.progress_outline(ci, r, bar_k, Color(col, alpha))
+
+
+static func _heart_shape(ci: CanvasItem, c: Vector2, s: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for i in 24:
+		var a := i / 24.0 * TAU
+		pts.append(c + Vector2(16.0 * pow(sin(a), 3), -(13.0 * cos(a) - 5.0 * cos(2 * a) - 2.0 * cos(3 * a) - cos(4 * a)) + 2.0) * s / 16.0)
+	Draw.polygon_safe(ci, pts, col)
+
+
+## The board: a dialog-box panel (Estrogenka on the left) with a casino marquee and the
+## news ticker running right → left.
 ## A board dialog (Platformer.board_talk) replaces the ticker: the speaker's portrait
 ## and name, the line wrapped in BOARD_TEXT and a thin line for its reading time.
 func _draw_board(font: Font, t: float) -> void:
@@ -417,8 +429,9 @@ func _draw_board(font: Font, t: float) -> void:
 	# The ticker (under the avatar / edge covers).
 	var ty := r.position.y + 96
 	var talk: Dictionary = pf.board_talk
+	var note: Dictionary = pf.phase_note
 	# A story dialog covers the board (it is translucent): no ticker under it.
-	for seg in ([] if pf.dialog_open or not talk.is_empty() else pf.ticker):
+	for seg in ([] if pf.dialog_open or not talk.is_empty() or not note.is_empty() else pf.ticker):
 		var sx: float = seg.x
 		if sx > 1066 or sx + seg.w < 0:
 			continue
@@ -442,23 +455,70 @@ func _draw_board(font: Font, t: float) -> void:
 		var k := maxf((av.size.x - 8) / ts.x, (av.size.y - 8) / ts.y)
 		var src := Rect2((ts - (av.size - Vector2(8, 8)) / k) / 2, (av.size - Vector2(8, 8)) / k)
 		draw_texture_rect_region(tex, av.grow(-4), src)
-	draw_string(font, Vector2(Platformer.TICKER_LEFT, r.position.y + 44), Text.speaker_name(speaker).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#4a7d7b"))
-	if not talk.is_empty() and not pf.dialog_open:
+	if not note.is_empty():
+		_draw_phase_note(font, note, r, t)
+	else:
+		draw_string(font, Vector2(Platformer.TICKER_LEFT, r.position.y + 44), Text.speaker_name(speaker).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#4a7d7b"))
+	if not talk.is_empty() and not pf.dialog_open and note.is_empty():
 		_draw_board_talk(talk, r)
 	# Gold trim and the marquee: bulbs chasing along the top edge.
-	draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 4), Color("#f59e0b"))
-	draw_rect(Rect2(r.position.x, r.position.y + 14, r.size.x, 2), Color("#fbbf24", 0.8))
+	# The new phase: the strip lights up bulb by bulb from the left, then blinks all together.
+	var pt: float = note.get("t", -1.0)
+	var strip_k := clampf(pt / Platformer.PHASE_BULBS, 0, 1) if pt >= 0 else 1.0
+	var gold := Color("#f59e0b")
+	if pt >= 0 and pt < Platformer.PHASE_TIME - 0.6 and fmod(pt, 0.3) < 0.15:
+		gold = Color("#fde047")
+	draw_rect(Rect2(r.position.x, r.position.y, r.size.x * strip_k, 4), gold)
+	draw_rect(Rect2(r.position.x, r.position.y + 14, r.size.x * strip_k, 2), Color("#fbbf24", 0.8))
 	var step := 26.0
 	var n := int(1066 / step)
 	var chase := int(t / 110.0)
 	for i in n + 1:
 		var c := Vector2(8 + i * step, r.position.y + 9)
 		var on := (i + chase) % 3 == 0 and pf.wind < 0.5
+		if pt >= 0:
+			if pt < Platformer.PHASE_BULBS:
+				# Lighting up one by one, left to right (the rest still dark).
+				if float(i) / n > strip_k:
+					draw_circle(c, 3.5, Color("#92400e", 0.6))
+					continue
+				on = float(i) / n > strip_k - 0.12
+			elif pt < Platformer.PHASE_TIME - 0.6:
+				on = fmod(pt, 0.3) < 0.15
 		if on:
 			draw_circle(c, 7, Color(1, 0.85, 0.3, 0.35))
 		draw_circle(c, 3.5, Color("#fff7c2") if on else Color("#d97706"))
-	if not pf.slot_spin.is_empty() and not pf.dialog_open:
-		_draw_reels(font, t, Rect2(1066 - 16 - 236, r.position.y + 24, 236, r.size.y - 36))
+
+
+## The new phase's announcement on the board (Platformer.phase_note): a big title popping
+## in and a sub-line under it, both fading out at the end; the speaker's name is not shown.
+func _draw_phase_note(font: Font, note: Dictionary, r: Rect2, t: float) -> void:
+	var nt: float = note.t
+	var a := clampf(nt / 0.25, 0, 1) * clampf((Platformer.PHASE_TIME - nt) / 0.4, 0, 1)
+	var title := Text.plain(Text.t(str(note.key)))
+	var size := 34
+	var right := 1066.0 - 24.0
+	var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	while tw > right - Platformer.TICKER_LEFT and size > 20:
+		size -= 2
+		tw = font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var pop := 1.0 + 0.25 * (1.0 - clampf(nt / 0.3, 0, 1)) + 0.02 * sin(t / 90.0)
+	var tp := Vector2(Platformer.TICKER_LEFT, r.position.y + 62)
+	draw_set_transform(tp, 0, Vector2(pop, pop))
+	Draw.radial_glow(self, Vector2(tw / 2, -10), tw * 0.55, Color(1, 0.8, 0.25, 0.25 * a))
+	draw_string_outline(font, Vector2.ZERO, title, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 6, Color(0.47, 0.2, 0.03, a))
+	draw_string(font, Vector2.ZERO, title, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(1, 0.86, 0.3, a))
+	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+	var sub: String = str(note.get("sub", ""))
+	if sub != "":
+		var line := Text.plain(Text.t(sub))
+		var f: Font = Text.font_dialog
+		var sa := clampf((nt - 0.35) / 0.3, 0, 1) * a
+		var w := right - Platformer.TICKER_LEFT
+		var fs := 17
+		while fs > 12 and f.get_multiline_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, w, fs).y > 52:
+			fs -= 1
+		draw_multiline_string(f, Vector2(Platformer.TICKER_LEFT, r.position.y + 86 + f.get_ascent(fs)), line, HORIZONTAL_ALIGNMENT_LEFT, w, fs, -1, Color(INK, sa))
 
 
 ## The transformation: the stopped ticker's letters come loose one by one and drift up
@@ -496,36 +556,61 @@ func _draw_board_talk(talk: Dictionary, r: Rect2) -> void:
 	draw_line(Vector2(area.position.x, ly), Vector2(area.position.x + area.size.x * k, ly), Color("#f59e0b"), 2)
 
 
-## Three reels; they stop one after another on 7-7-7 and show the power-up won.
+## The slot machine top-left: three reels. Idle they rest on heart · joker · bell (a slow
+## wobble); a joker spins them, they stop one after another on 7-7-7 and the power-up won
+## blinks under them.
 func _draw_reels(font: Font, t: float, box: Rect2) -> void:
 	var spin: Dictionary = platformer.slot_spin
-	Draw.panel(self, box, Color("#2e1065"), 14, Color("#fbbf24"), 3)
-	var syms := ["7", "$", "?", "*", "7", "+"]
-	var cols := [Color("#ef4444"), Color("#22c55e"), Color("#fbbf24"), Color("#60a5fa"), Color("#ef4444"), Color("#f472b6")]
-	var rw := 52.0
-	var rh := 62.0
-	var x0 := box.position.x + 18
-	var y0 := box.position.y + 10
+	var active := not spin.is_empty()
+	var glow := active and not bool(spin.get("paid", false))
+	Draw.panel(self, box, _a(Color("#2e1065")), 14, _a(Color("#fde047") if glow else Color("#fbbf24")), 3)
+	# Bulbs along the top edge.
+	for i in 9:
+		var bp := Vector2(box.position.x + 14 + i * (box.size.x - 28) / 8.0, box.position.y + 6)
+		var on := (i + int(t / (70.0 if glow else 260.0))) % 2 == 0
+		draw_circle(bp, 2.5, _a(Color("#fff7c2") if on else Color("#b45309")))
+	var rw := 56.0
+	var rh := 52.0
+	var x0 := box.position.x + 13
+	var y0 := box.position.y + 14
+	var syms := ["heart", "joker", "bell", "7", "heart", "bell"]
 	for i in 3:
-		var rr := Rect2(x0 + i * (rw + 10), y0, rw, rh)
-		Draw.panel(self, rr, Color("#fefce8"), 8, Color("#b45309"), 2)
-		var stopped: bool = spin.stops > i
-		if stopped:
-			Draw.text_center(self, font, rr.get_center() + Vector2(0, 2), "7", 40, Color("#dc2626"))
-		else:
+		var rr := Rect2(x0 + i * (rw + 8), y0, rw, rh)
+		Draw.panel(self, rr, _a(Color("#fefce8")), 8, _a(Color("#b45309")), 2)
+		var stopped: bool = active and int(spin.stops) > i
+		if active and stopped:
+			Draw.text_center(self, font, rr.get_center() + Vector2(0, 13), "7", 36, _a(Color("#dc2626")))
+		elif active:
 			# Spinning: symbols sliding down through the window.
-			var off := fmod(t / 30.0 + i * 17.0, rh)
+			var off := fmod(t / 25.0 + i * 17.0, rh)
 			for j in 2:
-				var k := (int(t / 30.0 / rh) + j + i * 2) % syms.size()
+				var k := (int(t / 25.0 / rh) + j + i * 2) % syms.size()
 				var cy := rr.position.y + off - j * rh + rh / 2
-				if cy > rr.position.y + 8 and cy < rr.end.y - 4:
-					Draw.text_center(self, font, Vector2(rr.get_center().x, cy), syms[k], 34, cols[k])
-	var lbl := ""
-	if spin.paid:
-		lbl = Text.plain(Text.t("CLIMB_PU_" + String(spin.power).to_upper()))
-	var blink: bool = spin.paid and int(t / 150.0) % 2 == 0
-	if lbl != "":
-		Draw.text_center(self, font, Vector2(box.get_center().x, box.end.y - 14), lbl, 16, Color("#fde047") if blink else Color("#fef3c7"))
+				if cy > rr.position.y + 16 and cy < rr.end.y - 16:
+					_reel_symbol(font, syms[k], Vector2(rr.get_center().x, cy))
+		else:
+			# Idle: resting, a slow wobble.
+			var wob := sin(t / 700.0 + i * 1.7) * 2.0
+			_reel_symbol(font, ["heart", "joker", "bell"][i], rr.get_center() + Vector2(0, wob))
+	if active and spin.paid:
+		var lbl := Text.plain(Text.t("CLIMB_PU_" + String(spin.power).to_upper()))
+		var blink := int(t / 150.0) % 2 == 0
+		var lw := font.get_string_size(lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+		var lr := Rect2(box.position.x, box.end.y + 4, maxf(box.size.x, lw + 20), 26)
+		Draw.panel(self, lr, _a(Color("#2e1065", 0.9)), 13)
+		draw_string(font, Vector2(lr.position.x + (lr.size.x - lw) / 2, lr.position.y + 19), lbl, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, _a(Color("#fde047") if blink else Color("#fef3c7")))
+
+
+func _reel_symbol(font: Font, sym: String, c: Vector2) -> void:
+	match sym:
+		"heart":
+			SpriteArt.draw_heart(self, c, 15.0, 1.0, _alpha)
+		"bell":
+			SpriteArt.draw_bell(self, c, 14.0)
+		"joker":
+			SpriteArt.draw_joker(self, c, 40.0)
+		_:
+			Draw.text_center(self, font, c + Vector2(0, 12), sym, 34, _a(Color("#dc2626")))
 
 
 func _a(c: Color) -> Color:

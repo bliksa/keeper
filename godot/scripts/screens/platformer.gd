@@ -17,10 +17,13 @@ extends Node2D
 ## power-ups from its minigames (jump, dash, double) and the LH wave chase that
 ## replaces the boss (reach the summit before the wave catches you).
 ## Level 5 (the jackpot climb, level 3 of the game) is climbed up with the board at the
-## bottom edge rising behind her (ticker, slot reels): springs, chips, slot-box power-ups,
-## a win counter with a multiplier and jackpots; caught by the board she sits, no death.
-## The board never stops rising; the climb has no dialog boxes or minigames: the
-## power-ups' dialogs play on the board itself (board_dialog).
+## bottom edge rising behind her (the ticker): springs, hearts (they fill the heart meter;
+## ready hearts buy a heart boost and a heart jump), bells (+1 heart), jokers (the reels
+## top-left spin and pay a power-up), jackpot rows (checkpoints) and, once in the middle,
+## the wheel of the cycle (minigame mg11, FertilityWheel); no score. Caught by the board she
+## sits, no death. The board never stops rising (except while the wheel is open); there are
+## no dialog boxes: dialogs play on the board itself (board_dialog). The forest run's sun
+## shines in its sky, rising as she climbs (_draw_climb_sun).
 ## Level 6 (the PMS maze, level 4 of the game) is drawn upside down: the physics stay normal,
 ## the whole view is rotated 180° around the screen centre (view_flip), so on screen she
 ## walks on the ceiling and the arrows feel reversed. Walls (W) are solid from every side;
@@ -96,7 +99,7 @@ const CLIMB_TOP_MARGIN := 70.0
 ## Spring launch: v² / (2 · GRAVITY) ≈ 550 px; the rocket ≈ 900 px.
 const SPRING_FORCE := 21.0
 const ROCKET_FORCE := 26.8
-## Timed power-ups (s), the magnet's reach (px), the slot reels (s until the win).
+## Timed power-ups (s), the magnet's reach (px), the reels top-left (s until they pay).
 const POWER_TIME := 12.0
 const ROCKET_TIME := 1.4
 const MAGNET_RANGE := 260.0
@@ -108,11 +111,20 @@ const TICKER_SPEED := 90.0
 const TICKER_FS := 22
 const TICKER_LEFT := 158.0
 const TICKER_GAP := 70.0
-## The multiplier grows every MULT_FLOORS floors climbed without being caught (max MULT_MAX);
-## every STREAK_JACKPOT floors of one streak is a JACKPOT.
-const MULT_FLOORS := 5
-const MULT_MAX := 10
-const STREAK_JACKPOT := 25
+## The heart meter (like the forest run's water): HEART_SLOTS ready hearts, fed by the bar
+## that every heart picked up fills by HEART_FILL (%); a full bar is one more ready heart.
+## Ready hearts buy the abilities: a heart jump (one more jump in the air, HEART_JUMP_COST)
+## and the heart boost (Shift / B: a launch up like a spring, HEART_BOOST_COST).
+const HEART_SLOTS := 4
+const HEART_FILL := 20.0
+const HEART_JUMP_COST := 1
+const HEART_BOOST_COST := 2
+const HEART_BOOST_FORCE := 20.0
+## The forest run's sun in the climb's sky (screen px, not zoomed): at the start where the
+## run left it (SUN_MELT_POS, ForestRunner.END_SUN_R), rising to SUN_TOP_Y at the top.
+const SUN_TOP_Y := 92.0
+const SUN_R0 := 96.0
+const SUN_R1 := 80.0
 ## Dialogs on the board (the climb has no dialog box): the text area relative to the
 ## board's top-left corner, and each part's reading time (s) from its length.
 const BOARD_TEXT := Rect2(158, 50, 644, 88)
@@ -120,6 +132,13 @@ const BOARD_READ_BASE := 2.5
 const BOARD_READ_CHAR := 0.05
 const BOARD_READ_MIN := 3.0
 const BOARD_READ_MAX := 8.0
+## The new phase's announcement on the board when the climb comes in from the forest run
+## (announce_phase): its time (s); the bulbs blink in during the first PHASE_BULBS s.
+const PHASE_TIME := 3.0
+const PHASE_BULBS := 0.8
+## The forest run's sun in the middle of the sky melting into the climb's light (s).
+const SUN_MELT := 3.0
+const SUN_MELT_POS := Vector2(533, 200)
 ## The dialog that explains a power-up, said on the board the first time it is won.
 const POWER_DIALOG := {"super_jump": "3A", "triple": "3B", "magnet": "3C", "rocket": "3D"}
 
@@ -223,24 +242,28 @@ var on_board := false
 ## board past it (only the board's own rise does), so a missed jump or the way down
 ## from a boost still lands on a platform.
 var last_stand_y := 0.0
-## Winnings (chips), the multiplier (x1..x10) and the streak it comes from (floors).
-var climb_win := 0
-var climb_mult := 1
-var streak_floor0 := 0
-var streak_top := 0
-var _streak_jackpots := 0
 var jackpots := 0
-## Timed power-ups from the slot boxes: name → seconds left (not Game.upgrades).
+## The heart meter: ready hearts (0..HEART_SLOTS), the bar that fills the next one (0..100),
+## hearts picked up and bells rung in this climb; heart_short > 0 blinks the missing hearts
+## (an ability tried without enough).
+var hearts := 0
+var heart_bar := 0.0
+var hearts_taken := 0
+var bells := 0
+var heart_short := 0.0
+## The wheel of the cycle (mg11) has been played in this climb.
+var wheel_done := false
+## Timed power-ups from the jokers: name → seconds left (not Game.upgrades).
 var climb_power := {}
 var _power_bag: Array = []
-## The reels on the board: {t, power, stops, paid}; empty = idle.
+## The reels top-left (a joker spins them): {t, power, stops, paid}; empty = idle.
 var slot_spin := {}
 ## Big centre banner ({text, t}), floating number pops in the world.
 var banner := {}
 var pops: Array[Dictionary] = []
 ## A spring / rocket flight: letting go of jump doesn't cut it short.
 var boost_t := 0.0
-var _chip_note := 0
+var _heart_note := 0
 ## The news ticker: segments on the board ({text, x, w, event}) and event lines waiting.
 var ticker: Array[Dictionary] = []
 var ticker_queue: Array[String] = []
@@ -250,6 +273,11 @@ var _tick_next := 0
 var board_talk := {}
 var board_queue: Array[String] = []
 var powers_explained := {}
+## The new phase's announcement on the board ({key, sub, t}; empty = none). The ticker and
+## board dialogs wait for it; play and input don't.
+var phase_note := {}
+## The forest run's sun melting into the climb's light (1 → 0 over SUN_MELT s).
+var sun_glow := 0.0
 var _rest_ms := -1e9
 ## Level 3: touching a side wall in the air (wall jump), combo of higher landings.
 var on_wall := false
@@ -463,11 +491,33 @@ func start_prerod() -> void:
 
 
 ## Fades the whole level (world, Kyra, HUD, veil: the CanvasLayers don't inherit modulate).
-func set_fade(a: float) -> void:
+## hud_too = false: only the world and Kyra (the board is already there: the forest run's
+## end turns the dialog box into it).
+func set_fade(a: float, hud_too := true) -> void:
 	modulate.a = a
 	_player_layer.modulate.a = a
+	if not hud_too:
+		return
 	hud.modulate.a = a if prerod_t < 0 else minf(a, hud.modulate.a)
 	_veil.modulate.a = a
+
+
+## The new phase on the board (the climb after the forest run): a big title (key) and a
+## sub-line, the marquee bulbs blinking in; the ticker starts after PHASE_TIME.
+func announce_phase(key: String, sub := "") -> void:
+	phase_note = {"key": key, "sub": sub, "t": 0.0}
+	Audio.play_sfx("cink-11.wav", 0.5)
+
+
+func phase_showing() -> bool:
+	return not phase_note.is_empty()
+
+
+## 0..1: the climb's counters (the reels, FLOOR, the heart meter) come in after the announcement starts.
+func counters_in() -> float:
+	if phase_note.is_empty():
+		return 1.0
+	return clampf((float(phase_note.t) - 0.6) / 0.8, 0, 1)
 
 
 ## Behind the rotating background: dusk filling the screen's corners while it turns.
@@ -486,6 +536,11 @@ func _draw_veil() -> void:
 		Draw.vignette(_veil, screen, Color(0.12, 0.06, 0.18, 0.55 * k), 0.35)
 	elif is_pms():
 		Draw.vignette(_veil, screen, Color(0.14, 0.08, 0.2, 0.5 - 0.25 * steady), 0.4)
+	if sun_glow > 0:
+		# The forest run's sun melts into the climb's morning light.
+		var g := sun_glow * sun_glow * (3 - 2 * sun_glow)
+		_veil.draw_rect(screen, Color(1, 0.84, 0.5, 0.22 * g))
+		Draw.radial_glow(_veil, SUN_MELT_POS, 170.0 + 320.0 * (1.0 - g), Color(1, 0.82, 0.4, 0.8 * g), Color(1, 0.97, 0.82, 0.95 * g))
 
 
 ## Camera where the level starts (background layers are anchored to it).
@@ -685,6 +740,11 @@ func _process(delta: float) -> void:
 		p.x = lerpf(_exit_x0, W / 2 - p.width / 2, mk * mk * (3 - 2 * mk))
 		if p.vy > 0:
 			camera_y = lerpf(camera_y, p.y - H * 0.4, 1.0 - pow(0.88, f60))
+	if not phase_note.is_empty():
+		phase_note.t += dt
+		if phase_note.t >= PHASE_TIME:
+			phase_note = {}
+	sun_glow = maxf(0, sun_glow - dt / SUN_MELT)
 	if active:
 		_update(dt)
 		if active and not _initial_dialog_sent and _start_checkpoint <= 1 and not is_climb() and not is_pms():
@@ -854,6 +914,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if p.jumps_left > 0 and not boss.lost and not wave.lost and _can_jump_in_dialog():
 			_do_jump()
+		elif is_climb() and not p.is_grounded and p.coyote <= 0 and hearts >= HEART_JUMP_COST and not climb_won and not _landing_soon():
+			# Out of jumps in the air: a heart buys one more.
+			spend_hearts(HEART_JUMP_COST)
+			_heart_jump()
 		elif feel() and not boss.lost and not wave.lost and _can_jump_in_dialog() and not on_wall:
 			# Pressed a moment too early: jump as soon as we land.
 			p.jump_buffer = JUMP_BUFFER
@@ -873,7 +937,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			p.slow_timer = 0
 			Audio.play_sfx("breathoff.wav", 0.4)
 	elif event.is_action_pressed("breathe") and not event.is_echo():
-		if dialog_open or is_climb() or is_pms() or (is_summit() and has_upgrade("dash")):
+		if is_climb():
+			# The climb: Shift / B spends hearts on the heart boost.
+			heart_boost()
+			return
+		if dialog_open or is_pms() or (is_summit() and has_upgrade("dash")):
 			return
 		# Toggle the recharge sequence when out of breath charges.
 		if p.breath_charges == 0 and Game.has_breathing and p.breathing_cooldown <= 0:
@@ -1411,9 +1479,9 @@ func _update_entities(dt: float, d60: float) -> void:
 					e.lunge_timer -= dt
 				elif touching and p.vy >= 0 and not p.is_dead:
 					_spring(e)
-			"chip":
+			"heart":
 				if not touching and climb_power.has("magnet"):
-					# The magnet pulls chips in.
+					# The magnet pulls hearts in.
 					var to := p.center() - Vector2(e.x + e.w / 2, e.y + e.h / 2)
 					var d := to.length()
 					if d < MAGNET_RANGE and d > 1:
@@ -1422,10 +1490,13 @@ func _update_entities(dt: float, d60: float) -> void:
 						e.y += to.y / d * step
 						touching = prect.intersects(e.rect())
 				if touching:
-					_take_chip(e)
-			"slot":
+					_take_heart(e)
+			"bell":
 				if touching and not p.is_dead:
-					_start_slot(e)
+					_ring_bell(e)
+			"joker":
+				if touching and not p.is_dead:
+					_take_joker(e)
 			"comfort":
 				if touching and not p.is_dead:
 					_take_comfort(e)
@@ -1553,9 +1624,9 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 		p.vx = 0
 		p.vy = 0
 		return
-	if is_climb() and not e.trigger_type in ["dialog", "jackpot", "climb_top"]:
-		# Nothing interrupts the climb: minigame (and cramp / boss / wave / gate / summit)
-		# triggers painted in the editor do nothing here.
+	if is_climb() and not e.trigger_type in ["dialog", "jackpot", "climb_top", "mg11"]:
+		# Nothing else interrupts the climb: other minigame (and cramp / boss / wave / gate /
+		# summit) triggers painted in the editor do nothing here; only the wheel (mg11) opens.
 		e.collected = true
 		return
 	e.collected = true
@@ -1580,8 +1651,15 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 		climb_won = true
 		summit_timer = 0.01
 		climb_power.clear()
-		_jackpot(1000)
+		_jackpot()
 		_coin_shower(90)
+	if e.trigger_type == "mg11" and is_climb():
+		# The wheel of the cycle: the climb waits where she is (Main opens it; after_wheel).
+		if wheel_done:
+			return
+		wheel_done = true
+		trigger.emit("mg11")
+		return
 	if e.trigger_type.begins_with("mg"):
 		# A minigame opens: put Kyra on the ground so she isn't frozen mid-jump.
 		_settle_on_ground()
@@ -1621,7 +1699,7 @@ func _update_particles(dt: float, d60: float) -> void:
 		q.x += q.vx * d60
 		q.y += q.vy * d60
 		q.rot += q.rot_speed * d60
-		if q.type in ["boss_body_part", "dash", "pollen", "splash", "sparkle", "glint"]:
+		if q.type in ["boss_body_part", "dash", "pollen", "splash", "sparkle", "glint", "heart"]:
 			q.vx *= pow(0.95, d60)
 			q.vy *= pow(0.95, d60)
 		elif q.type == "coin":
@@ -1960,10 +2038,12 @@ func _draw_world() -> void:
 				_draw_updraft(ci, e, t)
 			"spring":
 				_draw_spring(ci, e, t)
-			"chip":
-				_draw_chip(ci, e, t)
-			"slot":
-				_draw_slot(ci, e, t)
+			"heart":
+				_draw_heart(ci, e, t)
+			"bell":
+				_draw_bell(ci, e, t)
+			"joker":
+				_draw_joker(ci, e, t)
 			"comfort":
 				# A little out of place: it drifts a few px around its real spot.
 				var cc := e.rect().get_center() + Vector2(sin(t / 1700.0 + e.id) * 5, -4 + sin(t / 650.0 + e.id) * 4)
@@ -1979,6 +2059,8 @@ func _draw_world() -> void:
 					_draw_gate(ci, e, t)
 				elif e.trigger_type == "jackpot":
 					_draw_jackpot_row(ci, e, t)
+				elif e.trigger_type == "mg11" and is_climb():
+					_draw_wheel_row(ci, e, t)
 				elif e.trigger_type in ["mg2", "mg3", "mg4", "end", "mg5", "mg6", "mg7", "wave", "summit", "climb_top", "mg8", "mg9", "mg10"]:
 					_draw_orb(ci, e, t)
 			"text":
@@ -2168,6 +2250,9 @@ func _draw_particle(ci: CanvasItem, q: Dictionary) -> void:
 		"flame":
 			var a: float = q.life / q.max_life
 			ci.draw_circle(pos, 3 + 7 * a, Color(1, 0.45 + 0.4 * a, 0.1, 0.8 * a))
+		"heart":
+			var a: float = q.life / q.max_life
+			SpriteArt.draw_heart(ci, pos, 3.0 + 5.0 * a, 1.0, a)
 
 
 func _draw_egg(ci: CanvasItem, t: float) -> void:
@@ -2247,8 +2332,11 @@ func _draw_garden_bg() -> void:
 		var y0 := -m + (vh + 2 * m) * b / bands
 		var u2 := clampf((y0 + (vh + 2 * m) / bands / 2) / vh, 0, 1)
 		ci.draw_rect(Rect2(-m, y0, vw + 2 * m, (vh + 2 * m) / bands + 1), top_c.lerp(bot_c, u2))
-	# Sun rising behind the summit.
-	if k > 0.45:
+	if is_climb():
+		# The forest run's sun, whole, shining over the casino and rising as she climbs.
+		_draw_climb_sun(ci)
+	elif k > 0.45:
+		# Sun rising behind the summit.
 		var sk := (k - 0.45) / 0.55
 		var sc := Vector2(vw * 0.72, vh * (1.1 - sk * 0.9))
 		Draw.radial_glow(ci, sc, 220 + sk * 120, Color(1, 0.92, 0.6, 0.35 * sk), Color(1, 0.98, 0.85, 0.9 * sk))
@@ -2279,6 +2367,41 @@ func _draw_garden_bg() -> void:
 		var py := fmod(vh - fmod(t * (0.02 + 0.01 * (i2 % 3)) + i2 * 97.0, vh), vh)
 		ci.draw_circle(Vector2(px, py), 1.5 + (i2 % 3) * 0.7, Color(1, 0.95, 0.7, 0.25 + 0.3 * k))
 	Draw.vignette(ci, Rect2(0, 0, vw, vh), Color(0, 0, 0, (0.35 - 0.2 * k) * (1.0 - wind)), 0.45)
+
+
+## 0 at the climb's start (the camera at the bottom) .. 1 at its top.
+func sun_progress() -> float:
+	var k0 := view_h() / 2 / maxf(1, level_h)
+	return clampf((_climb() - k0) / maxf(0.01, 1.0 - 2 * k0), 0, 1)
+
+
+## The climb's sun on the screen (not zoomed): [centre, radius]. It starts where the forest
+## run left it (SUN_MELT_POS) and rises to SUN_TOP_Y as she climbs.
+func sun_screen() -> Array:
+	var k := sun_progress()
+	var e := 1.0 - (1.0 - k) * (1.0 - k)
+	return [Vector2(W / 2, lerpf(SUN_MELT_POS.y, SUN_TOP_Y, e)), lerpf(SUN_R0, SUN_R1, k)]
+
+
+## The climb's sun in the background (behind the platforms, not transparent): a warm
+## glow, turning rays, a solid disc and the 12 golden slices (SpriteArt.draw_sun). It turns
+## with the view and dims when the casino winds down (the transformation).
+func _draw_climb_sun(ci: CanvasItem) -> void:
+	var at: Array = sun_screen()
+	var c: Vector2 = at[0] / view_zoom
+	var r: float = at[1] / view_zoom
+	var tt := (_light_t if prerod_t >= 0 else time_ms) / 1000.0
+	var dim := 1.0 - 0.55 * wind
+	Draw.radial_glow(ci, c, r * (2.6 + 0.12 * sin(tt * 1.7)), Color(1, 0.8, 0.35, 0.45 * dim), Color(1, 0.93, 0.7, 0.85 * dim))
+	for i in 18:
+		var a := tt * 0.25 + i * TAU / 18
+		var l := r * (1.32 + 0.16 * sin(tt * 2.0 + i * 1.3))
+		var d := Vector2(cos(a), sin(a))
+		ci.draw_line(c + d * r * 1.05, c + d * l, Color(1, 0.86, 0.42, 0.85 * dim), maxf(2.0, r * 0.07), true)
+	ci.draw_circle(c, r * 1.04, Color(0.96, 0.62, 0.12).lerp(Color(0.55, 0.42, 0.6), wind))
+	SpriteArt.draw_sun(ci, c, r, 12, 0.0, tt)
+	if wind > 0:
+		ci.draw_circle(c, r * 1.06, Color(0.24, 0.16, 0.32, 0.45 * wind))
 
 
 func _draw_garden_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
@@ -2819,29 +2942,43 @@ func _draw_spring(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	ci.draw_rect(Rect2(e.x - 2, top_y, e.w + 4, 6), gold)
 
 
-## Casino chip: a coloured disc with white notches, spinning flat.
-func _draw_chip(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+## A heart (pink, glossy, turning and bobbing); a SpriteArt "heart" variant replaces it.
+func _draw_heart(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 400.0 + e.id) * 3)
-	var sx := maxf(0.15, absf(cos(t / 350.0 + e.id * 0.7)))
-	var cols := [Color("#e11d48"), Color("#2563eb"), Color("#16a34a"), Color("#9333ea")]
-	var col: Color = cols[e.id % cols.size()]
-	ci.draw_set_transform(c, 0, Vector2(sx, 1))
-	ci.draw_circle(Vector2.ZERO, e.w / 2, col)
-	for i in 6:
-		var a := i * TAU / 6
-		ci.draw_circle(Vector2(cos(a), sin(a)) * (e.w / 2 - 3), 2.5, Color.WHITE)
-	ci.draw_circle(Vector2.ZERO, e.w / 4, Color(1, 1, 1, 0.85))
-	ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+	if SpriteArt.draw(ci, "heart", c, SpriteArt.DEFS.heart.size, t + e.id * 137.0):
+		return
+	SpriteArt.draw_heart(ci, c, e.w * 0.55, cos(t / 420.0 + e.id * 0.7))
 
 
-## Slot box: a bobbing golden box with "?".
-func _draw_slot(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
-	var r := Rect2(e.x, e.y + sin(t / 300.0 + e.id) * 4, e.w, e.h)
-	Draw.radial_glow(ci, r.get_center(), e.w, Color(250 / 255.0, 204 / 255.0, 21 / 255.0, 0.35))
-	ci.draw_rect(r, Color("#f59e0b"))
-	ci.draw_rect(r.grow(-3), Color("#fbbf24"))
-	ci.draw_rect(r, Color("#78350f"), false, 2)
-	Draw.text_center(ci, _font, r.get_center() + Vector2(0, 9), "?", 26, Color("#78350f"))
+## A bell (gold, swinging): +1 ready heart.
+func _draw_bell(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 350.0 + e.id) * 3)
+	Draw.radial_glow(ci, c, e.w * 1.1, Color(1, 0.85, 0.3, 0.3))
+	if SpriteArt.draw(ci, "bell", c, SpriteArt.DEFS.bell.size, t + e.id * 137.0):
+		return
+	SpriteArt.draw_bell(ci, c, e.w * 0.5, sin(t / 260.0 + e.id) * 0.3)
+
+
+## A joker (a card with a jester's hat), bobbing: the reels top-left spin.
+func _draw_joker(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var c := Vector2(e.x + e.w / 2, e.y + e.h / 2 + sin(t / 300.0 + e.id) * 4)
+	Draw.radial_glow(ci, c, e.w, Color(250 / 255.0, 204 / 255.0, 21 / 255.0, 0.35))
+	if SpriteArt.draw(ci, "joker", c, SpriteArt.DEFS.joker.size, t + e.id * 137.0):
+		return
+	SpriteArt.draw_joker(ci, c, e.h, sin(t / 500.0 + e.id) * 0.12)
+
+
+## The wheel row (mg11): a pink dashed line across the level, little wheels turning on it.
+func _draw_wheel_row(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
+	var y := e.y + e.h / 2
+	var a := 0.55 + sin(t / 260.0) * 0.2
+	var x := fposmod(t * 0.04, 40.0) - 40.0
+	while x < level_w:
+		ci.draw_line(Vector2(x, y), Vector2(x + 22, y), Color(0.98, 0.45, 0.65, a), 4)
+		x += 40.0
+	for k in 3:
+		var cx := level_w * (0.2 + 0.3 * k)
+		FertilityWheel.draw_mini(ci, Vector2(cx, y - 34), 26, t / 600.0 + k)
 
 
 ## Jackpot row: a gold line across the level.
@@ -2854,14 +2991,14 @@ func _draw_jackpot_row(ci: CanvasItem, e: LevelData.Ent, t: float) -> void:
 		ci.draw_circle(Vector2(x, y), 4, Color(1, 0.95, 0.6, a))
 
 
-# --- the jackpot climb (level 5): the board, wins, springs, chips, slot boxes ---------
+# --- the jackpot climb (level 5): the board, springs, hearts, bells, jokers -------------
 
 ## Camera with the board's top edge a little below her feet (start / checkpoints); the
 ## board waits RISE_GRACE before it starts rising.
 func _board_camera() -> void:
 	camera_y = maxf(0, p.y + p.height + 60 - (H - BOARD_H) / view_zoom)
 	last_stand_y = p.y + p.height
-	_reset_streak()
+	_reset_rise()
 	rise_wait = RISE_GRACE
 
 
@@ -2870,25 +3007,19 @@ func board_y() -> float:
 	return world_y(H - BOARD_H)
 
 
-## A fresh streak (start, checkpoint, caught): x1 from the floor she is on, the board's
-## rise back to its starting speed (it doesn't stop).
-func _reset_streak() -> void:
-	streak_floor0 = floor_of(p.y + p.height)
-	streak_top = streak_floor0
-	_streak_jackpots = 0
-	climb_mult = 1
+## The board's rise back to its starting speed (start, checkpoint, caught; it doesn't stop).
+func _reset_rise() -> void:
 	rise = RISE_START
 	on_board = false
 
 
-## The board caught her: she sits down and rides it up, the multiplier goes back to x1,
-## the board slows down to RISE_START but keeps rising.
+## The board caught her: she sits down and rides it up; the board slows down to
+## RISE_START but keeps rising.
 func _caught() -> void:
-	var was := climb_mult
-	_reset_streak()
+	_reset_rise()
 	on_board = true
 	# Hopping on the board doesn't repeat the calm line (or the sound) every time.
-	if was > 1 or time_ms - _rest_ms > 8000.0:
+	if time_ms - _rest_ms > 8000.0:
 		_rest_ms = time_ms
 		Audio.play_sfx("breathok.wav", 0.25)
 		ticker_say(Text.plain(Text.t("CLIMB_REST")))
@@ -2932,31 +3063,14 @@ func _update_climb(dt: float, d60: float) -> void:
 			particles.append({"x": p.x + p.width / 2 + (randf() - 0.5) * 14, "y": p.y + p.height + 4,
 				"vx": (randf() - 0.5) * 2, "vy": 2 + randf() * 3, "rot": 0.0, "rot_speed": 0.0,
 				"type": "flame" if flame else "glint", "life": 0.4, "max_life": 0.4})
-	# The streak: floors climbed since the last catch → multiplier and streak jackpots.
 	floor_now = floor_of(p.y + p.height)
-	if on_board:
-		# Carried up by the board: those floors aren't climbed (the streak starts here).
-		streak_floor0 = floor_now
-		streak_top = floor_now
-	elif not climb_won:
-		streak_top = maxi(streak_top, floor_now)
-		var climbed := streak_top - streak_floor0
-		var m := mini(MULT_MAX, 1 + climbed / MULT_FLOORS)
-		if m > climb_mult:
-			climb_mult = m
-			_pop(p.center() + Vector2(0, -50), "x%d" % m, Color("#fde047"), 30)
-			Audio.play_sfx("cink-%02d.wav" % clampi(m + 1, 1, 11), 0.45)
-			if m % 2 == 0:
-				ticker_say("x%d !" % m)
-		if climbed / STREAK_JACKPOT > _streak_jackpots:
-			_streak_jackpots = climbed / STREAK_JACKPOT
-			_jackpot()
 	best_floor = maxi(best_floor, floor_now)
-	# Gold glints around her while the streak is hot.
-	if climb_mult >= 3 and randf() < 0.05 * climb_mult * d60:
-		particles.append({"x": p.x + p.width / 2 + (randf() - 0.5) * 70, "y": p.y + randf() * p.height,
-			"vx": (randf() - 0.5) * 1.5, "vy": -randf() * 1.5, "rot": 0.0, "rot_speed": 0.0,
-			"type": "glint", "life": 0.6, "max_life": 0.6})
+	heart_short = maxf(0.0, heart_short - dt)
+	# Pink sparks around her while she has hearts ready to spend.
+	if hearts > 0 and randf() < 0.025 * hearts * d60:
+		particles.append({"x": p.x + p.width / 2 + (randf() - 0.5) * 60, "y": p.y + randf() * p.height,
+			"vx": (randf() - 0.5) * 1.2, "vy": -0.6 - randf(), "rot": 0.0, "rot_speed": 0.0,
+			"type": "heart", "life": 0.7, "max_life": 0.7})
 	_update_slot(dt)
 	if not banner.is_empty():
 		banner.t += dt
@@ -2968,18 +3082,11 @@ func _update_climb(dt: float, d60: float) -> void:
 		pp.y -= 45.0 * dt
 		if pp.t >= pp.life:
 			pops.remove_at(i)
-	_update_board_talk(dt)
-	if board_talk.is_empty() and prerod_t < 0:
+	if phase_note.is_empty():
+		_update_board_talk(dt)
+	if board_talk.is_empty() and prerod_t < 0 and phase_note.is_empty():
 		# (The transformation stops the ticker: its letters drift away, PlatformerHud.)
 		_update_ticker(dt)
-
-
-## Adds a win (× the multiplier) and pops the number where it happened.
-func _win(amount: int, at: Vector2) -> int:
-	var v := amount * climb_mult
-	climb_win += v
-	_pop(at, "+%d" % v, Color("#fde68a"), 20 if amount < 100 else 28)
-	return v
 
 
 func _pop(at: Vector2, text: String, col: Color, size := 22) -> void:
@@ -3008,17 +3115,16 @@ func _coin_shower(n: int) -> void:
 			"life": 2.6 + randf() * 0.8, "max_life": 3.4})
 
 
-## JACKPOT: a jackpot row, every STREAK_JACKPOT floors of a streak, the top.
-func _jackpot(amount := 500) -> void:
+## JACKPOT: a jackpot row (a checkpoint), the top. No score: the banner, coins, a fanfare.
+func _jackpot() -> void:
 	jackpots += 1
-	var v := _win(amount, p.center() + Vector2(0, -70))
 	_say_banner(Text.plain(Text.t("CLIMB_JACKPOT")))
 	_coin_shower(60)
 	_sparkles(p.center(), 24)
 	shake_timer = maxf(shake_timer, 0.2)
 	Audio.play_sfx("finished.wav", 0.6)
 	Audio.play_sfx("cink-11.wav", 0.5)
-	ticker_say("%s +%d" % [Text.plain(Text.t("CLIMB_JACKPOT")), v])
+	ticker_say(Text.plain(Text.t("CLIMB_JACKPOT")))
 
 
 ## A spring pad: a big launch up, jumps refilled, BOOST!
@@ -3037,24 +3143,113 @@ func _spring(e: LevelData.Ent) -> void:
 	var at := Vector2(e.x + e.w / 2, e.y)
 	_sparkles(at, 16)
 	_pop(at + Vector2(0, -40), Text.plain(Text.t("CLIMB_BOOST")), Color("#fbbf24"), 26)
-	_win(25, at + Vector2(0, -10))
 	Audio.jump_sound(true)
 	Audio.play_sfx("cink-10.wav", 0.4)
 	ticker_say(Text.plain(Text.t("CLIMB_BOOST")))
 
 
-## A chip: +10 (× the multiplier), a rising cink.
-func _take_chip(e: LevelData.Ent) -> void:
+## A heart: the meter's bar fills by HEART_FILL; a full bar is one more ready heart.
+func _take_heart(e: LevelData.Ent) -> void:
 	e.collected = true
-	_chip_note = _chip_note % 11 + 1
-	Audio.play_sfx("cink-%02d.wav" % _chip_note, 0.35)
+	hearts_taken += 1
+	_heart_note = _heart_note % 11 + 1
+	Audio.play_sfx("cink-%02d.wav" % _heart_note, 0.35)
+	add_heart_fill(HEART_FILL)
+	_sparkles(Vector2(e.x + e.w / 2, e.y + e.h / 2), 5, "heart")
+
+
+## Fills the heart meter's bar; every full bar is a ready heart (up to HEART_SLOTS; with
+## all of them ready the bar stays full and refills the next one spent).
+func add_heart_fill(amount: float) -> void:
+	heart_bar += amount
+	while heart_bar >= 100.0 and hearts < HEART_SLOTS:
+		heart_bar -= 100.0
+		hearts += 1
+		Audio.play_sfx("cink-11.wav", 0.3)
+	heart_bar = minf(heart_bar, 100.0)
+
+
+## Spends ready hearts (refilled from a full bar); false (and the missing ones blink) if
+## there aren't enough.
+func spend_hearts(n: int) -> bool:
+	if hearts < n:
+		heart_short = 0.6
+		return false
+	hearts -= n
+	add_heart_fill(0.0)
+	return true
+
+
+## A bell: one more ready heart at once (a full meter: the bar fills), a chime.
+func _ring_bell(e: LevelData.Ent) -> void:
+	e.collected = true
+	bells += 1
+	var before := hearts * 100.0 + heart_bar
+	add_heart_fill(100.0)
+	# A full meter takes nothing: then no "+1 heart", just the chime.
+	var key := "CLIMB_BELL" if hearts * 100.0 + heart_bar > before else "CLIMB_BELL_FULL"
 	var at := Vector2(e.x + e.w / 2, e.y)
-	_win(10, at)
-	_sparkles(at + Vector2(0, e.h / 2), 5)
+	_sparkles(at + Vector2(0, e.h / 2), 14)
+	_sparkles(at + Vector2(0, e.h / 2), 6, "heart")
+	_pop(at + Vector2(0, -20), Text.plain(Text.t(key)), Color("#fde68a"), 24)
+	Audio.play_sfx("cink-09.wav", 0.5)
+	Audio.play_sfx("cink-11.wav", 0.45)
+	ticker_say(Text.plain(Text.t(key)))
 
 
-## A slot box: the reels on the board spin and always pay out a power-up.
-func _start_slot(e: LevelData.Ent) -> void:
+## Falling onto a platform (or the board) within JUMP_BUFFER: a jump pressed now is
+## buffered into the free ground jump instead of spending a heart.
+func _landing_soon() -> bool:
+	if p.vy < 0:
+		return false
+	var steps := JUMP_BUFFER * 60.0
+	var reach := p.vy * steps + 0.5 * GRAVITY * steps * steps + 12.0
+	var feet := p.y + p.height
+	if board_y() - feet <= reach:
+		return true
+	var solids: Array = [] if hide_platforms else level.platforms.duplicate()
+	if not hide_platforms:
+		solids.append_array(wall_tops)
+	for pl in solids:
+		if not pl.solid():
+			continue
+		if pl.y >= feet - 20 and pl.y - feet <= reach and p.x + p.width > pl.x and p.x < pl.x + pl.w:
+			return true
+	return false
+
+
+## The heart jump: out of jumps in the air, one more for HEART_JUMP_COST.
+func _heart_jump() -> void:
+	p.jumps_left = 1
+	_do_jump()
+	_sparkles(Vector2(p.x + p.width / 2, p.y + p.height), 8, "heart")
+
+
+## The heart boost (Shift / B): a launch up like a spring for HEART_BOOST_COST hearts.
+func heart_boost() -> bool:
+	if climb_won or hold_input or not spend_hearts(HEART_BOOST_COST):
+		return false
+	p.vy = -HEART_BOOST_FORCE
+	p.is_grounded = false
+	p.was_grounded = false
+	p.jumped_from_ground = true
+	p.coyote = 0
+	p.jump_buffer = 0
+	p.jumps_left = _max_jumps()
+	p.is_sitting = false
+	p.squash = -0.8
+	on_board = false
+	boost_t = 1.0
+	_sparkles(p.center(), 10)
+	_sparkles(Vector2(p.x + p.width / 2, p.y + p.height), 12, "heart")
+	_pop(p.center() + Vector2(0, -60), Text.plain(Text.t("CLIMB_HEART_BOOST")), Color("#f9a8d4"), 24)
+	Audio.jump_sound(true)
+	Audio.play_sfx("cink-10.wav", 0.4)
+	return true
+
+
+## A joker: the reels top-left spin and always pay out a power-up.
+func _take_joker(e: LevelData.Ent) -> void:
 	e.collected = true
 	if not slot_spin.is_empty() and not slot_spin.paid:
 		_pay_slot()
@@ -3064,14 +3259,22 @@ func _start_slot(e: LevelData.Ent) -> void:
 	ticker_say("? ? ?")
 
 
+## Back from the wheel of the cycle (mg11): the climb goes on where she was, the board
+## waits RISE_GRACE, and Estrogenka sums it up on the board.
+func after_wheel() -> void:
+	rise_wait = RISE_GRACE
+	p.vy = minf(p.vy, 0.0)
+	board_dialog("mg11_after")
+
+
 ## The next power-up from a shuffled bag (every one comes up).
 func _next_power() -> String:
 	if _power_bag.is_empty():
 		_power_bag = POWERS.duplicate()
 		_power_bag.shuffle()
 		if not powers_explained.has("super_jump"):
-			# The first box of a climb pays the super jump: its explanation (3A) also
-			# introduces the slot boxes.
+			# The first joker of a climb pays the super jump: its explanation (3A) also
+			# introduces the jokers.
 			_power_bag.erase("super_jump")
 			_power_bag.append("super_jump")
 	return _power_bag.pop_back()
@@ -3094,7 +3297,6 @@ func _pay_slot() -> void:
 	slot_spin.paid = true
 	slot_spin.stops = SLOT_STOPS.size()
 	grant_power(slot_spin.power)
-	_win(100, p.center() + Vector2(0, -40))
 	_coin_shower(30)
 	Audio.play_sfx("finished.wav", 0.45)
 

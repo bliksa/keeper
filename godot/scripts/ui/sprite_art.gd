@@ -29,6 +29,12 @@ const DEFS := {
 		"where": "Meadow (old level 2)"},
 	"sun_piece": {"cat": "collectibles", "label": "Sun piece", "size": 40.0, "fps": 8.0, "frames": [],
 		"where": "Forest run (12 fill the sun)"},
+	"heart": {"cat": "collectibles", "label": "Heart", "size": 28.0, "fps": 8.0, "frames": [],
+		"where": "Jackpot climb ($ in the level: fills the heart meter)"},
+	"bell": {"cat": "collectibles", "label": "Bell", "size": 34.0, "fps": 8.0, "frames": [],
+		"where": "Jackpot climb (: in the level: +1 heart)"},
+	"joker": {"cat": "collectibles", "label": "Joker", "size": 46.0, "fps": 8.0, "frames": [],
+		"where": "Jackpot climb (? in the level: spins the reels)"},
 	"cramp": {"cat": "enemies", "label": "Cramp", "size": 52.0, "fps": 10.0, "frames": [],
 		"where": "Cave (S / F / J / C in the level)"},
 	"spike": {"cat": "enemies", "label": "Spike cramp", "size": 44.0, "fps": 10.0, "frames": [],
@@ -416,9 +422,64 @@ static func draw_sun(ci: CanvasItem, c: Vector2, r: float, found: int, flash := 
 	ci.draw_circle(c, maxf(2.0, r * 0.12), Color("#fff7d6"))
 
 
+## A glossy heart around `c`, `s` = its half width; `turn` (-1..1) squeezes it as it spins.
+static func draw_heart(ci: CanvasItem, c: Vector2, s: float, turn := 1.0, alpha := 1.0) -> void:
+	var sx := maxf(0.2, absf(turn))
+	var pts := PackedVector2Array()
+	for i in 24:
+		var a := i / 24.0 * TAU
+		# The classic heart curve, scaled to a half width of 1.
+		var x := 16.0 * pow(sin(a), 3)
+		var y := -(13.0 * cos(a) - 5.0 * cos(2 * a) - 2.0 * cos(3 * a) - cos(4 * a))
+		pts.append(c + Vector2(x * sx, y + 2.0) * s / 16.0)
+	var col := Color("#f43f5e") if turn >= 0 else Color("#e11d48")
+	Draw.polygon_safe(ci, pts, Color(col, alpha))
+	ci.draw_polyline(pts + PackedVector2Array([pts[0]]), Color(0.53, 0.07, 0.2, 0.8 * alpha), maxf(1.0, s * 0.1), true)
+	ci.draw_circle(c + Vector2(-s * 0.38 * sx, -s * 0.32), s * 0.2, Color(1, 1, 1, 0.75 * alpha))
+
+
+## A gold bell around `c` (`s` = its half width), swinging by `swing` radians.
+static func draw_bell(ci: CanvasItem, c: Vector2, s: float, swing := 0.0) -> void:
+	var top := c + Vector2(0, -s * 1.05)
+	var pts := PackedVector2Array()
+	var outline := [Vector2(-0.25, -0.8), Vector2(-0.5, -0.55), Vector2(-0.62, 0.0), Vector2(-0.75, 0.45), Vector2(-1.0, 0.7),
+		Vector2(1.0, 0.7), Vector2(0.75, 0.45), Vector2(0.62, 0.0), Vector2(0.5, -0.55), Vector2(0.25, -0.8)]
+	for q: Vector2 in outline:
+		pts.append(top + ((q * s) + Vector2(0, s * 1.05)).rotated(swing))
+	ci.draw_circle(top + Vector2(0, s * 1.85).rotated(swing * 1.6), s * 0.2, Color("#b45309"))
+	Draw.polygon_safe(ci, pts, Color("#fbbf24"))
+	ci.draw_polyline(pts + PackedVector2Array([pts[0]]), Color("#92400e"), maxf(1.0, s * 0.1), true)
+	ci.draw_line(top + Vector2(-s * 0.35, s * 0.55).rotated(swing), top + Vector2(-s * 0.45, s * 1.35).rotated(swing), Color(1, 1, 0.85, 0.8), maxf(1.0, s * 0.12), true)
+	ci.draw_arc(top + Vector2(0, -s * 0.12), s * 0.18, 0, TAU, 12, Color("#92400e"), maxf(1.0, s * 0.09), true)
+
+
+## A joker card (`h` tall) with a three-pointed jester's hat, tilted by `tilt` radians.
+static func draw_joker(ci: CanvasItem, c: Vector2, h: float, tilt := 0.0) -> void:
+	var w := h * 0.72
+	ci.draw_set_transform(c, tilt, Vector2.ONE)
+	Draw.panel(ci, Rect2(-w / 2, -h / 2, w, h), Color("#fefce8"), h * 0.12, Color("#b45309"), maxf(1.0, h * 0.05))
+	var cols := [Color("#7c3aed"), Color("#e11d48"), Color("#16a34a")]
+	var base := h * 0.12
+	for i in 3:
+		var x0 := -w * 0.36 + i * w * 0.24
+		var tip := Vector2(-w * 0.32 + i * w * 0.32, -h * 0.32 + (0.0 if i == 1 else h * 0.06))
+		Draw.polygon_safe(ci, PackedVector2Array([Vector2(x0, base), Vector2(x0 + w * 0.24, base), tip]), cols[i])
+		ci.draw_circle(tip, h * 0.055, Color("#fbbf24"))
+	ci.draw_rect(Rect2(-w * 0.38, base - h * 0.01, w * 0.76, h * 0.09), Color("#fbbf24"))
+	ci.draw_circle(Vector2(0, base + h * 0.2), h * 0.11, Color("#fde68a"))
+	ci.draw_arc(Vector2(0, base + h * 0.2), h * 0.06, 0.3, PI - 0.3, 8, Color("#9a3412"), maxf(1.0, h * 0.03), true)
+	ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+
+
 ## The placeholder of `id` at its game size (the lab's preview of "original").
 static func draw_placeholder(ci: CanvasItem, id: String, c: Vector2, t: float) -> void:
 	match id:
+		"heart":
+			draw_heart(ci, c + Vector2(0, sin(t / 400.0) * 3), 15, cos(t / 420.0))
+		"bell":
+			draw_bell(ci, c, 17, sin(t / 260.0) * 0.3)
+		"joker":
+			draw_joker(ci, c + Vector2(0, sin(t / 300.0) * 4), 46, sin(t / 500.0) * 0.12)
 		"sun_piece":
 			Draw.radial_glow(ci, c, 34, Color(1, 0.8, 0.3, 0.55), Color(1, 0.95, 0.7, 0.9))
 			draw_sun_piece(ci, c, 26, cos(t / 1000.0 * 2.2))

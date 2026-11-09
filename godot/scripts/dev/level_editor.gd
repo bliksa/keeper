@@ -272,9 +272,11 @@ const GROUPS := [
 	]},
 	{"id": "climb", "name": "Jackpot climb (level 3)", "items": [
 		["!", "arrow-up", "Spring / boost (!): on the platform below it"],
-		["$", "circle", "Chip ($): a small win"],
-		["?", "sparkles", "Slot box (?): always pays out a power-up"],
+		["$", "calendar-heart", "Heart ($): fills the heart meter"],
+		[":", "bell", "Bell (:): one more ready heart"],
+		["?", "sparkles", "Joker (?): spins the reels, pays a power-up"],
 		["0", "flag-triangle-right", "Jackpot row (0): a jackpot + checkpoint"],
+		["Z", "circle-dashed", "The wheel of the cycle (Z): minigame, once, mid-climb"],
 		["~", "wind", "Updraft (~)"],
 		["E", "flag", "The top / level end (E)"],
 	]},
@@ -590,7 +592,7 @@ func _draw_grid() -> void:
 				"Y":
 					ci.draw_circle(mid, 11, Color("#fde68a", 0.5))
 					ci.draw_circle(mid, 5, Color("#fff4c2"))
-				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E", "K", "M", "Q", "G":
+				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E", "K", "M", "Q", "G", "Z":
 					ci.draw_rect(cell.grow(-1), Color("#581c87", 0.8))
 					ci.draw_rect(cell.grow(-1), Color("#c084fc"), false, 1.0)
 					Draw.text_center(ci, font, mid, ch, 12, Color.WHITE)
@@ -606,11 +608,11 @@ func _draw_grid() -> void:
 						var yy := cell.end.y - 12 - k * 6
 						ci.draw_line(Vector2(mid.x - 8, yy + 2), Vector2(mid.x + 8, yy - 2), Color("#fde68a"), 2.0)
 				"$":
-					ci.draw_circle(mid, 10, Color("#e11d48"))
-					ci.draw_circle(mid, 5, Color.WHITE)
+					SpriteArt.draw_heart(ci, mid, 10.0)
+				":":
+					SpriteArt.draw_bell(ci, mid, 10.0)
 				"?":
-					ci.draw_rect(Rect2(mid - Vector2(12, 12), Vector2(24, 24)), Color("#f59e0b"))
-					Draw.text_center(ci, font, mid, "?", 14, Color("#78350f"))
+					SpriteArt.draw_joker(ci, mid, 26.0)
 				"@":
 					ci.draw_circle(mid, 13, Color("#f9a8d4", 0.5))
 					ci.draw_arc(mid, 13, 0, TAU, 24, Color("#fbcfe8"), 2.0, true)
@@ -1155,6 +1157,9 @@ func _on_test_trigger(name: String) -> void:
 		return
 	if name == "jackpot":
 		_toast_msg("JACKPOT row (checkpoint)")
+		return
+	if name == "mg11":
+		_toast_msg("The wheel of the cycle (the minigame is skipped in a test)")
 		return
 	if name.begins_with("pms_item_"):
 		_toast_msg("Comfort item %s of 3 found" % name.right(1))

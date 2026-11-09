@@ -80,6 +80,11 @@ const VINE_REACH := 12.0
 const VINE_H := 0.7
 ## HUD: the sun (top-left) and the water pill (top-right).
 const SUN_HUD := Vector2(66, 66)
+## The level's end: the whole sun glides from the HUD to the middle of the sky, grows and
+## glows (END_GLIDE s), then finished (Main: 2E, then the jackpot climb over it).
+const END_GLIDE := 1.1
+const END_SUN_POS := Vector2(533, 200)
+const END_SUN_R := 96.0
 const WATER_HUD := Rect2(W - 16 - 150, 16, 150, 48)
 
 const W := 1066.0
@@ -140,6 +145,9 @@ var bump_t := 0.0
 var carry_t := 0.0
 var _roll_to := 0.0
 var done := false
+## Seconds since the 12th piece filled the sun (-1 = not yet): the sun goes to the middle.
+var end_t := -1.0
+var _end_sent := false
 var flash := 0.0
 
 ## Course: [{kind, z, lane (or -9 = all), y, hit / taken, stage}]
@@ -419,6 +427,20 @@ func _process(delta: float) -> void:
 		_update_intro(dt)
 		queue_redraw()
 		return
+	if (done or _pending_end) and (py > 0 or vy != 0):
+		# The last piece caught mid-jump: the run has stopped, she comes down onto
+		# the path (and stands, back to us) while the sun glides.
+		vy -= GRAVITY * dt
+		py += vy * dt
+		if py <= 0:
+			py = 0
+			vy = 0
+			land_t = 0.35
+	if end_t >= 0:
+		end_t += dt
+		if end_t >= END_GLIDE and not _end_sent:
+			_end_sent = true
+			finished.emit()
 	if active and not dialog_open and not done and not waiting:
 		_update(dt)
 	queue_redraw()
@@ -618,11 +640,51 @@ func after_minigame() -> void:
 	recover_t = 0
 
 
+## The 12th piece: the run stops (she stands, back to us) and the whole sun glides to the
+## middle (end_t, END_GLIDE); then finished.
 func _finish() -> void:
 	if done:
 		return
 	done = true
-	finished.emit()
+	slow = false
+	end_t = 0.0
+	Audio.play_sfx("finished.wav", 0.7)
+
+
+## The sun's place and radius on screen (the HUD; at the end gliding to the middle).
+func sun_screen() -> Array:
+	if end_t < 0:
+		return [SUN_HUD, 46.0]
+	var k := _end_k()
+	return [SUN_HUD.lerp(END_SUN_POS, k), lerpf(46.0, END_SUN_R, k)]
+
+
+## 0..1 of the end glide (ease in-out).
+func _end_k() -> float:
+	if end_t < 0:
+		return 0.0
+	var k := clampf(end_t / END_GLIDE, 0, 1)
+	return k * k * (3 - 2 * k)
+
+
+## Developer shortcut (?run=end, the dev menu): every piece but the last found, then the
+## last one taken right in front of her (the end sequence follows).
+func dev_last_piece() -> void:
+	for o in objects:
+		if o.kind == "dialog":
+			o.taken = true
+	var left: Array = objects.filter(func(o): return o.kind == "sun" and not o.taken)
+	for i in left.size() - 1:
+		left[i].taken = true
+	sun = SUN_TOTAL - 1
+	sun_shown = sun
+	if left.is_empty():
+		_finish()
+		return
+	var o: Dictionary = left[-1]
+	o.taken = true
+	_fly("sun", o)
+	_sun_piece()
 
 
 func _hits(wdt: float) -> void:
@@ -1213,7 +1275,7 @@ func _draw_player() -> void:
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
 	var run := sin(time * (16.0 if not slow else 9.0))
 	var air := absf(py) > 0.05 or carry_t > 0 or handing
-	if (intro > 0 and _landed) or (recover_t > RECOVER_RAMP and not air):
+	if (intro > 0 and _landed) or (recover_t > RECOVER_RAMP and not air) or (done and not air):
 		# She stands still (back to us): before the run, or after a hit.
 		run = 0.0
 	elif recover_t > 0:
@@ -1344,6 +1406,9 @@ func _draw_loop_note() -> void:
 func _draw_hud() -> void:
 	# The sun at the top-left (where the iron nut is in the cave): 12 slices, one
 	# per piece found; the ring shows the way through the stage.
+	if end_t >= 0:
+		_draw_end_sun()
+		return
 	var sc := SUN_HUD
 	var grow := 1.0 + 0.18 * sin(clampf(sun_pulse / 0.45, 0, 1) * PI)
 	if sun_pulse > 0:
@@ -1376,6 +1441,25 @@ func _draw_hud() -> void:
 	if water_short > 0:
 		Draw.panel(self, wr.grow(2), Color(0, 0, 0, 0), 18, Color(0.94, 0.27, 0.27, water_short / 0.5), 3)
 	hints.draw(self, Vector2(WATER_HUD.end.x, WATER_HUD.end.y))
+
+
+## The level's end: the whole sun glides to the middle of the sky, grows and glows warm
+## (the egg ripe, ovulation near); slow rays turn round it, the scene warms up. The water
+## pill and the hints are gone (the run is over).
+func _draw_end_sun() -> void:
+	var k := _end_k()
+	var at: Array = sun_screen()
+	var c: Vector2 = at[0]
+	var r: float = at[1]
+	var glow := clampf(end_t / (END_GLIDE + 0.6), 0, 1)
+	draw_rect(Rect2(0, 0, W, H), Color(1, 0.82, 0.45, 0.16 * glow))
+	Draw.radial_glow(self, c, r * (2.4 + 0.15 * sin(time * 3.0)), Color(1, 0.85, 0.4, 0.55 * glow), Color(1, 0.95, 0.75, 0.6 * glow))
+	# Rays.
+	for i in 16:
+		var a := time * 0.35 + i * TAU / 16
+		var l := r * (1.35 + 0.18 * sin(time * 2.0 + i))
+		draw_line(c + Vector2(cos(a), sin(a)) * r * 1.08, c + Vector2(cos(a), sin(a)) * l, Color(1, 0.88, 0.45, 0.7 * k), maxf(1.0, 4.0 * k), true)
+	SpriteArt.draw_sun(self, c, r, SUN_TOTAL, maxf(sun_flash, 0.4 * glow), time)
 
 
 ## The hydration pill: a drop and how full the water is (slowed time pulses it).

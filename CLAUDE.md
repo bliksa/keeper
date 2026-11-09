@@ -17,7 +17,8 @@ godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
                            old summit + LH wave), forest_runner (level 2: the forest run, map data/levels/forest_run.txt),
                            pms_maze (PmsMaze: the maze's reachability check + its code-drawn art)
   scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4),
-                           iron_plate (mg5), rhythm (mg6), signals (mg7) — level 2
+                           iron_plate (mg5), rhythm (mg6), signals (mg7) — level 2; fertility_wheel
+                           (mg11, FertilityWheel: the wheel of the cycle in the jackpot climb)
   scripts/ui/              dialog_box, platformer_hud, player_art (sprite anim), draw helpers
   scripts/dev/             dev_menu + level_editor (in-game, DEV button on the first/boot screen)
   scripts/level_data.gd    level text → platforms/entities (THE LEGEND lives here)
@@ -42,8 +43,9 @@ tools/                     setup_godot.sh, test.sh, export_web.sh, gen_climb.py 
   Legend is in the header of `scripts/level_data.gd` (`=` platform, `O` iron,
   `^` spike, `S/F/J/C` cramps, `P` spawn, `2/3/4` minigames, `5` boss, `a–z`
   dialogs; level 2: `@` bubble, `%` popping bubble, `~` updraft, `N` distraction,
-  `6/7/8` minigames, `9` LH wave, `E` summit; the jackpot climb: `!` spring, `$` chip,
-  `?` slot box, `0` jackpot row, `E` the top; no letters / minigames there; the PMS maze: `W` wall,
+  `6/7/8` minigames, `9` LH wave, `E` summit; the jackpot climb: `!` spring, `$` heart,
+  `:` bell, `?` joker, `0` jackpot row, `Z` the wheel of the cycle (mg11), `E` the top; no letters
+  there; the PMS maze: `W` wall,
   `&` comfort item, `D` door). Keep 25 columns. Minigame / boss /
   wave / summit triggers span the whole row. `Game.LEVELS` maps level id → file.
 - **Dialogs**: story dialogs are named `<level><letter>` (0 = prologue in the forest,
@@ -115,7 +117,7 @@ walk, run, jump, sidejump, doublejump, fall, lookdown, sit, pain, dead, hang) on
 real renderer (`PlayerArt.overrides`).
 
 Besides Kyra, the category tabs (Kyra / Items / Enemies / NPCs) list the sprites of
-`scripts/ui/sprite_art.gd` (`SpriteArt.DEFS`: iron, drop, seed, cramp, spike, boss,
+`scripts/ui/sprite_art.gd` (`SpriteArt.DEFS`: iron, drop, seed, sun_piece, heart, bell, joker, cramp, spike, boss,
 bird, distraction, thorn, shadow, estra, portrait_estra / _kyra / _iskra). Most are
 drawn in code (`SpriteArt.draw_*` placeholders, empty "original" frame list); a
 variant with frames replaces the placeholder wherever the game draws it
@@ -227,12 +229,14 @@ drop low/high, `+` sun piece, `<` `>` side trap (thorny vine),
 The sun (HUD top-left where the cave's iron nut is, `SpriteArt.draw_sun`; water = the hydration pill top-right, `draw_water_pill`, where the cave's breath is) has 12 triangular slices; each
 `+` fills one (`sun`). Every `SUN_PER_GAME` = 3 pieces `sun_game(n)` → Main opens
 mg8 (memory) / mg9 (catch) / mg10 (pairs) and `_back_to_cave` calls `after_minigame()` (next stage
-from its start); the 12th piece → `finished` → `runner_end` → `_start_summit`.
+from its start); the 12th piece → `_finish()`: the run stops (she stands), the whole sun glides from the HUD to
+the middle of the sky, grows and glows (`end_t`, `END_GLIDE`, `sun_screen()`, `_draw_end_sun`) → `finished` → Main
+`_runner_done` → 2E → `_into_climb` (no fade to black, see "Level 3").
 `stages` (cut by `A` rows; the map has 4 of 3 pieces each: jumping + water, faster,
 flying notifications, fastest + random side traps): speed `STAGE_SPEED[stage]` + `STAGE_RAMP` within the
 stage; from `RANDOM_TRAPS_FROM` random side traps (`_random_traps`, new on every
 repeat). A stage whose pieces can no longer all be found repeats
-(`_check_loop` → `_loop_stage`, queued as soon as its end comes into view: a copy is laid out beyond `dist + VIEW`, nothing in view moves; what already shows of the next stage is run through first and copied after the repeat; `_enter_loop` at the old end moves the missed pieces into the repeat). A hit's lost slice tumbles out of her (`lost_flyers`) and blinks red in the sun (`sun_lost`). Web shortcut `?run=hit` shows it. Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`; the double jump needs two drops, else `water_short` + `short_for`), hits (then `invuln` = `INVULN_TIME` 3 s: she blinks and nothing hits her):
+(`_check_loop` → `_loop_stage`, queued as soon as its end comes into view: a copy is laid out beyond `dist + VIEW`, nothing in view moves; what already shows of the next stage is run through first and copied after the repeat; `_enter_loop` at the old end moves the missed pieces into the repeat). A hit's lost slice tumbles out of her (`lost_flyers`) and blinks red in the sun (`sun_lost`). Web shortcut `?run=hit` shows it (`?run=end`: the level's end, `dev_last_piece`; dev menu "End → climb"). Four lanes (`lane` = a `PATHS` value, `px`), jump / double jump (`jump()`; the double jump needs two drops, else `water_short` + `short_for`), hits (then `invuln` = `INVULN_TIME` 3 s: she blinks and nothing hits her):
 `bump()` (roll back `BUMP_BACK`, not before the stage start; −`HIT_DROPS` and `_lose_slice()`: the stage's last found piece goes back onto the track, never below the last minigame's count), a flying notification in the air =
 `carried()` (`CARRY_BACK`); `_reset_behind()` re-arms what she must pass again,
 except within `GRACE`. Water: a magazine of 4 drops (`drops`, HUD top-right, `draw_water_pill`) fed by the bar `water` (0–100, the line round the pill fills like the cave's breath ring, `progress_outline`; path drops `D`/`U` add `DROP_WATER`). A jump is free, a double jump costs `DOUBLE_DROPS` = 2, focus (`slow_time`) burns `FOCUS_DRAIN` = 1 drop/s, a hit `HIT_DROPS` = 1; an empty magazine reloads from the bar (`DROP_UNIT` per drop, `RELOAD_TIME`, `_update_magazine`). The map comes from `tools/gen_forest_run.py` (fluid: every obstacle row has `min_gap` rows of reaction time at the stage speed, the free path moves one over; the generator checks it). `jump_to(z)` moves her (and the stage) for tests / the dev menu
@@ -266,16 +270,38 @@ Same `Platformer` with `level_id = Game.CLIMB_ID` (5; `is_climb()`; `is_up()` = 
 climb or the old summit: camera target H/2, `bg_origin_for` anchored at the bottom,
 checkpoint / `_stand_at_trigger` search below, the procedural `_draw_garden_bg`).
 Map `data/levels/climb.txt` (`LevelData.CLIMB_COLS` = 36 columns = `Game.level_cols(5)`, P at the bottom, E at the top). Legend: `!`
-entity `spring`, `$` `chip`, `?` `slot`, `0` trigger `jackpot` (whole row, a checkpoint),
-`~` updraft; E becomes trigger `climb_top` in `setup` (sets `climb_won`). Checkpoints
+entity `spring`, `$` `heart`, `:` `bell`, `?` `joker`, `0` trigger `jackpot` (whole row, a checkpoint),
+`Z` trigger `mg11` (whole row, once, between the 1st and 2nd jackpot rows: the wheel of the cycle), `~` updraft; E becomes trigger `climb_top` in `setup` (sets `climb_won`). Checkpoints
 `LevelData.PROGRESS[5]` = jackpot ×3 + climb_top (`_place_at_checkpoint` takes the n-th
 row of a repeated kind, from the bottom; 5 = a few rows below the top). Flow in
-`main.gd`: `_runner_done` → 2E → `_start_climb(1)` (no dialog at the start: the climb
-never opens the DialogBox and has no minigames); `jackpot` → `Game.checkpoint`;
+`main.gd`: `_runner_done` → 2E → `_into_climb()`: when 2E closes, the dialog box is the board at once (the HUD
+is not faded) announcing the new phase (`Platformer.announce_phase` → `phase_note`, `PHASE_TIME`: the marquee
+lights up bulb by bulb (`PHASE_BULBS`), then blinks; title `CLIMB_PHASE_NEW` + `CLIMB_PHASE_SUB`,
+`PlatformerHud._draw_phase_note`; the ticker and board dialogs wait, the counters come in, `counters_in()`)
+while the climb's world and Kyra crossfade in over the forest (`CLIMB_IN` = 1.2 s, `set_fade(a, false)`; the
+runner is freed after) and the sun melts into the light (`sun_glow`, `SUN_MELT`, drawn on `_veil`). Kyra has
+control at once; the board waits `CLIMB_IN + RISE_GRACE`. `_start_climb(1)` = the dev menu / restarts, with a fade
+(no dialog at the start: the climb
+never opens the DialogBox); `jackpot` → `Game.checkpoint`; `mg11` (`_hit_trigger`, once per climb:
+`wheel_done`) → Main `_set_state("mg11")` + `FertilityWheel` (the climb is inactive: nothing moves, the board
+doesn't rise; the intro `MG11_HINT` is the minigame's hint panel) → `_mg11_done` → `Platformer.after_wheel()`
+(she goes on where she was, `rise_wait` = `RISE_GRACE`, `mg11_after` on the board);
 `climb_top` → 2 s → 3E on the board → `board_dialog_done("3E")` → the transformation into
 the PMS maze (`_into_pms`, see "Level 4" below; `_run_id` guarded). The map has no dialog letters; one painted in the editor plays on
-the board (`_hit_trigger`), painted `mg*` / boss / wave / gate triggers do nothing here. Dev menu column "3 · Jackpot climb" (`checkpoint5`), web
-`?climb=1` / `?climb=top`. Strings `CLIMB_*`.
+the board (`_hit_trigger`), painted `mg*` (but `mg11`) / boss / wave / gate triggers do nothing here. Dev menu column
+"3 · Jackpot climb" (`checkpoint5`; "The wheel" = `climb_wheel`), web `?climb=1` / `?climb=top` / `?mg=mg11` (the
+wheel on its own; Continue → title). Strings `CLIMB_*`, `MG11_*`.
+
+**The wheel of the cycle** (`scripts/minigames/fertility_wheel.gd`, `FertilityWheel`, mg11): a casino wheel of
+the 28 days coloured by phase (`day_color`: period 1–5, follicular, the fertile window 9–14 = `FERTILE_FROM`..
+`OVULATION` with hearts, ovulation 14 with an egg, luteal), a pointer at the top (`day_at(angle)`). Space / Enter /
+🟡 / a click spins it (`spin`), again brakes (`brake`); it slows with ticks and lands (`_land` → `result_day`,
+`results`); the card (`CARD`) shows the day, `phase_key(day)` and `verdict_key(day)` = `MG11_POSSIBLE` (fertile
+window: unprotected sex can lead to pregnancy, about 1 in 4–5 per cycle for a couple trying) or `MG11_UNLIKELY`
+(+ cycles vary, sperm live up to 5 days, protection every day), with `MG11_AGAIN` / Continue (`buttons()`, `sel`,
+← →). `MAX_SPINS` = 3. `stop_at(day)` (tests), `texts_fit()` (the test checks all languages), `draw_mini` (the
+wheel row in the climb, `_draw_wheel_row`). After it `mg11_after` (MG11_AFTER1/2) plays on the board
+(`DialogEditor.on_board`).
 
 Mechanics (all level 5 only, constants at the top of `platformer.gd`):
 - **Wider, zoomed out**: 36 columns of the usual `LevelData.CELL_W` (≈ 1535 px; `level_w` =
@@ -293,7 +319,7 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   `PlatformerHud._draw_board` (dialog-box panel, Estrogenka's portrait, a marquee of
   chasing bulbs, the news ticker `Platformer.ticker` scrolling `CLIMB_TICK_1..8` right →
   left at `TICKER_SPEED`, event lines via `ticker_say()` come next and the ticker hurries;
-  the slot reels on its right). Its top edge (`board_y()`) is always a floor (the dialog
+  no score, no reels: they are top-left). Its top edge (`board_y()`) is always a floor (the dialog
   floor code in `_update`). Kyra is on layer 9 above it.
 - **Board dialogs** (`board_dialog(id)`, no DialogBox, no buttons, not modal:
   `dialog_open` stays false, play and the rise go on): the node's parts replace the ticker
@@ -304,12 +330,12 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   (`PlatformerHud._draw_board_talk`), its voice if `Text.voice_file` has one; then
   `board_dialog_done(id)` and the next one from `board_queue`. `board_talking(id)`,
   `board_next()` (tests). The first grant of each power-up in a climb (`grant_power`,
-  `powers_explained`, `POWER_DIALOG`) explains it: 3A super jump (+ slot boxes always
+  `powers_explained`, `POWER_DIALOG`) explains it: 3A super jump (+ jokers always
   pay), 3B triple, 3C magnet, 3D rocket (the LH surge); 3E = the end. A timed
   power-up's clock stops while its explanation talks or waits on the board, so it never
-  runs out mid-explanation; the first box of a climb always pays the super jump (3A
-  introduces the boxes). In the climb `_hit_trigger` ignores every trigger except
-  `dialog` (→ board), `jackpot` and `climb_top` (no cramp dialog, minigame, wave …). All Estrogenka
+  runs out mid-explanation; the first joker of a climb always pays the super jump (3A
+  introduces the jokers). In the climb `_hit_trigger` ignores every trigger except
+  `dialog` (→ board), `jackpot`, `mg11` (the wheel) and `climb_top` (no cramp dialog, other minigame, wave …). All Estrogenka
   (3E: Kyra too), no buttons. The test checks every 3* line fits the board in all
   languages and both control modes; the dialog editor's fit mark checks the board for
   3* (`DialogEditor.on_board`).
@@ -319,28 +345,40 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
   start / a checkpoint (`_board_camera`) and after the top.
 - **Caught** (`_caught`): standing on the board (fell, or the edge reached her feet; a
   clamp keeps her above it even on frame spikes, and after the camera moves she is
-  snapped onto it, so she rides it up sitting) → x1, `rise` back to `RISE_START`,
-  `CLIMB_REST` on the ticker, she sits when idle; floors carried up don't count for the
-  streak; a jump leaves any time. No death: `_hurt` only knocks her back, cramps don't
+  snapped onto it, so she rides it up sitting) → `rise` back to `RISE_START` (`_reset_rise`),
+  `CLIMB_REST` on the ticker, she sits when idle; a jump leaves any time. No death: `_hurt` only knocks her back, cramps don't
   grab, no breathing.
 - **Springs** `!` (`_spring`: `SPRING_FORCE` ≈ 550 px, jumps refilled, BOOST!, `boost_t`
-  keeps a released jump key from cutting the flight), **chips** `$` (`_take_chip`: +10),
-  **slot boxes** `?` (`_start_slot` → `slot_spin` reels, `SLOT_STOPS`, pays at `SLOT_SPIN`
-  via `_pay_slot` → `grant_power` from a shuffled bag `_next_power`: `super_jump` ×1.3,
-  `triple` 3 jumps (`_max_jumps`), `magnet` pulls chips in `MAGNET_RANGE`, each
-  `POWER_TIME` s in `climb_power`; `rocket` ≈ 900 px now), `~` updrafts.
-- **Wins** (`_win`: amount × `climb_mult`): `climb_win`, the multiplier +1 every
-  `MULT_FLOORS` floors of a streak (since the last catch, max `MULT_MAX`), a JACKPOT
-  (`_jackpot`: +500 ×, banner, `_coin_shower`) every `STREAK_JACKPOT` floors of a streak,
-  on each `0` row and (+1000 ×) at the top. Floating `pops`, `banner`, particles `coin` /
-  `glint` / `flame`, `_draw_casino_lights` over the dusk→morning sky, `_draw_climb_platform`.
-- HUD (`PlatformerHud._draw_climb`, screen space, not zoomed): FLOOR top-left, the active power-ups as ability hints top-right,
-  the WIN counter rolling up (`_win_shown`) with the multiplier top-centre, the banner.
+  keeps a released jump key from cutting the flight), **hearts** `$` (`_take_heart`, code art
+  `SpriteArt.draw_heart`, sprite `heart`), **bells** `:` now and then (`_ring_bell`: +1 ready heart, a
+  chime, `CLIMB_BELL`; sprite `bell`), **jokers** `?` occasionally (`_take_joker` → `slot_spin`: the reels
+  top-left spin, `SLOT_STOPS`, pay at `SLOT_SPIN` via `_pay_slot` → `grant_power` from a shuffled bag
+  `_next_power`: `super_jump` ×1.3, `triple` 3 jumps (`_max_jumps`), `magnet` pulls hearts in
+  `MAGNET_RANGE`, each `POWER_TIME` s in `climb_power`; `rocket` ≈ 900 px now; sprite `joker`), `~` updrafts.
+- **The heart meter** (like the forest run's water): `hearts` ready (0..`HEART_SLOTS` = 4) fed by `heart_bar`
+  (0–100; every heart `HEART_FILL` = 20 %, `add_heart_fill`: a full bar = one more ready heart; with all four
+  ready it stays full and refills the next one spent). Ready hearts buy (`spend_hearts`; too few → `heart_short`,
+  the empty slots blink): the **heart jump** (out of jumps in the air, jump again: `HEART_JUMP_COST` = 1,
+  `_heart_jump`) and the **heart boost** (Shift / 🔴 = `breathe`: `heart_boost()`, a launch like a spring,
+  `HEART_BOOST_FORCE`, `HEART_BOOST_COST` = 2). No score: no win counter, no multiplier, no streak.
+- **Jackpots** (`_jackpot`: banner, `_coin_shower`, a fanfare; no score) on each `0` row and at the top.
+  Floating `pops` (BOOST!, the bell, the heart boost), `banner`, particles `coin` / `glint` / `flame` / `heart`,
+  `_draw_casino_lights` over the dusk→morning sky, `_draw_climb_platform`.
+- **The sun** (`_draw_climb_sun`, in `_draw_garden_bg`, behind the platforms, opaque): the forest run's whole sun
+  (`SpriteArt.draw_sun` with 12 slices on a solid disc, glow, turning rays) at the top centre; `sun_screen()` =
+  [centre, radius] on screen: it starts where the run left it (`SUN_MELT_POS`, `SUN_R0`) and rises to
+  `SUN_TOP_Y` (`SUN_R1`) with `sun_progress()` (0 at the start … 1 at the top). It turns with the view and dims
+  in the transformation.
+- HUD (`PlatformerHud._draw_climb`, screen space, not zoomed): the slot machine top-left (`_draw_reels`: idle
+  heart · joker · bell with a slow wobble, a joker spins them to 7-7-7 and the power-up blinks under them),
+  FLOOR top-centre, the heart meter top-right (`draw_heart_pill`: four hearts, the bar as a line round the pill,
+  `ForestRunner.progress_outline`) with the ability hints under it, the banner.
 - Map: `python3 tools/gen_climb.py` (seeded; reads GRAVITY / JUMP_FORCE / MAX_SPEED from
   `platformer.gd`; 36 columns: two routes wander up side by side, merge and split, plus
-  side ledges with chips, so there are real choices; springs have a two-cell chip fan
-  above them) and asserts every row is one normal jump from the one below, and that
-  there are no dialog letters and no minigame / boss / wave digits; `--check` checks the
+  side ledges with hearts, so there are real choices; springs have a two-cell heart fan
+  above them; bells every 12–18 rows; the wheel `Z` once, halfway between the 1st and 2nd jackpot rows) and
+  asserts every row is one normal jump from the one below, that there are no dialog letters and no minigame /
+  boss / wave digits, and that the one `Z` is between the 1st and 2nd jackpot rows; `--check` checks the
   current file). Editor saves drop its header comment.
 
 ## The transformation (the climb's end → the PMS maze)
@@ -350,7 +388,7 @@ board's talk / slot / banner / power-ups cleared), then `_update_view` runs its 
 `prerod_t`: 0–`PREROD_WIND` (1.5 s) the casino winds down (`wind` 0→1: `_bg` / `_world` /
 `_player_layer` modulate to dusky violet, `_draw_casino_lights` slow (`_light_t`), fade and
 drip, the summit egg dims, `PlatformerHud` lets the stopped ticker's letters come loose and
-drift up (`_draw_loose_letters`) and fades FLOOR / WIN / the multiplier (`_a()`)), then
+drift up (`_draw_loose_letters`) and fades the reels / FLOOR / the heart meter (`_a()`)), then
 `PREROD_TURN` (2.5 s) the view turns (`view_flip` 0→1, ease-in-out; `_turning()` adds a small
 wobble, melt squash and zoom-out; the HUD fades; the garden sky is drawn wider so the corners
 stay sky; `_backdrop` fills the rest, `_veil` = a screen-space vignette). At `view_flip` 1
@@ -427,9 +465,9 @@ optional time bar. The owner calls `hints.update(dt, [key | {key, k}])` every fr
 charged → attack, used up → charge, recharging → the in · hold · out rhythm; under the
 breath pill, which may follow Kyra), `HINT_RUN_FOCUS` / `HINT_RUN_DOUBLE` (forest run,
 `ForestRunner._wanted_hints`: focus with ≥ 1 drop and no reload, double jump with ≥ 2),
-`HINT_CLIMB_*` (jackpot climb: the active `climb_power` with its time, in the top-right
-corner), `HINT_PMS_BREATHE` / `HINT_PMS_CALM` (the PMS maze, under its breath pill). The old meadow / summit don't use it. Web shortcuts: `?cave=N` (cave at
-checkpoint N), `?climb=power` (the climb with a super jump and the magnet).
+`HINT_CLIMB_*` (jackpot climb, under the heart meter: `HINT_CLIMB_HEART_BOOST` / `_HEART_JUMP` only
+while the ready hearts afford them, then the active `climb_power` with its time), `HINT_PMS_BREATHE` / `HINT_PMS_CALM` (the PMS maze, under its breath pill). The old meadow / summit don't use it. Web shortcuts: `?cave=N` (cave at
+checkpoint N), `?climb=power` (the climb with three ready hearts, a super jump and the magnet, then a joker spins the reels).
 
 ## Game feel (levels 2 and 3)
 

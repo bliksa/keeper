@@ -136,9 +136,14 @@ func _run() -> void:
 		if e.trigger_type == "summit":
 			top_y = minf(top_y, e.y)
 	check(top_y < 600, "the climb's top (E) is near the top")
-	check(c5.get("spring", 0) > 0 and c5.get("chip", 0) > 0 and c5.get("slot", 0) > 0 and c5.get("jackpot", 0) == 3, "the climb has springs, chips, slot boxes and 3 jackpot rows")
+	check(c5.get("spring", 0) > 0 and c5.get("heart", 0) > 100 and c5.get("bell", 0) > 3 and c5.get("joker", 0) > 3 and c5.get("jackpot", 0) == 3, "the climb has springs, plenty of hearts, some bells and jokers and 3 jackpot rows")
+	# The wheel of the cycle (mg11): one row, between the 1st and 2nd jackpot rows.
+	var jys: Array = L5.entities.filter(func(e): return e.trigger_type == "jackpot").map(func(e): return e.y)
+	jys.sort()
+	var wheels: Array = L5.entities.filter(func(e): return e.trigger_type == "mg11")
+	check(wheels.size() == 1 and wheels[0].y > jys[1] and wheels[0].y < jys[2] and not L5.entities.any(func(e): return e.type == "chip" or e.type == "slot"), "the climb's wheel (Z, mg11) is there once, between the 1st and 2nd jackpot rows")
 	check(LevelData.parse_text(LevelData.to_text(rows5), LevelData.CLIMB_COLS) == rows5, "climb text round-trips")
-	check(LevelData.PALETTE.has("!") and LevelData.PALETTE.has("$") and LevelData.PALETTE.has("?") and LevelData.PALETTE.has("0"), "the climb's legend has labels")
+	check(["!", "$", ":", "?", "0", "Z"].all(func(ch): return LevelData.PALETTE.has(ch)), "the climb's legend has labels")
 	# The PMS maze (level 4 of the game, id 6): a spawn, three comfort items, one door, walls.
 	var rows6: PackedStringArray = Game.level_rows(Game.PMS_ID)
 	var L6 := LevelData.build(rows6)
@@ -284,7 +289,7 @@ func _run() -> void:
 	await frames(2)
 	check(pf.hud.hint_lines() == ["HINT_BREATH_CHARGE"], "breath used up: the hint says to charge it %s" % str(pf.hud.hint_lines()))
 	pf.p.breath_charges = 3
-	for hk in ["HINT_BREATH_ATTACK", "HINT_BREATH_CHARGE", "HINT_BREATH_RHYTHM", "HINT_RUN_FOCUS", "HINT_RUN_DOUBLE", "HINT_CLIMB_SUPER_JUMP", "HINT_CLIMB_TRIPLE", "HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET"]:
+	for hk in ["HINT_BREATH_ATTACK", "HINT_BREATH_CHARGE", "HINT_BREATH_RHYTHM", "HINT_RUN_FOCUS", "HINT_RUN_DOUBLE", "HINT_CLIMB_SUPER_JUMP", "HINT_CLIMB_TRIPLE", "HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_CLIMB_HEART_BOOST", "HINT_CLIMB_HEART_JUMP"]:
 		check(Text.LANGUAGES.all(func(lang): return Text._strings.get(lang, {}).has(hk)), "ability hint %s exists in sk / en / pt" % hk)
 
 	step("minigame 2 – chocolate")
@@ -559,8 +564,17 @@ func _run() -> void:
 		rn.lane = pc.lane
 		rn.px = pc.lane * ForestRunner.LANE
 		rn.py = 0
+		# The last piece is caught mid-jump: she must come down for the end.
+		var hold_up := func():
+			if not pc.taken:
+				rn.py = 1.0
+				rn.vy = 0.0
+		if n == ForestRunner.SUN_TOTAL - 1:
+			get_tree().process_frame.connect(hold_up)
 		rn.jump_to(pc.z - 0.3)
 		var got := await until(func(): return pc.taken, 3)
+		if get_tree().process_frame.is_connected(hold_up):
+			get_tree().process_frame.disconnect(hold_up)
 		if not got or n == ForestRunner.SUN_TOTAL - 1:
 			check(got, "sun piece %d is found" % (n + 1))
 			break
@@ -575,13 +589,44 @@ func _run() -> void:
 			await frames(3)
 			check(main.state == "runner" and not rn.waiting and rn.stage == (n + 1) / ForestRunner.SUN_PER_GAME and rn.visible, "after the minigame the run goes on with stage %d" % ((n + 1) / ForestRunner.SUN_PER_GAME + 1))
 	check(rn.objects.any(func(o): return o.get("random", false) and o.stage == 3), "the last stage has random side traps")
+	var gliding := await until(func(): return rn.end_t > 0.3, 5)
+	var mid_sun: Array = rn.sun_screen()
+	check(gliding and rn.done and node_box().node_id() == "" and (mid_sun[0] as Vector2).distance_to(ForestRunner.SUN_HUD) > 60, "the 12th piece: the run stops and the whole sun glides from the HUD towards the middle")
 	var fin := await until(func(): return node_box().node_id() == "2E", 5)
-	check(fin and rn.sun == ForestRunner.SUN_TOTAL, "the 12th piece completes the sun and ends the level")
+	var end_sun: Array = rn.sun_screen()
+	check(fin and rn.sun == ForestRunner.SUN_TOTAL and (end_sun[0] as Vector2).distance_to(ForestRunner.END_SUN_POS) < 1 and float(end_sun[1]) > 90, "the sun is in the middle, big, when 2E opens")
+	check(absf(rn.py) < 0.05 and rn.vy == 0.0, "the last piece was caught mid-jump: she has come down onto the path when 2E opens (py %.2f)" % rn.py)
+	var fade_max := [0.0]
+	var watch_fade := func():
+		fade_max[0] = maxf(fade_max[0], main._fade.modulate.a)
+	get_tree().process_frame.connect(watch_fade)
 	await finish_dialog("2E")
-	var climb := await until(func(): return main.state == "platformer" and Game.level == Game.CLIMB_ID and main.platformer != null, 6)
+	var cpf: Platformer = main.platformer
+	check(main.state == "platformer" and Game.level == Game.CLIMB_ID and cpf != null and cpf.is_climb() and cpf.phase_showing() and cpf.phase_note.key == "CLIMB_PHASE_NEW", "2E closes into the climb at once: the board announces the new phase")
+	var csun: Array = cpf.sun_screen()
+	check((csun[0] as Vector2).distance_to(ForestRunner.END_SUN_POS) < 25 and absf(float(csun[1]) - ForestRunner.END_SUN_R) < 4, "the run's sun goes on as the climb's sun, where it was (%s, r %.0f)" % [str(csun[0]), float(csun[1])])
+	check(is_instance_valid(rn) and rn.is_inside_tree() and cpf.modulate.a < 0.5 and cpf.hud.modulate.a == 1.0, "the forest stays under the climb crossfading in; the board is there at once")
+	await seconds(0.3)
+	var y_before := cpf.p.y
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	await frames(10)
+	check(cpf.p.y < y_before - 20 and cpf.phase_showing(), "a jump during the announcement moves her up right away")
+	await seconds(main.CLIMB_IN)
+	check(not is_instance_valid(rn) and cpf.modulate.a == 1.0 and cpf.camera_y > 0, "the forest is gone after the crossfade")
+	var ticker_x: float = cpf.ticker[0].x if not cpf.ticker.is_empty() else 0.0
+	await frames(5)
+	check(cpf.phase_showing() and (cpf.ticker.is_empty() or cpf.ticker[0].x == ticker_x), "the ticker waits for the announcement")
+	await until(func(): return not cpf.phase_showing(), 4)
+	await seconds(0.3)
+	check(not cpf.phase_showing() and not cpf.ticker.is_empty() and cpf.ticker[0].x < ticker_x, "after the announcement the ticker runs")
+	get_tree().process_frame.disconnect(watch_fade)
+	check(fade_max[0] == 0.0, "no fade to black from the forest run into the climb (max %.2f)" % fade_max[0])
+	var climb: bool = main.state == "platformer" and Game.level == Game.CLIMB_ID and main.platformer == cpf
 	check(climb, "the jackpot climb (level 3) starts after the forest run")
-	await seconds(0.8)
 	check(not node_box().is_open() and not main.platformer.dialog_open and not main.platformer.board_talking(), "the climb starts without a dialog (no 3A at the start, no dialog box)")
+	check(Text.t("CLIMB_PHASE_NEW") != "CLIMB_PHASE_NEW" and Platformer.board_text_size(Text.plain(Text.t("CLIMB_PHASE_SUB"))) > 0, "the phase announcement has its texts")
 
 	step("forest run – a repeat is laid out behind what she sees")
 	var lmap: Array = []
@@ -690,7 +735,11 @@ func _run() -> void:
 	check(pf.p.is_grounded, "stands on the climb's floor")
 	var climb_events: Array = []
 	pf.trigger.connect(func(n): climb_events.append(n))
-	check(not pf.on_board and pf.climb_mult == 1 and pf.climb_win == 0 and pf.ticker.size() > 0 and pf.hud.visible, "the board's ticker runs, she starts just above the board at x1")
+	check(not pf.on_board and pf.hearts == 0 and pf.heart_bar == 0.0 and pf.ticker.size() > 0 and pf.hud.visible, "the board's ticker runs, she starts just above the board with an empty heart meter")
+	check(not ("climb_win" in pf) and not ("climb_mult" in pf) and not Text._strings.get("en", {}).has("CLIMB_WIN"), "no score in the climb (no win counter, no multiplier)")
+	# The sun of the forest run shines in the climb's sky (opaque), rising as she climbs.
+	var sun0: Array = pf.sun_screen()
+	check(absf((sun0[0] as Vector2).x - Platformer.W / 2) < 1 and (sun0[0] as Vector2).y > 150, "the sun is at the top centre of the sky (%s)" % str(sun0[0]))
 	check(pf.board_y() > pf.p.y + pf.p.height and pf.board_y() - (pf.p.y + pf.p.height) < 120, "the board's top edge is right below her feet")
 	check(not node_box().is_open() and not pf.board_talking(), "no dialog at the start of the climb")
 	# Wider and zoomed out: 36 columns, drawn at CLIMB_ZOOM so the whole width fits the screen.
@@ -699,7 +748,7 @@ func _run() -> void:
 	check(absf(pf.view_w() - pf.level_w) < 1.0 and absf(pf.level_w * pf.view_zoom - Platformer.W) < 1.0, "the level's side walls are the screen's edges")
 	check(absf((pf.board_y() - pf.camera_y) * pf.view_zoom - (Platformer.H - Platformer.BOARD_H)) < 0.5 and pf.hud.scale == Vector2.ONE, "the board stays at the bottom of the screen (screen space, not zoomed)")
 	# No dialog letters and no minigames in the climb's map.
-	check(not pf.level.entities.any(func(e): return e.type == "trigger" and (e.trigger_type == "dialog" or e.trigger_type.begins_with("mg") or e.trigger_type in ["end", "wave", "gate"])), "the climb's map has no dialog letters and no minigame triggers")
+	check(not pf.level.entities.any(func(e): return e.type == "trigger" and (e.trigger_type == "dialog" or (e.trigger_type.begins_with("mg") and e.trigger_type != "mg11") or e.trigger_type in ["end", "wave", "gate"])), "the climb's map has no dialog letters and no minigame triggers but the wheel")
 	# A letter painted in the editor anyway talks on the board, never in the dialog box;
 	# a painted minigame does nothing.
 	var painted := LevelData.Ent.new()
@@ -714,14 +763,17 @@ func _run() -> void:
 	await frames(3)
 	check(pf.board_talking("3C") and not node_box().is_open() and not pf.dialog_open and main.state == "platformer" and main.minigame == null, "a painted letter plays its dialog on the board; a painted minigame doesn't open")
 	_board_flush(pf)
-	# The multiplier: floors climbed without being caught.
 	var base: LevelData.Plat = _climb_plat(pf, pf.level_h - 300)
 	_climb_put(pf, base.x + base.w / 2, base.base_y)
 	await frames(2)
-	pf._reset_streak()
 	_climb_put(pf, 500, pf.p.y + pf.p.height - 11 * LevelData.ROW_H)
 	await frames(2)
-	check(pf.climb_mult >= 3 and pf.streak_top - pf.streak_floor0 >= 10, "10 floors without a catch: multiplier x%d" % pf.climb_mult)
+	var sun_hi: Array = pf.sun_screen()
+	check((sun_hi[0] as Vector2).y < (sun0[0] as Vector2).y - 2, "higher up the sun has risen (screen y %.0f → %.0f)" % [(sun0[0] as Vector2).y, (sun_hi[0] as Vector2).y])
+	pf.camera_y = 0
+	var sun_top: Array = pf.sun_screen()
+	pf.camera_y = pf.p.y + pf.p.height - 300
+	check(absf((sun_top[0] as Vector2).y - Platformer.SUN_TOP_Y) < 1 and (sun_top[0] as Vector2).y > 0, "at the top the sun is high in the sky, still on screen")
 	# Caught: the board rises past her feet → she stands on it, sits, x1, a calm line.
 	pf.rise_wait = 0.0
 	pf.rise = 2.0
@@ -730,7 +782,7 @@ func _run() -> void:
 	await frames(3)
 	check(pf.on_board and pf.p.is_grounded and absf(pf.p.y + pf.p.height - pf.board_y()) < 2, "the rising board catches her: she stands on its top edge")
 	var rest := Text.plain(Text.t("CLIMB_REST"))
-	check(pf.climb_mult == 1 and (pf.ticker_queue.has(rest) or pf.ticker.any(func(sg): return sg.text == rest)), "caught: the multiplier is back to x1, the board says take a breath")
+	check(pf.ticker_queue.has(rest) or pf.ticker.any(func(sg): return sg.text == rest), "caught: the board says take a breath")
 	check(pf.rise <= Platformer.RISE_START + 0.05, "caught: the board slows back to its starting speed")
 	await seconds(0.4)
 	var cy := pf.camera_y
@@ -778,12 +830,11 @@ func _run() -> void:
 	# is a catch (x1), there is no dialog box and nothing to press.
 	_climb_put(pf, 500, from.base_y - 60)
 	pf.camera_y = from.base_y - 60 - (Platformer.H - Platformer.BOARD_H) / pf.view_zoom + 30
-	pf.climb_mult = 4
 	var talked: Array = []
 	pf.board_dialog_done.connect(func(id): talked.append(id))
 	pf.board_dialog("3C")
 	var caught_in_dialog := await until(func(): return pf.on_board, 3)
-	check(caught_in_dialog and pf.board_talking("3C") and not node_box().is_open() and not pf.dialog_open and pf.climb_mult == 1, "caught while the board talks: x1, no dialog box")
+	check(caught_in_dialog and pf.board_talking("3C") and not node_box().is_open() and not pf.dialog_open, "caught while the board talks: no dialog box")
 	cy = pf.camera_y
 	await seconds(0.4)
 	check(pf.camera_y < cy - 5 and pf.on_board and pf.board_talking("3C"), "the board keeps rising while its dialog talks")
@@ -795,17 +846,11 @@ func _run() -> void:
 	# A spring launches her.
 	var spring: LevelData.Ent = _climb_ent(pf, "spring")
 	_climb_put(pf, spring.x + spring.w / 2, spring.y + spring.h)
-	var win0 := pf.climb_win
 	await frames(2)
-	check(pf.p.vy < -15 and pf.boost_t > 0 and pf.climb_win > win0, "a spring launches her (vy %.1f) and pays a bonus" % pf.p.vy)
+	check(pf.p.vy < -15 and pf.boost_t > 0, "a spring launches her (vy %.1f)" % pf.p.vy)
 	await frames(20)
 	check(pf.p.y < spring.y - 250, "the spring sends her several rows up")
-	# Chips.
-	var chip: LevelData.Ent = _climb_ent(pf, "chip")
-	win0 = pf.climb_win
-	_climb_put(pf, chip.x + chip.w / 2, chip.y + 30)
-	await frames(2)
-	check(chip.collected and pf.climb_win >= win0 + 10, "a chip adds to the WIN counter (%d)" % pf.climb_win)
+	await _climb_hearts(pf)
 	# The bag: every power-up comes up.
 	pf._power_bag.clear()
 	var drawn: Array = []
@@ -815,20 +860,22 @@ func _run() -> void:
 	var all_powers: Array = Platformer.POWERS.duplicate()
 	all_powers.sort()
 	check(drawn == all_powers, "the slot bag holds every power-up once")
-	# A slot box spins the reels on the board and always pays a power-up; the first one
-	# in a climb pays the super jump (3A also introduces the slot boxes).
+	# A joker spins the reels top-left and always pays a power-up; the first one in a
+	# climb pays the super jump (3A also introduces the jokers).
 	pf.climb_power.clear()
 	pf.powers_explained.clear()
 	pf._power_bag.clear()
-	var slot: LevelData.Ent = _climb_ent(pf, "slot")
-	win0 = pf.climb_win
+	pf.hearts = 0
+	var slot: LevelData.Ent = _climb_ent(pf, "joker")
 	_climb_put(pf, slot.x + slot.w / 2, slot.y + slot.h + 25)
 	await frames(2)
-	check(slot.collected and not pf.slot_spin.is_empty() and not pf.slot_spin.paid, "a slot box spins the reels")
+	check(slot.collected and not pf.slot_spin.is_empty() and not pf.slot_spin.paid, "a joker spins the reels top-left")
 	await seconds(Platformer.SLOT_SPIN + 0.2)
-	check(pf.slot_spin.get("paid", false) and pf.climb_power.size() > 0 and pf.climb_win >= win0 + 100, "the reels stop and pay a power-up (%s)" % pf.slot_spin.get("power", "?"))
-	check(pf.board_talking(Platformer.POWER_DIALOG.get(pf.slot_spin.get("power", ""), "?")) and not node_box().is_open(), "the first power-up from a slot box is explained on the board")
-	check(pf.slot_spin.get("power", "") == "super_jump" and pf.board_talking("3A"), "the first slot box of a climb pays the super jump (3A introduces the boxes)")
+	check(pf.slot_spin.get("paid", false) and pf.climb_power.size() > 0, "the reels stop and pay a power-up (%s)" % pf.slot_spin.get("power", "?"))
+	check(pf.board_talking(Platformer.POWER_DIALOG.get(pf.slot_spin.get("power", ""), "?")) and not node_box().is_open(), "the first power-up from a joker is explained on the board")
+	check(pf.slot_spin.get("power", "") == "super_jump" and pf.board_talking("3A"), "the first joker of a climb pays the super jump (3A introduces the jokers)")
+	var en_s: Dictionary = Text._strings.get("en", {})
+	check(str(en_s.get("3A1", "")).to_lower().contains("joker") and str(en_s.get("3C1", "")).to_lower().contains("heart") and not str(en_s.get("3C1", "")).to_lower().contains("chip"), "3A introduces the jokers, 3C talks about hearts")
 	# Each power-up's first grant in a climb explains it on the board (3A..3D), once.
 	_board_flush(pf)
 	pf.powers_explained.clear()
@@ -836,20 +883,24 @@ func _run() -> void:
 	var stand: LevelData.Plat = _climb_plat(pf, pf.level_h - 1200)
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	pf.climb_power.clear()
+	pf.hearts = 0
 	await frames(3)
 	var jf := pf._jump_force()
 	pf.grant_power("super_jump")
 	check(pf._jump_force() < jf * 1.25 and pf.banner.get("text", "") == Text.plain(Text.t("CLIMB_PU_SUPER_JUMP")), "super jump: jumps 30 % higher, a banner")
 	check(pf.board_talk.get("id", "") == "3A" and not node_box().is_open() and not pf.dialog_open, "the first super jump: 3A talks on the board (no dialog box, no buttons)")
 	var sj_left: float = pf.climb_power.get("super_jump", 0.0)
+	pf.hearts = 0
 	await frames(2)
 	check(pf.hud.hint_lines() == ["HINT_CLIMB_SUPER_JUMP"], "the super jump's hint shows top-right while it lasts %s" % str(pf.hud.hint_lines()))
 	await frames(30)
 	check(pf.board_talking("3A") and absf(float(pf.climb_power.get("super_jump", 0.0)) - sj_left) < 0.001, "the super jump doesn't run out while 3A explains it")
 	pf.climb_power.clear()
+	pf.hearts = 0
 	await frames(2)
 	check(pf.hud.hint_lines().is_empty(), "expired: no power-up hint")
 	pf.grant_power("triple")
+	pf.hearts = 0
 	await frames(3)
 	check(pf.hud.hint_lines() == ["HINT_CLIMB_TRIPLE"], "the triple jump's hint %s" % str(pf.hud.hint_lines()))
 	check(pf._max_jumps() == 3 and pf.p.jumps_left == 3, "triple jump: three jumps")
@@ -891,12 +942,12 @@ func _run() -> void:
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
 	pf.grant_power("magnet")
-	var pull: LevelData.Ent = _climb_ent(pf, "chip")
+	var pull: LevelData.Ent = _climb_ent(pf, "heart")
 	pull.x = pf.p.x + 200
 	pull.y = pf.p.y
 	check(pf.board_talking("3C"), "the first magnet: 3C on the board")
 	var magnet_pulled := await until(func(): return pull.collected, 2)
-	check(magnet_pulled, "the magnet pulls a chip in")
+	check(magnet_pulled, "the magnet pulls a heart in")
 	pf.climb_power.clear()
 	var ry0 := pf.p.y
 	pf.grant_power("rocket")
@@ -928,16 +979,17 @@ func _run() -> void:
 	await frames(30)
 	pf.p.hit_timer = 0
 	check(not climb_events.has("game_over") and not climb_events.has("game_over_boss"), "no game over in the climb")
-	# A jackpot row: the JACKPOT (banner, coins, +500 × multiplier).
+	# A jackpot row: the JACKPOT (banner, coins; no score).
 	var jp0 := pf.jackpots
-	win0 = pf.climb_win
 	var jrows: Array = pf.level.entities.filter(func(e): return e.type == "trigger" and e.trigger_type == "jackpot")
 	jrows.sort_custom(func(a, b): return a.y > b.y)
 	await _go_trigger(pf, "jackpot")
 	check(Game.checkpoint >= 2 and Game.level == Game.CLIMB_ID and main.state == "platformer", "a jackpot row is a checkpoint (%d)" % Game.checkpoint)
-	check(pf.jackpots > jp0 and pf.climb_win >= win0 + 500 and pf.banner.get("text", "") == Text.plain(Text.t("CLIMB_JACKPOT")) and pf.particles.any(func(q): return q.type == "coin"), "a jackpot row pays the JACKPOT with a coin shower")
+	check(pf.jackpots > jp0 and pf.banner.get("text", "") == Text.plain(Text.t("CLIMB_JACKPOT")) and pf.particles.any(func(q): return q.type == "coin"), "a jackpot row: the JACKPOT banner with a coin shower")
 	pf._place_at_checkpoint(3)
 	check(absf(pf.p.y + pf.p.height - jrows[1].y) < 400 and jrows[0].collected and jrows[1].collected, "checkpoint 3 = the 2nd jackpot row from the bottom")
+	_board_flush(pf)
+	await _climb_wheel(pf)
 	await _go_trigger(pf, "climb_top")
 	await frames(3)
 	check(pf.climb_won and pf.summit_timer > 0, "the top of the climb (E) is reached")
@@ -995,6 +1047,20 @@ func _run() -> void:
 	check(near_top and main.platformer.p.y < 1200 and not main.platformer.climb_won and not node_box().is_open(), "the developer menu starts the climb near the top")
 	main._quit_to_title()
 	await frames(3)
+	main._dev_action("climb_wheel", 0)
+	var dev_wheel := await until(func(): return main.state == "mg11" and main.minigame is FertilityWheel and main.platformer != null and main.platformer.is_climb(), 8)
+	check(dev_wheel, "the developer menu's The wheel opens the climb's wheel of the cycle")
+	main._quit_to_title()
+	await frames(3)
+	main.open_minigame_for_dev("mg11")
+	await frames(2)
+	var mgw: FertilityWheel = main.minigame as FertilityWheel
+	check(main.state == "mg11" and mgw != null, "?mg=mg11 opens the wheel on its own")
+	if mgw:
+		mgw.stop_at(9)
+		mgw.continue_game()
+	var w_title := await until(func(): return main.state == "title" and main.minigame == null, 3)
+	check(w_title, "the wheel on its own: Continue goes back to the title")
 
 	step("old summit (developer menu)")
 	main._dev_action("checkpoint3", 1)
@@ -2006,6 +2072,163 @@ func _climb_put(pf: Platformer, cx: float, feet_y: float) -> void:
 	pf.camera_y = feet_y - 300
 	pf.last_stand_y = feet_y
 	pf.on_board = false
+
+
+## The climb's heart meter: hearts fill the bar, five make a ready heart (up to four),
+## a bell adds one; the heart jump (out of jumps, 1) and the heart boost (Shift, 2), their
+## hints only while affordable.
+func _climb_hearts(pf: Platformer) -> void:
+	var stand: LevelData.Plat = _climb_plat(pf, pf.level_h - 900)
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	pf.hearts = 0
+	pf.heart_bar = 0.0
+	pf.climb_power.clear()
+	pf.rise_wait = 30.0
+	await frames(3)
+	check(pf.hud.hint_lines().is_empty(), "no hearts ready: no heart abilities in the hints")
+	var h: LevelData.Ent = _climb_ent(pf, "heart")
+	var taken0 := pf.hearts_taken
+	_climb_put(pf, h.x + h.w / 2, h.y + 30)
+	await frames(2)
+	var got := pf.hearts_taken - taken0
+	check(h.collected and got >= 1 and absf(pf.heart_bar - Platformer.HEART_FILL * got) < 0.01 and pf.hearts == 0, "a heart fills the heart meter's bar (%.0f %%)" % pf.heart_bar)
+	pf.heart_bar = 0.0
+	for i in 5:
+		pf._take_heart(LevelData.Ent.new())
+	check(pf.hearts == 1 and pf.heart_bar < 0.01, "five hearts: one ready heart")
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	check(pf.hud.hint_lines() == ["HINT_CLIMB_HEART_JUMP"], "one heart: the heart jump is offered, not the boost (2) %s" % str(pf.hud.hint_lines()))
+	_key(KEY_SHIFT, true)
+	await frames(2)
+	_key(KEY_SHIFT, false)
+	await frames(2)
+	check(pf.hearts == 1 and pf.heart_short > 0 and pf.p.vy >= -1, "the boost with one heart: nothing, the missing hearts blink")
+	var bell: LevelData.Ent = _climb_ent(pf, "bell")
+	_climb_put(pf, bell.x + bell.w / 2, bell.y + bell.h + 10)
+	var bells0 := pf.bells
+	await frames(2)
+	check(bell.collected and pf.hearts == 2 and pf.bells == bells0 + 1, "a bell rings: one more ready heart (%d)" % pf.hearts)
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	check(pf.hud.hint_lines() == ["HINT_CLIMB_HEART_BOOST", "HINT_CLIMB_HEART_JUMP"], "two hearts: the heart boost and the heart jump are offered %s" % str(pf.hud.hint_lines()))
+	var y0 := pf.p.y
+	_key(KEY_SHIFT, true)
+	await frames(2)
+	_key(KEY_SHIFT, false)
+	check(pf.hearts == 0 and pf.p.vy < -12 and pf.boost_t > 0, "Shift: the heart boost launches her for two hearts (vy %.1f)" % pf.p.vy)
+	await frames(25)
+	check(pf.p.y < y0 - 250, "the heart boost sends her several rows up (%d px)" % int(y0 - pf.p.y))
+	await frames(3)
+	check(pf.hud.hint_lines().is_empty(), "hearts spent: their hints go %s" % str(pf.hud.hint_lines()))
+	# The heart jump: out of jumps in the air, one more for a heart.
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	pf.hearts = 1
+	for i in 2:
+		_key(KEY_SPACE, true)
+		await frames(2)
+		_key(KEY_SPACE, false)
+		await frames(6)
+	check(pf.p.jumps_left == 0 and not pf.p.is_grounded and pf.hearts == 1, "two jumps: out of jumps in the air")
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	check(pf.hearts == 0 and pf.p.vy < -5, "a third jump in the air costs a heart (vy %.1f)" % pf.p.vy)
+	# Pressed just before landing: buffered into the free ground jump, no heart spent.
+	pf.hearts = 1
+	pf.p.jumps_left = 0
+	pf.p.y = stand.y - pf.p.height - 14
+	pf.p.vy = 4.0
+	pf.p.is_grounded = false
+	pf.p.coyote = 0
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	var buffered := await until(func(): return pf.p.vy < -5, 1)
+	check(buffered and pf.hearts == 1, "a jump pressed just before landing is buffered (free), not a heart jump (hearts %d)" % pf.hearts)
+	# A bell with a full meter gives nothing, and says so.
+	pf.hearts = Platformer.HEART_SLOTS
+	pf.heart_bar = 100.0
+	pf.ticker_queue.clear()
+	var full_bell := LevelData.Ent.new()
+	full_bell.x = pf.p.x
+	full_bell.y = pf.p.y
+	pf._ring_bell(full_bell)
+	check(pf.hearts == Platformer.HEART_SLOTS and pf.ticker_queue.has(Text.plain(Text.t("CLIMB_BELL_FULL"))) and not pf.ticker_queue.has(Text.plain(Text.t("CLIMB_BELL"))), "a bell on a full meter doesn't promise +1 heart")
+	# The meter holds four; a full bar refills the next one spent.
+	pf.hearts = 0
+	pf.heart_bar = 0.0
+	pf.add_heart_fill(600.0)
+	check(pf.hearts == Platformer.HEART_SLOTS and pf.heart_bar == 100.0, "the meter holds %d ready hearts, then the bar stays full" % Platformer.HEART_SLOTS)
+	check(pf.spend_hearts(1) and pf.hearts == Platformer.HEART_SLOTS and pf.heart_bar == 0.0, "spending one refills it from the full bar")
+	pf.hearts = 0
+	pf.heart_bar = 0.0
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	pf.rise_wait = 0.0
+	await frames(3)
+
+
+## The climb's wheel of the cycle (mg11): its row opens the minigame (the climb waits),
+## a spin lands on a day, the card says whether a pregnancy is possible, Continue goes
+## back to the climb where she was and the after-talk plays on the board.
+func _climb_wheel(pf: Platformer) -> void:
+	var events: Array = []
+	pf.trigger.connect(func(n): events.append(n))
+	pf.wheel_done = false
+	pf.teleport_to_trigger("mg11")
+	var opened := await until(func(): return main.state == "mg11" and main.minigame is FertilityWheel, 3)
+	check(opened and events.has("mg11") and not node_box().is_open() and panel_box().is_open(), "the wheel's row opens the wheel of the cycle (mg11); its intro is the hint panel")
+	var fw: FertilityWheel = main.minigame as FertilityWheel
+	if fw == null:
+		return
+	var y0 := pf.p.y
+	var cam := pf.camera_y
+	await seconds(1.0)
+	check(not pf.active and absf(pf.camera_y - cam) < 0.01 and absf(pf.p.y - y0) < 0.01, "while the wheel is open the climb waits (the board doesn't rise)")
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	check(fw.state == "spinning" and fw.spins == 1 and fw.speed > 5, "Space spins the wheel")
+	await seconds(0.6)
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	check(fw.braking, "pressing again brakes it")
+	var landed := await until(func(): return fw.state == "result", 10)
+	check(landed and fw.result_day >= 1 and fw.result_day <= 28 and fw.results.size() == 1, "it lands on a day of the cycle (%d)" % fw.result_day)
+	check(FertilityWheel.verdict_key(9) == "MG11_POSSIBLE" and FertilityWheel.verdict_key(12) == "MG11_POSSIBLE" and FertilityWheel.verdict_key(14) == "MG11_POSSIBLE" and FertilityWheel.verdict_key(3) == "MG11_UNLIKELY" and FertilityWheel.verdict_key(8) == "MG11_UNLIKELY" and FertilityWheel.verdict_key(22) == "MG11_UNLIKELY", "the fertile window (days 9–14) says pregnancy is possible, the other days very unlikely")
+	check(FertilityWheel.phase_key(2) == "MG11_PERIOD" and FertilityWheel.phase_key(7) == "MG11_AFTER_PERIOD" and FertilityWheel.phase_key(11) == "MG11_FERTILE" and FertilityWheel.phase_key(14) == "MG11_OVULATION" and FertilityWheel.phase_key(20) == "MG11_LUTEAL", "each day has its phase")
+	var all_days := true
+	for d in range(1, 29):
+		all_days = all_days and FertilityWheel.day_at(-((d - 1) + 0.5) * FertilityWheel.seg_angle()) == d
+	check(all_days, "the pointer reads the day under it for all 28 slices")
+	fw.stop_at(12)
+	check(fw.result_day == 12 and fw.spins == 2 and fw.buttons().size() == 2, "a second spin: day 12 (two buttons: spin again, continue)")
+	fw.stop_at(22)
+	check(fw.result_day == 22 and fw.spins == FertilityWheel.MAX_SPINS and fw.buttons().size() == 1 and fw.sel == 1, "after %d spins only Continue is left" % FertilityWheel.MAX_SPINS)
+	var lang0 := Text.language
+	var fit := true
+	var texts := true
+	for lang in Text.LANGUAGES:
+		Text.language = lang
+		fit = fit and FertilityWheel.texts_fit()
+		for k in ["MG11_HINT", "MG11_POSSIBLE", "MG11_POSSIBLE_TEXT", "MG11_UNLIKELY", "MG11_UNLIKELY_TEXT", "MG11_AGAIN", "MG11_DAY", "MG11_SPIN", "MG11_STOP", "MG11_AFTER1", "MG11_AFTER2"]:
+			texts = texts and Text._strings.get(lang, {}).has(k)
+	Text.language = lang0
+	check(fit and texts, "the wheel's texts exist and fit its card in sk / en / pt")
+	await seconds(0.5)
+	_key(KEY_SPACE, true)
+	await frames(2)
+	_key(KEY_SPACE, false)
+	var back := await until(func(): return main.state == "platformer" and main.minigame == null, 3)
+	await frames(2)
+	check(back and pf.active and absf(pf.p.y - y0) < 12 and not panel_box().is_open(), "Continue: back in the climb where she was, on her bobbing platform (active %s, dy %.1f, panel %s)" % [pf.active, pf.p.y - y0, panel_box().is_open()])
+	check(pf.board_talking("mg11_after") and not node_box().is_open() and pf.rise_wait > 0, "Estrogenka sums it up on the board; the board waits a moment before it rises")
+	pf.teleport_to_trigger("mg11")
+	await frames(3)
+	check(main.state == "platformer", "the wheel opens once per climb")
+	_board_flush(pf)
 
 
 ## The climb: ends the board dialogs (the current one and the queue) right away.

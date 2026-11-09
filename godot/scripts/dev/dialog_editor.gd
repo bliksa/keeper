@@ -34,7 +34,7 @@ const BY_GAME := {
 	"1C": "the boss fight (start)", "1D": "the boss defeated (then the corridor)", "1E": "the boss lost",
 	"2A": "the start of the forest run", "2E": "the full sun (end of level 2)",
 	"3A": "the jackpot climb's first super jump (on the board)", "3B": "the jackpot climb's first triple jump (on the board)",
-	"3C": "the jackpot climb's first chip magnet (on the board)", "3D": "the jackpot climb's first rocket (on the board)",
+	"3C": "the jackpot climb's first heart magnet (on the board)", "3D": "the jackpot climb's first rocket (on the board)",
 	"3E": "the top of the jackpot climb (end of level 3, on the board; then the transformation)",
 	"4A": "the start of the PMS maze (after the transformation)", "4B": "the PMS maze's 1st comfort item (tea)",
 	"4C": "the PMS maze's 2nd comfort item (hot-water bottle)", "4D": "the PMS maze's 3rd comfort item (blanket)",
@@ -414,7 +414,7 @@ func fits(text: String, board := false) -> bool:
 
 ## Dialogs of the jackpot climb play on its board (Platformer.board_dialog).
 static func on_board(id: String) -> bool:
-	return id.begins_with("3")
+	return id.begins_with("3") or id == "mg11_after"
 
 
 ## The longer of the keyboard / gamepad versions of a line.

@@ -247,11 +247,13 @@ func _build_shortcuts() -> void:
 		["2 · Forest run", "follicular · the sun", Color.from_hsv(38.0 / 360, 0.8, 0.75), [
 			["Start", "", "runner", 0], ["Stage 2", "3 sun pieces found, after the memory game", "runner", 1],
 			["Stage 3", "6 pieces, after catch: flying notifications", "runner", 2],
-			["Stage 4", "9 pieces, after pairs: fastest + side traps", "runner", 3]]],
+			["Stage 4", "9 pieces, after pairs: fastest + side traps", "runner", 3],
+			["End → climb", "The 12th piece: the sun to the middle, 2E, the board announces ovulation, no fade", "runner_end", 0]]],
 		["3 · Jackpot climb", "ovulation · up with the board", Color.from_hsv(130.0 / 360, 0.65, 0.6), [
 			["Start", "", "checkpoint5", 1], ["1st jackpot", "At the first jackpot row", "checkpoint5", 2],
 			["2nd jackpot", "", "checkpoint5", 3], ["3rd jackpot", "", "checkpoint5", 4],
-			["Near the top", "A few floors below the top", "checkpoint5", 5]]],
+			["Near the top", "A few floors below the top", "checkpoint5", 5],
+			["The wheel", "The wheel of the cycle (minigame mg11) in the middle of the climb", "climb_wheel", 0]]],
 		["4 · PMS maze", "luteal phase · upside down", Color.from_hsv(215.0 / 360, 0.7, 0.75), [
 			["Start", "The PMS maze (drawn upside down, the arrows feel reversed), 4A", "checkpoint6", 1],
 			["Transformation", "The climb's top: the jackpot, 3E on the board, then the view turns into the maze", "pms_transform", 0],

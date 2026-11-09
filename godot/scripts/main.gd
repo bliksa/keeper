@@ -67,7 +67,7 @@ func _ready() -> void:
 	_fade = _rect(Color.BLACK)
 	fade_layer.add_child(_fade)
 	_go_boot()
-	# Developer shortcut: ?mg=mg1 … mg10 opens that minigame right away.
+	# Developer shortcut: ?mg=mg1 … mg11 opens that minigame right away.
 	if OS.has_feature("web"):
 		var q: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('mg') || ''")
 		if q is String and q != "":
@@ -80,6 +80,9 @@ func _ready() -> void:
 		var rq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('run') || ''")
 		if rq is String and rq == "hit":
 			_dev_runner_hits.call_deferred()
+		elif rq is String and rq == "end":
+			# ?run=end: the last stage, the 12th piece taken: the sun, 2E, the climb.
+			_dev_action.call_deferred("runner_end", 0)
 		# ?climb=1: the jackpot climb from its start; ?climb=top: just below the top.
 		var cq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('climb') || ''")
 		if cq is String and cq == "end":
@@ -99,13 +102,19 @@ func _ready() -> void:
 			_dev_action.call_deferred("checkpoint", clampi(int(vq), 0, 4))
 
 
-## ?climb=power: the climb with a super jump and the magnet (their hints top-right).
+## ?climb=power: the climb with three ready hearts, a super jump and the magnet (their
+## hints top-right), then a joker spins the reels top-left.
 func _dev_climb_powers() -> void:
 	await get_tree().create_timer(2.0).timeout
 	if platformer and platformer.is_climb():
-		platformer.powers_explained = {"super_jump": true, "magnet": true}
+		platformer.powers_explained = {"super_jump": true, "magnet": true, "triple": true, "rocket": true}
+		platformer.hearts = 3
+		platformer.heart_bar = 55.0
 		platformer.grant_power("super_jump")
 		platformer.grant_power("magnet")
+	await get_tree().create_timer(1.5).timeout
+	if platformer and platformer.is_climb():
+		platformer._take_joker(LevelData.Ent.new())
 
 
 func _dev_boss_win() -> void:
@@ -135,6 +144,20 @@ func _dev_runner_hits() -> void:
 			return
 		runner.bump()
 		await get_tree().create_timer(2.0).timeout
+
+
+## The forest run's end (?run=end, the dev menu): the last stage, every piece but the last
+## found, then the last one (the sun goes to the middle, 2E, the climb comes in).
+func _dev_runner_end() -> void:
+	var run := _run_id
+	await _start_runner(true, 3)
+	if run != _run_id or runner == null:
+		return
+	_node_box.close()
+	await get_tree().create_timer(1.2).timeout
+	if run != _run_id or runner == null:
+		return
+	runner.dev_last_piece()
 
 
 ## Opens a minigame on its own (developer shortcut ?mg=, tests).
@@ -192,7 +215,7 @@ func _set_state(s: String) -> void:
 			else:
 				Audio.play_bgm("chamber.mp3" if Game.level == 1 else "forest.mp3", 0.5)
 		"runner": Audio.play_bgm("forest.mp3", 0.55)
-		"mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10": Audio.play_bgm("minihra.mp3", 0.5)
+		"mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10", "mg11": Audio.play_bgm("minihra.mp3", 0.5)
 		"title": Audio.play_bgm("menu.mp3", 0.5)
 
 
@@ -240,7 +263,7 @@ func _dialog(id: String, then: Callable = Callable()) -> void:
 
 func _process(_delta: float) -> void:
 	_report_state()
-	_pause.allowed = state in ["intro", "mg1", "platformer", "runner", "mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
+	_pause.allowed = state in ["intro", "mg1", "platformer", "runner", "mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10", "mg11"]
 	var any_dialog := _node_box.is_open() or _panel_box.is_open()
 	if runner:
 		runner.active = state == "runner"
@@ -250,7 +273,7 @@ func _process(_delta: float) -> void:
 		platformer.active = state == "platformer"
 		platformer.dialog_open = any_dialog
 		platformer.active_dialog_id = _node_box.node_id()
-		platformer.hide_platforms = state in ["mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
+		platformer.hide_platforms = state in ["mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10", "mg11"]
 		platformer.hud.visible = state == "platformer"
 	if forest:
 		forest.active = state in ["intro", "mg1"]
@@ -332,6 +355,13 @@ func _dev_action(name: String, value: int) -> void:
 			Game.intro_done = true
 			Game.iron = 20
 			_start_runner(true, value)
+		"runner_end":
+			# Level 2's end: the last piece, the sun to the middle, 2E, the climb (no fade).
+			Game.reset_run()
+			Game.has_breathing = true
+			Game.intro_done = true
+			Game.iron = 20
+			_dev_runner_end()
 		"checkpoint2":
 			# Old meadow checkpoints: 1 start, 2..4 after its minigames, 5 the gate (ready to open).
 			Game.reset_run()
@@ -346,6 +376,12 @@ func _dev_action(name: String, value: int) -> void:
 			Game.has_breathing = true
 			Game.intro_done = true
 			_start_climb(value)
+		"climb_wheel":
+			# The jackpot climb at its wheel of the cycle (mg11).
+			Game.reset_run()
+			Game.has_breathing = true
+			Game.intro_done = true
+			_dev_climb_wheel()
 		"checkpoint6":
 			# The PMS maze: 1 start, 2 the door open (all three items found).
 			Game.reset_run()
@@ -479,6 +515,17 @@ func _start_pms(checkpoint := 1, fade := true) -> void:
 		await get_tree().create_timer(0.4).timeout
 		if run == _run_id and platformer != null and platformer.is_pms():
 			_dialog("4A")
+
+
+## The developer shortcut to the climb's wheel: from the 1st jackpot row onto the wheel's row.
+func _dev_climb_wheel() -> void:
+	var run := _run_id
+	await _start_climb(2)
+	if run != _run_id or platformer == null or not platformer.is_climb():
+		return
+	await get_tree().create_timer(0.5).timeout
+	if run == _run_id and platformer != null and platformer.is_climb() and state == "platformer":
+		platformer.teleport_to_trigger("mg11")
 
 
 ## The developer shortcut to the transformation: the climb near its top, then onto the top.
@@ -636,6 +683,11 @@ func _on_trigger(name: String) -> void:
 			_set_state("mg10")
 			_open_minigame(PairsGame.new(), _mg10_done)
 			_dialog("mg10_start")
+		"mg11":
+			# The jackpot climb's wheel of the cycle: the climb waits (inactive, the board
+			# doesn't rise); its intro is the minigame's hint panel (no dialog box).
+			_set_state("mg11")
+			_open_minigame(FertilityWheel.new(), _mg11_done)
 		"gate_locked":
 			if _node_box.node_id() != "MF":
 				_dialog("MF")
@@ -784,6 +836,18 @@ func _back_to_cave() -> void:
 	_set_state("platformer")
 
 
+## Back from the wheel of the cycle: the climb goes on where she was, Estrogenka sums it
+## up on the board (mg11_after). Opened on its own (?mg=mg11): the title.
+func _mg11_done() -> void:
+	_panel_box.close()
+	_clear_minigame()
+	if platformer == null or not platformer.is_climb():
+		_go_title()
+		return
+	_set_state("platformer")
+	platformer.after_wheel()
+
+
 # Level 2 (meadow) minigames.
 func _mg8_done() -> void:
 	Game.checkpoint = 2
@@ -927,11 +991,52 @@ func _runner_minigame(n: int) -> void:
 	_on_trigger(["mg8", "mg9", "mg10"][clampi(n - 1, 0, 2)])
 
 
+## The 12th piece: the sun has glided to the middle (ForestRunner._finish); 2E, then the
+## dialog box turns into the climb's board and the climb comes in (_into_climb).
 func _runner_done() -> void:
 	if runner:
 		Game.water = int(runner.water)
-	_dialog("2E", func():
-		_start_climb(1))
+	_dialog("2E", _into_climb)
+
+
+## The forest run → the jackpot climb without a fade to black: the dialog box (2E just
+## closed) is the climb's board at once, announcing the new phase (Platformer.announce_phase),
+## while the climb (world and Kyra) crossfades in over the forest (CLIMB_IN s) and the sun
+## in the middle of the sky melts into its light (Platformer.sun_glow). Kyra has control at
+## once; the board waits for the crossfade plus its usual RISE_GRACE.
+const CLIMB_IN := 1.2
+
+
+func _into_climb() -> void:
+	var run := _run_id
+	var old := runner
+	if old == null:
+		_start_climb(1)
+		return
+	_clear_menu()
+	Game.level = Game.CLIMB_ID
+	Game.checkpoint = 1
+	Game.upgrades = {}
+	Game.has_breathing = true
+	var pf := _make_platformer(Game.CLIMB_ID, 1)
+	pf.rise_wait = CLIMB_IN + Platformer.RISE_GRACE
+	pf.sun_glow = 1.0
+	pf.announce_phase("CLIMB_PHASE_NEW", "CLIMB_PHASE_SUB")
+	_world_layer.add_child(pf)
+	platformer = pf
+	runner = null
+	pf.set_fade(0.0, false)
+	_set_state("platformer")
+	var tw := create_tween()
+	tw.tween_method(func(a: float):
+		if is_instance_valid(pf):
+			pf.set_fade(a, false), 0.0, 1.0, CLIMB_IN)
+	_fade_tws.append(tw)
+	await tw.finished
+	if is_instance_valid(old):
+		old.queue_free()
+	if run != _run_id:
+		return
 
 
 func _walk_to_meadow() -> void:

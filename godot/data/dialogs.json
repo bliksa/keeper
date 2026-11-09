@@ -980,6 +980,18 @@
    "buttons": [
     "BTN_CONTINUE"
    ]
+  },
+  "mg11_after": {
+   "parts": [
+    {
+     "speaker": "Estrogenka",
+     "text": "MG11_AFTER1"
+    },
+    {
+     "speaker": "Estrogenka",
+     "text": "MG11_AFTER2"
+    }
+   ]
   }
  },
  "breathing_hints": {
