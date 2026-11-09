@@ -97,6 +97,8 @@ tools/export_web.sh   # builds build/web (serve with: python3 -m http.server -d 
 `tests/test_runner.gd` so the new path is played through. For visual changes, export
 and look at the page in Chromium (Playwright is preinstalled in cloud sessions).
 
+The exported page checks for a newer deploy (`tools/web_update_check.js`, injected by `export_web.sh`, compares `version.json` with its own build on load, every minute and when the tab comes back): a chime, then it reloads by itself on the boot / title screens (`window.keeperState`, `main._report_state`; once per new build) and shows a Reload bar elsewhere.
+
 After push, GitHub Actions deploys to `https://bliksa.github.io/keeper/`
 (original prototype at `/original/`).
 

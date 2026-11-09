@@ -143,6 +143,18 @@ func _rect(col: Color) -> ColorRect:
 
 # --- helpers -------------------------------------------------------------------
 
+## The page's update check (tools/web_update_check.js) reloads by itself only
+## on the boot / title screens: it reads the state from window.keeperState.
+var _reported_state := "-"
+
+
+func _report_state() -> void:
+	if state == _reported_state or not OS.has_feature("web"):
+		return
+	_reported_state = state
+	JavaScriptBridge.eval("window.keeperState = '%s'" % state.c_escape())
+
+
 func _set_state(s: String) -> void:
 	state = s
 	# The forest intro's dialogs sit at the top (Kyra walks below); minigames
@@ -200,6 +212,7 @@ func _dialog(id: String, then: Callable = Callable()) -> void:
 
 
 func _process(_delta: float) -> void:
+	_report_state()
 	_pause.allowed = state in ["intro", "mg1", "platformer", "runner", "mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10"]
 	var any_dialog := _node_box.is_open() or _panel_box.is_open()
 	if runner:

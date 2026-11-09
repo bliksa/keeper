@@ -20,4 +20,17 @@ LABEL="v$VER · build $SHA · $WHEN"
 STYLE="position:fixed;--s:min(calc(100vw / 1066),calc(100vh / 600));left:calc(50vw - 200 * var(--s));width:calc(400 * var(--s));top:calc(50vh - 60 * var(--s));text-align:center;color:#6b7280;font-family:KeeperComfortaa,sans-serif;font-weight:500;font-size:calc(12 * var(--s));z-index:5"
 sed -i "s|<div id=\"status\">|<style>@font-face{font-family:KeeperComfortaa;src:url(Comfortaa.ttf);font-weight:300 700}</style><div id=\"status\"><div id=\"kc-build\" style=\"$STYLE\">$LABEL</div>|" "$ROOT/build/web/index.html"
 grep -q "build $SHA" "$ROOT/build/web/index.html"
+# Update check: version.json next to the page; a script that compares it with
+# this build, chimes and reloads (tools/web_update_check.js).
+printf '{"sha": "%s", "date": "%s"}\n' "$SHA" "$WHEN" > "$ROOT/build/web/version.json"
+python3 - "$ROOT/build/web/index.html" "$ROOT/tools/web_update_check.js" "$SHA" <<'PY'
+import sys
+page, js, sha = sys.argv[1:]
+s = open(page).read()
+code = open(js).read().replace("BUILD_SHA", sha)
+assert "</body>" in s
+s = s.replace("</body>", "<script>" + code + "</script></body>", 1)
+open(page, "w").write(s)
+PY
+grep -q "keeperState" "$ROOT/build/web/index.html"
 ls -la "$ROOT/build/web"
