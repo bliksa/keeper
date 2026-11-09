@@ -58,7 +58,7 @@ func hint_lines() -> Array:
 
 
 ## Cave: what the breath can do now (attack / charge it / the rhythm while charging).
-## Climb: what the ready hearts can buy now (heart boost / heart jump, only while
+## Climb: what the ready hearts can buy now (heart boost / rocket fuel, only while
 ## affordable), then the active power-ups with their time. Other levels: none.
 func _wanted_hints() -> Array:
 	var pf := platformer
@@ -77,8 +77,10 @@ func _wanted_hints() -> Array:
 			return out
 		if pf.hearts >= Platformer.HEART_BOOST_COST:
 			out.append("HINT_CLIMB_HEART_BOOST")
-		if pf.hearts >= Platformer.HEART_JUMP_COST:
-			out.append("HINT_CLIMB_HEART_JUMP")
+		if pf.thrusting:
+			out.append({"key": "HINT_CLIMB_FUEL_BURN", "k": pf.fuel_left() / Platformer.HEART_SLOTS})
+		elif pf.hearts >= 1:
+			out.append("HINT_CLIMB_FUEL")
 		for k in Platformer.POWERS:
 			if pf.climb_power.has(k):
 				var full := Platformer.ROCKET_TIME if k == "rocket" else Platformer.POWER_TIME
@@ -362,7 +364,7 @@ func _draw_climb(font: Font) -> void:
 	_draw_reels(font, t, SPINNER)
 	# The heart meter (top-right) and what the hearts can buy under it.
 	var pill := Rect2(1066 - 16 - HEART_PILL.x, 16, HEART_PILL.x, HEART_PILL.y)
-	draw_heart_pill(self, pill, pf.hearts, pf.heart_bar / 100.0, t / 1000.0, pf.heart_short > 0, _heart_pop, _alpha)
+	draw_heart_pill(self, pill, pf.hearts, pf.heart_bar / 100.0, t / 1000.0, pf.heart_short > 0, _heart_pop, _alpha, pf.fuel_burn)
 	hints.draw(self, Vector2(pill.end.x, pill.end.y))
 	# The banner (JACKPOT!, SUPER JUMP! …).
 	if not pf.banner.is_empty() and pf.prerod_t < 0:
@@ -386,8 +388,9 @@ const SPINNER := Rect2(16, 16, 150, 48)
 
 ## The heart meter (like the forest run's water pill): HEART_SLOTS hearts, the ready ones
 ## filled; the bar that fills the next one as a line round the pill. `short`: the missing
-## hearts blink red (an ability tried without enough); `pop` > 0: the newest one pops.
-static func draw_heart_pill(ci: CanvasItem, r: Rect2, ready: int, bar_k: float, t: float, short := false, pop := 0.0, alpha := 1.0) -> void:
+## hearts blink red (an ability tried without enough); `pop` > 0: the newest one pops;
+## `burn`: how much of the last ready heart rocket fuel has burnt (it shrinks).
+static func draw_heart_pill(ci: CanvasItem, r: Rect2, ready: int, bar_k: float, t: float, short := false, pop := 0.0, alpha := 1.0, burn := 0.0) -> void:
 	Draw.panel(ci, r, Color(BG, alpha), 16, Color(0.96, 0.25, 0.37, 0.25 * alpha), 2)
 	var step := (r.size.x - 24) / Platformer.HEART_SLOTS
 	var blink := short and fmod(t, 0.2) < 0.12
@@ -395,6 +398,10 @@ static func draw_heart_pill(ci: CanvasItem, r: Rect2, ready: int, bar_k: float, 
 		var c := Vector2(r.position.x + 12 + step * (i + 0.5), r.get_center().y + 1)
 		if i < ready:
 			var s := 12.0 * (1.0 + (0.35 * sin(clampf(pop / 0.4, 0, 1) * PI) if i == ready - 1 else 0.0))
+			if i == ready - 1 and burn > 0.0:
+				# Rocket fuel burning it: the heart shrinks into its empty slot.
+				_heart_shape(ci, c, 11.0, Color(0.58, 0.5, 0.6, 0.3 * alpha))
+				s *= maxf(0.15, 1.0 - burn)
 			SpriteArt.draw_heart(ci, c, s, 1.0, alpha)
 		else:
 			var empty := Color(0.94, 0.27, 0.27, 0.75 * alpha) if blink else Color(0.58, 0.5, 0.6, 0.3 * alpha)

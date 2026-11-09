@@ -364,8 +364,18 @@ Mechanics (all level 5 only, constants at the top of `platformer.gd`):
 - **The heart meter** (like the forest run's water): `hearts` ready (0..`HEART_SLOTS` = 4) fed by `heart_bar`
   (0–100; every heart `HEART_FILL` = 20 %, `add_heart_fill`: a full bar = one more ready heart; with all four
   ready it stays full and refills the next one spent). Ready hearts buy (`spend_hearts`; too few → `heart_short`,
-  the empty slots blink): the **heart jump** (out of jumps in the air, jump again: `HEART_JUMP_COST` = 1,
-  `_heart_jump`) and the **heart boost** (Shift / 🔴 = `breathe`: `heart_boost()`, a launch like a spring,
+  the empty slots blink): **rocket fuel** (jump held once a jump's rise has run out, `vy` ≥ `FUEL_IGNITE_VY`,
+  in the air with ≥ 1 ready heart: the thrusters ignite, `thrusting`, `_update_fuel` after gravity; she climbs at
+  `FUEL_SPEED` = 12 px/frame (`FUEL_ACCEL`), flames under her feet (180/s, `_flame_acc`), a whoosh every 0.28 s;
+  burns one heart per `FUEL_HEART_TIME` = 0.8 s (`fuel_burn` = the part-burnt last heart, shrinking in the meter;
+  `fuel_left()`); only a hold that carries on a launch ignites them (`_fuel_armed`: set by `_do_jump` and
+  `_launched()` = spring / heart boost / rocket, cleared on landing or letting go, so a press while falling stays a
+  buffered jump; `_fuel_wait_release` after the wheel: the key must be let go first); a launch stops them and they
+  wait for its top; letting go cuts them at once (`vy` ≥ −2, no coasting); they stop when the hearts run out, she
+  lands, or `FUEL_CEIL` px below the level's top; the level's top is a ceiling in the climb. The camera keeps
+  `FUEL_VIEW_LEAD` of the view above her while they burn, but a short burn never lifts the board above the platform
+  she jumped from (`FUEL_GUARD_SLACK`). An early release still cuts a normal jump, a fresh press in the
+  air is still the double / triple jump; no heart jump any more) and the **heart boost** (Shift / 🔴 = `breathe`: `heart_boost()`, a launch like a spring,
   `HEART_BOOST_FORCE`, `HEART_BOOST_COST` = 2). No score: no win counter, no multiplier, no streak.
 - **Jackpots** (`_jackpot`: banner, `_coin_shower`, a fanfare; no score) on each `0` row and at the top.
   Floating `pops` (BOOST!, the bell, the heart boost), `banner`, particles `coin` / `glint` / `flame` / `heart`,
@@ -475,8 +485,8 @@ in / out, an optional yellow time bar under the line. The owner calls `hints.upd
 charged → attack, used up → charge, recharging → the in · hold · out rhythm; under the
 breath pill, which may follow Kyra), `HINT_RUN_FOCUS` / `HINT_RUN_DOUBLE` (forest run,
 `ForestRunner._wanted_hints`: focus with ≥ 1 drop and no reload, double jump with ≥ 2),
-`HINT_CLIMB_*` (jackpot climb, under the heart meter: `HINT_CLIMB_HEART_BOOST` / `_HEART_JUMP` only
-while the ready hearts afford them, then the active `climb_power` with its time), `HINT_PMS_BREATHE` / `HINT_PMS_CALM` (the PMS maze, under its breath pill). The old meadow / summit don't use it. Web shortcuts: `?cave=N` (cave at
+`HINT_CLIMB_*` (jackpot climb, under the heart meter: `HINT_CLIMB_HEART_BOOST` / `_FUEL` only
+while the ready hearts afford them, `HINT_CLIMB_FUEL_BURN` with the fuel left while the thrusters burn, then the active `climb_power` with its time), `HINT_PMS_BREATHE` / `HINT_PMS_CALM` (the PMS maze, under its breath pill). The old meadow / summit don't use it. Web shortcuts: `?cave=N` (cave at
 checkpoint N), `?climb=power` (the climb with three ready hearts, a super jump and the magnet, then a joker spins the reels).
 
 ## Game feel (levels 2 and 3)

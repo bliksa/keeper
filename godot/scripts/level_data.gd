@@ -32,7 +32,7 @@ extends RefCounted
 ##   E      summit / level end — whole row (in the jackpot climb: the top, trigger "climb_top")
 ## The jackpot climb (level 3 of the game, level_id 5, climbed upwards with the board) adds:
 ##   !      spring / boost (sits on the platform cell below it, launches her up)
-##   $      heart (fills the heart meter: ready hearts buy the heart jump / heart boost)
+##   $      heart (fills the heart meter: ready hearts buy rocket fuel / the heart boost)
 ##   :      bell (now and then: one more ready heart at once)
 ##   ?      joker (occasionally: the reels top-left spin and always pay out a power-up)
 ##   0      jackpot row (a JACKPOT and a checkpoint) — whole row

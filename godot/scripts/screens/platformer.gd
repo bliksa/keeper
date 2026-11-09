@@ -18,7 +18,7 @@ extends Node2D
 ## replaces the boss (reach the summit before the wave catches you).
 ## Level 5 (the jackpot climb, level 3 of the game) is climbed up with the board at the
 ## bottom edge rising behind her (the ticker): springs, hearts (they fill the heart meter;
-## ready hearts buy a heart boost and a heart jump), bells (+1 heart), jokers (the spinner
+## ready hearts buy a heart boost and rocket fuel), bells (+1 heart), jokers (the spinner
 ## top-left spins and pays a power-up), jackpot rows (checkpoints) and, once in the middle,
 ## the wheel of the cycle (minigame mg11, FertilityWheel); no score. Caught by the board she
 ## sits, no death. The board never stops rising (except while the wheel is open); there are
@@ -117,11 +117,23 @@ const TICKER_LEFT := 158.0
 const TICKER_GAP := 70.0
 ## The heart meter (like the forest run's water): HEART_SLOTS ready hearts, fed by the bar
 ## that every heart picked up fills by HEART_FILL (%); a full bar is one more ready heart.
-## Ready hearts buy the abilities: a heart jump (one more jump in the air, HEART_JUMP_COST)
-## and the heart boost (Shift / B: a launch up like a spring, HEART_BOOST_COST).
+## Ready hearts buy the abilities: rocket fuel (jump held past a jump's top: the thrusters
+## burn hearts, FUEL_HEART_TIME s each) and the heart boost (Shift / B: a launch up like a
+## spring, HEART_BOOST_COST).
 const HEART_SLOTS := 4
 const HEART_FILL := 20.0
-const HEART_JUMP_COST := 1
+## Rocket fuel: the thrusters ignite once her rise has run out (vy >= FUEL_IGNITE_VY) with
+## jump still held, climb at FUEL_SPEED px/frame (reached at FUEL_ACCEL px/frame²) and burn
+## one heart per FUEL_HEART_TIME s; they stop FUEL_CEIL px below the level's top.
+const FUEL_IGNITE_VY := -1.0
+const FUEL_SPEED := 12.0
+const FUEL_ACCEL := 1.5
+const FUEL_HEART_TIME := 0.8
+const FUEL_CEIL := 60.0
+## While the thrusters burn the camera keeps this share of the view above her.
+const FUEL_VIEW_LEAD := 0.38
+## … but a short burn keeps the board this far under the platform she jumped from.
+const FUEL_GUARD_SLACK := 30.0
 const HEART_BOOST_COST := 2
 const HEART_BOOST_FORCE := 20.0
 ## The forest run's sun in the climb's sky (screen px, not zoomed): at the start where the
@@ -255,6 +267,20 @@ var heart_bar := 0.0
 var hearts_taken := 0
 var bells := 0
 var heart_short := 0.0
+## Rocket fuel: the thrusters burn now; how much of the last ready heart they have burnt
+## (0..1, the HUD shrinks it); the thruster sound's clock.
+var thrusting := false
+var fuel_burn := 0.0
+var _thrust_sfx := 0.0
+## Only a hold that carries on a launch (a jump, a spring, the heart boost, the rocket)
+## ignites the thrusters: a press while falling stays a buffered jump.
+var _fuel_armed := false
+## After the wheel: jump must be let go once before the thrusters can ignite (the key
+## that confirmed the wheel may still be down).
+var _fuel_wait_release := false
+var _flame_acc := 0.0
+## The room kept above her head by the camera (CLIMB_TOP_MARGIN, more while thrusting).
+var _top_margin := CLIMB_TOP_MARGIN
 ## The wheel of the cycle (mg11) has been played in this climb.
 var wheel_done := false
 ## Timed power-ups from the jokers: name → seconds left (not Game.upgrades).
@@ -490,6 +516,7 @@ func start_prerod() -> void:
 	prerod_t = 0.0
 	_light_t = time_ms
 	hold_input = true
+	thrusting = false
 	board_talk = {}
 	board_queue.clear()
 	slot_spin = {}
@@ -885,6 +912,7 @@ func _do_jump() -> void:
 	p.coyote = 0
 	p.is_grounded = false
 	p.is_sitting = false
+	_fuel_armed = true
 	if feel():
 		p.squash = -0.6
 	if focus:
@@ -910,7 +938,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			begin_focus()
 		elif event.is_action_released("focus"):
 			end_focus()
-	if event.is_action_released("jump") and feel() and p.vy < -4 and not in_water and boost_t <= 0:
+	if event.is_action_released("jump") and thrusting:
+		# Let go of the thrusters: they cut out and she falls (no coasting up).
+		thrusting = false
+		p.vy = maxf(p.vy, -2.0)
+	elif event.is_action_released("jump") and feel() and p.vy < -4 and not in_water and boost_t <= 0:
 		# Variable jump height: let go early for a short hop.
 		p.vy *= 0.55
 	if event.is_action_pressed("jump") and not event.is_echo():
@@ -921,10 +953,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if p.jumps_left > 0 and not boss.lost and not wave.lost and _can_jump_in_dialog():
 			_do_jump()
-		elif is_climb() and not p.is_grounded and p.coyote <= 0 and hearts >= HEART_JUMP_COST and not climb_won and not _landing_soon():
-			# Out of jumps in the air: a heart buys one more.
-			spend_hearts(HEART_JUMP_COST)
-			_heart_jump()
 		elif feel() and not boss.lost and not wave.lost and _can_jump_in_dialog() and not on_wall:
 			# Pressed a moment too early: jump as soon as we land.
 			p.jump_buffer = JUMP_BUFFER
@@ -1206,9 +1234,15 @@ func _update(dt: float) -> void:
 		p.vy *= pow(0.85, d60)
 	else:
 		p.vy = minf(p.vy + GRAVITY * d60, MAX_FALL)
+		if is_climb():
+			_update_fuel(dt, d60)
 
 	var prev_bottom := p.y + p.height - p.vy * d60
 	p.y += p.vy * d60
+	if is_climb() and p.y < 0:
+		# The level's top is a ceiling (a boost / the thrusters never take her off it).
+		p.y = 0
+		p.vy = maxf(p.vy, 0.0)
 	var grounded := false
 	var solids: Array = [] if hide_platforms else level.platforms.duplicate()
 	if not hide_platforms:
@@ -1236,6 +1270,7 @@ func _update(dt: float) -> void:
 		_walls_y()
 	if stood_on != null:
 		last_stand_y = stood_on.y
+		_fuel_armed = false
 		if is_pms():
 			last_ground = Vector2(p.x, p.y)
 	for pl in level.platforms:
@@ -3042,7 +3077,18 @@ func _climb_camera(dt: float, d60: float) -> void:
 	var follow := maxf(p.y - view_h() / 2, last_stand_y - (H - BOARD_H) / view_zoom)
 	if follow < camera_y:
 		camera_y += (follow - camera_y) * (1.0 - pow(0.85, d60))
-	camera_y = minf(camera_y, p.y - CLIMB_TOP_MARGIN)
+	# The thrusters climb fast: keep more room above her while they burn (eased), but
+	# only as much as the guard above allows (the board stays under her last platform)
+	# unless the board has already passed it.
+	# (FUEL_GUARD_SLACK below it: the platforms bob).
+	var guard := last_stand_y + FUEL_GUARD_SLACK - (H - BOARD_H) / view_zoom
+	var lead := CLIMB_TOP_MARGIN
+	if thrusting:
+		lead = view_h() * FUEL_VIEW_LEAD
+		if camera_y >= guard:
+			lead = clampf(p.y - guard, CLIMB_TOP_MARGIN, lead)
+	_top_margin = move_toward(_top_margin, lead, 6.0 * d60)
+	camera_y = minf(camera_y, p.y - _top_margin)
 	if not climb_won and camera_y > 0:
 		if rise_wait > 0:
 			rise_wait -= dt
@@ -3134,6 +3180,13 @@ func _jackpot() -> void:
 	ticker_say(Text.plain(Text.t("CLIMB_JACKPOT")))
 
 
+## A launch (spring, heart boost, rocket): the thrusters wait for its top; a held jump
+## then ignites them.
+func _launched() -> void:
+	thrusting = false
+	_fuel_armed = true
+
+
 ## A spring pad: a big launch up, jumps refilled, BOOST!
 func _spring(e: LevelData.Ent) -> void:
 	e.lunge_timer = 0.5
@@ -3147,6 +3200,7 @@ func _spring(e: LevelData.Ent) -> void:
 	p.is_sitting = false
 	p.squash = -0.8
 	boost_t = 1.0
+	_launched()
 	var at := Vector2(e.x + e.w / 2, e.y)
 	_sparkles(at, 16)
 	_pop(at + Vector2(0, -40), Text.plain(Text.t("CLIMB_BOOST")), Color("#fbbf24"), 26)
@@ -3183,8 +3237,64 @@ func spend_hearts(n: int) -> bool:
 		heart_short = 0.6
 		return false
 	hearts -= n
+	if hearts <= 0:
+		fuel_burn = 0.0
 	add_heart_fill(0.0)
 	return true
+
+
+## Ready hearts left as rocket fuel (the last one part-burnt).
+func fuel_left() -> float:
+	return maxf(0.0, hearts - fuel_burn)
+
+
+## Rocket fuel (after gravity, every frame in the climb): jump held once her rise has run
+## out ignites the thrusters; they climb fast and burn hearts until jump is let go, the
+## hearts run out, she lands or nears the level's top.
+func _update_fuel(dt: float, d60: float) -> void:
+	var held := active and not hold_input and not dialog_open and Input.is_action_pressed("jump")
+	if not held:
+		# Let go: a later press in the air (with no jump left) is only a buffered jump.
+		_fuel_wait_release = false
+		_fuel_armed = false
+	var can := held and hearts > 0 and not climb_won and not p.is_grounded and p.hit_timer <= 0 and p.y > FUEL_CEIL and prerod_t < 0
+	if thrusting and not can:
+		thrusting = false
+	elif not thrusting and can and _fuel_armed and not _fuel_wait_release and p.vy >= FUEL_IGNITE_VY:
+		thrusting = true
+		_thrust_sfx = 0.0
+		p.is_sitting = false
+		on_board = false
+		Audio.play_sfx("breathoff.wav", 0.5)
+		_sparkles(Vector2(p.x + p.width / 2, p.y + p.height), 8)
+	if not thrusting:
+		return
+	if boost_t > 0 and p.vy < -FUEL_SPEED:
+		# A launch (spring, heart boost, rocket) outruns the thrusters: they wait.
+		return
+	if p.vy > -FUEL_SPEED:
+		p.vy = maxf(p.vy - FUEL_ACCEL * d60, -FUEL_SPEED)
+	fuel_burn += dt / FUEL_HEART_TIME
+	while fuel_burn >= 1.0 and hearts > 0:
+		fuel_burn -= 1.0
+		spend_hearts(1)
+	if hearts <= 0:
+		# Out of fuel: she falls.
+		thrusting = false
+		heart_short = 0.4
+		Audio.play_sfx("breath_after.wav", 0.35)
+	# The flame under her feet (flickering), the thruster's hum.
+	var feet := Vector2(p.x + p.width / 2, p.y + p.height)
+	_flame_acc += dt * 180.0
+	while _flame_acc >= 1.0:
+		_flame_acc -= 1.0
+		particles.append({"x": feet.x + (randf() - 0.5) * 16 + sin(time_ms / 30.0) * 3, "y": feet.y + randf() * 6,
+			"vx": (randf() - 0.5) * 1.6, "vy": p.vy * 0.7 + 2 + randf() * 3, "rot": 0.0, "rot_speed": 0.0,
+			"type": "flame", "life": 0.35, "max_life": 0.35})
+	_thrust_sfx -= dt
+	if _thrust_sfx <= 0:
+		_thrust_sfx = 0.28
+		Audio.play_sfx("breathoff.wav", 0.18)
 
 
 ## A bell: one more ready heart at once (a full meter: the bar fills), a chime.
@@ -3209,34 +3319,6 @@ func _ring_bell(e: LevelData.Ent) -> void:
 	slot_spin = {"t": 0.0, "kind": "bell", "power": "", "stops": 0, "stop_at": BELL_STOPS, "result": ["bell", "bell", "bell"], "paid": true}
 
 
-## Falling onto a platform (or the board) within JUMP_BUFFER: a jump pressed now is
-## buffered into the free ground jump instead of spending a heart.
-func _landing_soon() -> bool:
-	if p.vy < 0:
-		return false
-	var steps := JUMP_BUFFER * 60.0
-	var reach := p.vy * steps + 0.5 * GRAVITY * steps * steps + 12.0
-	var feet := p.y + p.height
-	if board_y() - feet <= reach:
-		return true
-	var solids: Array = [] if hide_platforms else level.platforms.duplicate()
-	if not hide_platforms:
-		solids.append_array(wall_tops)
-	for pl in solids:
-		if not pl.solid():
-			continue
-		if pl.y >= feet - 20 and pl.y - feet <= reach and p.x + p.width > pl.x and p.x < pl.x + pl.w:
-			return true
-	return false
-
-
-## The heart jump: out of jumps in the air, one more for HEART_JUMP_COST.
-func _heart_jump() -> void:
-	p.jumps_left = 1
-	_do_jump()
-	_sparkles(Vector2(p.x + p.width / 2, p.y + p.height), 8, "heart")
-
-
 ## The heart boost (Shift / B): a launch up like a spring for HEART_BOOST_COST hearts.
 func heart_boost() -> bool:
 	if climb_won or hold_input or not spend_hearts(HEART_BOOST_COST):
@@ -3252,6 +3334,7 @@ func heart_boost() -> bool:
 	p.squash = -0.8
 	on_board = false
 	boost_t = 1.0
+	_launched()
 	_sparkles(p.center(), 10)
 	_sparkles(Vector2(p.x + p.width / 2, p.y + p.height), 12, "heart")
 	_pop(p.center() + Vector2(0, -60), Text.plain(Text.t("CLIMB_HEART_BOOST")), Color("#f9a8d4"), 24)
@@ -3275,6 +3358,9 @@ func _take_joker(e: LevelData.Ent) -> void:
 ## waits RISE_GRACE, and Estrogenka sums it up on the board.
 func after_wheel() -> void:
 	rise_wait = RISE_GRACE
+	thrusting = false
+	_fuel_armed = false
+	_fuel_wait_release = true
 	p.vy = minf(p.vy, 0.0)
 	board_dialog("mg11_after")
 
@@ -3329,6 +3415,7 @@ func grant_power(name: String) -> void:
 		p.jumps_left = _max_jumps()
 		boost_t = ROCKET_TIME
 		climb_power["rocket"] = ROCKET_TIME
+		_launched()
 		Audio.play_sfx("breathoff.wav", 0.5)
 	else:
 		climb_power[name] = POWER_TIME

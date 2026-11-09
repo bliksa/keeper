@@ -350,7 +350,7 @@ func _run() -> void:
 	await frames(2)
 	check(pf.hud.hint_lines() == ["HINT_BREATH_CHARGE"], "breath used up: the hint says to charge it %s" % str(pf.hud.hint_lines()))
 	pf.p.breath_charges = 3
-	for hk in ["HINT_BREATH_ATTACK", "HINT_BREATH_CHARGE", "HINT_BREATH_RHYTHM", "HINT_RUN_FOCUS", "HINT_RUN_DOUBLE", "HINT_CLIMB_SUPER_JUMP", "HINT_CLIMB_TRIPLE", "HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_CLIMB_HEART_BOOST", "HINT_CLIMB_HEART_JUMP"]:
+	for hk in ["HINT_BREATH_ATTACK", "HINT_BREATH_CHARGE", "HINT_BREATH_RHYTHM", "HINT_RUN_FOCUS", "HINT_RUN_DOUBLE", "HINT_CLIMB_SUPER_JUMP", "HINT_CLIMB_TRIPLE", "HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_CLIMB_HEART_BOOST", "HINT_CLIMB_FUEL", "HINT_CLIMB_FUEL_BURN"]:
 		check(Text.LANGUAGES.all(func(lang): return Text._strings.get(lang, {}).has(hk)), "ability hint %s exists in sk / en / pt" % hk)
 	# One hint format: [KEY] caps, the *action* in yellow, plain text between.
 	var ps := AbilityHints.parse("[SHIFT] + [🔴] to *double jump*")
@@ -368,7 +368,7 @@ func _run() -> void:
 				var caps := segs.filter(func(sg): return sg.has("cap")).size()
 				var acts := segs.filter(func(sg): return sg.has("action")).size()
 				# Passive power-ups / states (no key to press) have no cap.
-				var passive: bool = hk in ["HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_PMS_CALM"]
+				var passive: bool = hk in ["HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_CLIMB_FUEL_BURN", "HINT_PMS_CALM"]
 				# Leftover mark-up or a pad glyph outside a cap would draw literally / as tofu.
 				var stray := segs.any(func(sg):
 					if not sg.has("text"):
@@ -2202,8 +2202,8 @@ func _climb_put(pf: Platformer, cx: float, feet_y: float) -> void:
 
 
 ## The climb's heart meter: hearts fill the bar, five make a ready heart (up to four),
-## a bell adds one; the heart jump (out of jumps, 1) and the heart boost (Shift, 2), their
-## hints only while affordable.
+## a bell adds one; rocket fuel (jump held past a jump's top burns hearts) and the heart
+## boost (Shift, 2), their hints only while affordable.
 func _climb_hearts(pf: Platformer) -> void:
 	var stand: LevelData.Plat = _climb_plat(pf, pf.level_h - 900)
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
@@ -2225,7 +2225,7 @@ func _climb_hearts(pf: Platformer) -> void:
 	check(pf.hearts == 1 and pf.heart_bar < 0.01, "five hearts: one ready heart")
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
-	check(pf.hud.hint_lines() == ["HINT_CLIMB_HEART_JUMP"], "one heart: the heart jump is offered, not the boost (2) %s" % str(pf.hud.hint_lines()))
+	check(pf.hud.hint_lines() == ["HINT_CLIMB_FUEL"], "one heart: rocket fuel is offered, not the boost (2) %s" % str(pf.hud.hint_lines()))
 	_key(KEY_SHIFT, true)
 	await frames(2)
 	_key(KEY_SHIFT, false)
@@ -2243,7 +2243,7 @@ func _climb_hearts(pf: Platformer) -> void:
 	check(pf.slot_spin.is_empty() and pf.spin_rest == ["bell", "bell", "bell"], "then the spinner rests (still) on them")
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
-	check(pf.hud.hint_lines() == ["HINT_CLIMB_HEART_BOOST", "HINT_CLIMB_HEART_JUMP"], "two hearts: the heart boost and the heart jump are offered %s" % str(pf.hud.hint_lines()))
+	check(pf.hud.hint_lines() == ["HINT_CLIMB_HEART_BOOST", "HINT_CLIMB_FUEL"], "two hearts: the heart boost and rocket fuel are offered %s" % str(pf.hud.hint_lines()))
 	var y0 := pf.p.y
 	_key(KEY_SHIFT, true)
 	await frames(2)
@@ -2253,20 +2253,98 @@ func _climb_hearts(pf: Platformer) -> void:
 	check(pf.p.y < y0 - 250, "the heart boost sends her several rows up (%d px)" % int(y0 - pf.p.y))
 	await frames(3)
 	check(pf.hud.hint_lines().is_empty(), "hearts spent: their hints go %s" % str(pf.hud.hint_lines()))
-	# The heart jump: out of jumps in the air, one more for a heart.
+	# Rocket fuel: jump held once the jump's rise has run out ignites the thrusters.
+	var pf_src := FileAccess.get_file_as_string("res://scripts/screens/platformer.gd")
+	check(not pf.has_method("_heart_jump") and not pf_src.contains("HEART_JUMP_COST"), "the heart jump is gone (rocket fuel instead)")
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	pf.hearts = 0
+	pf.fuel_burn = 0.0
+	_key(KEY_SPACE, true)
+	var past_top := await until(func(): return pf.p.vy > 0.5, 2)
+	await frames(4)
+	check(past_top and not pf.thrusting and pf.p.vy > 0, "no hearts: jump held past its top, she just falls (vy %.1f)" % pf.p.vy)
+	_key(KEY_SPACE, false)
+	await until(func(): return pf.p.is_grounded, 3)
+	# Let go early: the jump is still cut short, no thrusters, no fuel burnt.
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	pf.hearts = 2
+	pf.fuel_burn = 0.0
+	_key(KEY_SPACE, true)
+	await frames(4)
+	var vy_rise := pf.p.vy
+	_key(KEY_SPACE, false)
+	await frames(1)
+	check(not pf.thrusting and vy_rise < -6 and pf.p.vy > vy_rise + 2.5, "let go early: the jump is cut (vy %.1f → %.1f), no thrusters" % [vy_rise, pf.p.vy])
+	await until(func(): return pf.p.is_grounded, 3)
+	check(pf.hearts == 2 and pf.fuel_burn == 0.0, "… and no fuel burnt (%d hearts, burn %.2f)" % [pf.hearts, pf.fuel_burn])
+	# Held past the top: the thrusters climb fast and burn hearts.
+	_key(KEY_SPACE, true)
+	var lit := await until(func(): return pf.thrusting, 2)
+	var vy_lit := pf.p.vy
+	var y_lit := pf.p.y
+	await frames(18)
+	check(lit and vy_lit >= Platformer.FUEL_IGNITE_VY - 2.0 and pf.thrusting and pf.p.vy < -10 and pf.p.y < y_lit - 120, "held past the top: the thrusters fire, she flies up fast (vy %.1f, %d px)" % [pf.p.vy, int(y_lit - pf.p.y)])
+	check(pf.fuel_left() < 1.85 and pf.fuel_left() > 1.0, "the thrusters burn the hearts (%.2f left)" % pf.fuel_left())
+	check(pf.particles.any(func(q): return q.type == "flame"), "flames under her feet")
+	check(pf.hud.hint_lines().has("HINT_CLIMB_FUEL_BURN") and not pf.hud.hint_lines().has("HINT_CLIMB_FUEL"), "while burning, the fuel hint with its time bar %s" % str(pf.hud.hint_lines()))
+	var sy := (pf.p.y - pf.camera_y) * pf.view_zoom
+	check(sy > 20 and sy < 600 - Platformer.BOARD_H, "the camera follows her up (screen y %d)" % int(sy))
+	_key(KEY_SPACE, false)
+	await frames(1)
+	check(not pf.thrusting and pf.p.vy >= -2.5, "jump let go: the thrusters cut out at once, no coasting up (vy %.1f)" % pf.p.vy)
+	await frames(1)
+	var fuel_after := pf.fuel_left()
+	var fell := await until(func(): return pf.p.vy > 1, 2)
+	await frames(10)
+	check(fell and absf(pf.fuel_left() - fuel_after) < 0.001, "… she falls normally and no more fuel burns (%.2f)" % pf.fuel_left())
+	await until(func(): return pf.p.is_grounded, 4)
+	# A fresh press in the air is still the double jump; held after its top: the thrusters.
 	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
 	await frames(3)
 	pf.hearts = 1
-	for i in 2:
-		_key(KEY_SPACE, true)
-		await frames(2)
-		_key(KEY_SPACE, false)
-		await frames(6)
-	check(pf.p.jumps_left == 0 and not pf.p.is_grounded and pf.hearts == 1, "two jumps: out of jumps in the air")
+	pf.fuel_burn = 0.0
 	_key(KEY_SPACE, true)
 	await frames(2)
 	_key(KEY_SPACE, false)
-	check(pf.hearts == 0 and pf.p.vy < -5, "a third jump in the air costs a heart (vy %.1f)" % pf.p.vy)
+	await frames(8)
+	_key(KEY_SPACE, true)
+	await frames(2)
+	check(pf.p.jumps_left == 0 and pf.p.vy < -8 and not pf.thrusting and pf.hearts == 1, "a fresh press in the air is the double jump (vy %.1f), no fuel" % pf.p.vy)
+	lit = await until(func(): return pf.thrusting, 2)
+	check(lit and pf.p.jumps_left == 0, "held past the double jump's top: the thrusters")
+	# Out of fuel: they stop and she falls.
+	var out := await until(func(): return not pf.thrusting, 2)
+	check(out and pf.hearts == 0 and pf.fuel_burn == 0.0, "the last heart burnt: the thrusters stop (%d hearts)" % pf.hearts)
+	await frames(30)
+	check(pf.p.vy > 0 and not pf.thrusting, "… and she falls (vy %.1f)" % pf.p.vy)
+	_key(KEY_SPACE, false)
+	await until(func(): return pf.p.is_grounded, 4)
+	# Near the level's top: she never flies off it (nor off the top of the screen).
+	var top_trig: LevelData.Ent = null
+	for e in pf.level.entities:
+		if e.type == "trigger" and e.trigger_type == "climb_top":
+			top_trig = e
+	var top_was := top_trig.collected
+	top_trig.collected = true
+	_climb_put(pf, pf.level_w / 2, 700.0)
+	pf.camera_y = 300.0
+	pf.hearts = Platformer.HEART_SLOTS
+	pf.fuel_burn = 0.0
+	pf.p.vy = 0.0
+	var min_y := pf.p.y
+	var min_sy := 9999.0
+	_key(KEY_SPACE, true)
+	for i in 90:
+		await frames(1)
+		min_y = minf(min_y, pf.p.y)
+		min_sy = minf(min_sy, (pf.p.y - pf.camera_y) * pf.view_zoom)
+	_key(KEY_SPACE, false)
+	check(min_y >= 0.0 and min_sy >= -1.0, "the thrusters never take her off the level's top (y %d) or the screen (%d)" % [int(min_y), int(min_sy)])
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	top_trig.collected = top_was
 	# Pressed just before landing: buffered into the free ground jump, no heart spent.
 	pf.hearts = 1
 	pf.p.jumps_left = 0
@@ -2279,6 +2357,72 @@ func _climb_hearts(pf: Platformer) -> void:
 	_key(KEY_SPACE, false)
 	var buffered := await until(func(): return pf.p.vy < -5, 1)
 	check(buffered and pf.hearts == 1, "a jump pressed just before landing is buffered (free), not a heart jump (hearts %d)" % pf.hearts)
+	await until(func(): return pf.p.is_grounded, 3)
+	# … also when the key stays down: a press while falling (no jump left) never lights
+	# the thrusters, it stays the buffered ground jump.
+	pf.hearts = 2
+	pf.fuel_burn = 0.0
+	pf.p.jumps_left = 0
+	pf.p.y = stand.y - pf.p.height - 40
+	pf.p.vy = 8.0
+	pf.p.is_grounded = false
+	pf.p.coyote = 0
+	_key(KEY_SPACE, true)
+	var lit_falling := false
+	var jumped := false
+	for i in 40:
+		await frames(1)
+		if pf.p.vy < -5:
+			jumped = true
+			break
+		lit_falling = lit_falling or pf.thrusting
+	check(jumped and not lit_falling and pf.hearts == 2 and pf.fuel_burn == 0.0, "jump held down while falling: buffered into the ground jump, no thrusters (hearts %d)" % pf.hearts)
+	_key(KEY_SPACE, false)
+	await until(func(): return pf.p.is_grounded, 3)
+	# A heart boost during a burn: the thrusters wait (no fuel burnt for nothing).
+	pf.hearts = Platformer.HEART_SLOTS
+	pf.fuel_burn = 0.0
+	_key(KEY_SPACE, true)
+	await until(func(): return pf.thrusting, 2)
+	var h_before := pf.fuel_left()
+	_key(KEY_SHIFT, true)
+	await frames(1)
+	_key(KEY_SHIFT, false)
+	var fuel_boost := pf.fuel_left()
+	await frames(8)
+	check(h_before - fuel_boost > 1.5 and not pf.thrusting and absf(pf.fuel_left() - fuel_boost) < 0.001, "a heart boost mid-burn: the thrusters wait for its top (%.2f → %.2f)" % [fuel_boost, pf.fuel_left()])
+	_key(KEY_SPACE, false)
+	await until(func(): return pf.p.is_grounded, 4)
+	# A short burn doesn't lift the board past the platform she jumped from.
+	_climb_put(pf, stand.x + stand.w / 2, stand.base_y)
+	await frames(3)
+	pf.rise_wait = 99.0
+	pf.hearts = 1
+	pf.fuel_burn = 0.0
+	_key(KEY_SPACE, true)
+	await until(func(): return pf.thrusting, 2)
+	await frames(10)
+	_key(KEY_SPACE, false)
+	await frames(2)
+	check(pf.board_y() >= stand.y - 1.0, "a short burn keeps the board under her platform (board %d, platform %d)" % [int(pf.board_y()), int(stand.y)])
+	var back := await until(func(): return pf.p.is_grounded, 4)
+	check(back and absf(pf.p.y + pf.p.height - stand.y) < 8.0, "… she lands back at her platform's height, not on a lifted board (feet %d, platform %d, board %d)" % [int(pf.p.y + pf.p.height), int(stand.y), int(pf.board_y())])
+	pf.rise_wait = 0.0
+	# After the wheel, the key that confirmed it doesn't light the thrusters.
+	pf.hearts = 2
+	pf.fuel_burn = 0.0
+	pf.p.y = stand.y - pf.p.height - 200
+	pf.p.vy = -0.5
+	pf.p.is_grounded = false
+	pf.thrusting = true
+	_key(KEY_SPACE, true)
+	pf.after_wheel()
+	await frames(6)
+	check(not pf.thrusting and pf.hearts == 2, "after the wheel: Space still down doesn't light the thrusters")
+	_key(KEY_SPACE, false)
+	pf.board_talk = {}
+	pf.board_queue.clear()
+	await until(func(): return pf.p.is_grounded, 4)
 	# A bell with a full meter gives nothing, and says so.
 	pf.hearts = Platformer.HEART_SLOTS
 	pf.heart_bar = 100.0
