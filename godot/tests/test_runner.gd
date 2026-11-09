@@ -291,6 +291,38 @@ func _run() -> void:
 	pf.p.breath_charges = 3
 	for hk in ["HINT_BREATH_ATTACK", "HINT_BREATH_CHARGE", "HINT_BREATH_RHYTHM", "HINT_RUN_FOCUS", "HINT_RUN_DOUBLE", "HINT_CLIMB_SUPER_JUMP", "HINT_CLIMB_TRIPLE", "HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_CLIMB_HEART_BOOST", "HINT_CLIMB_HEART_JUMP"]:
 		check(Text.LANGUAGES.all(func(lang): return Text._strings.get(lang, {}).has(hk)), "ability hint %s exists in sk / en / pt" % hk)
+	# One hint format: [KEY] caps, the *action* in yellow, plain text between.
+	var ps := AbilityHints.parse("[SHIFT] + [🔴] to *double jump*")
+	check(ps.size() == 5 and ps[0].get("cap", "") == "SHIFT" and ps[1].get("text", "") == " + " and ps[2].has("icon") and ps[3].get("text", "") == " to " and ps[4].get("action", "") == "double jump", "the hint parser: caps / glyph cap / text / yellow action %s" % str(ps))
+	check(AbilityHints.parse("a [b c *d") == [{"text": "a [b c *d"}], "the hint parser keeps unclosed mark-up as text")
+	var mode_was := Game.control_mode
+	var bad_hints: Array = []
+	for lang in Text.LANGUAGES:
+		for hk in Text._strings.get(lang, {}):
+			if not String(hk).begins_with("HINT_") or not (String(hk).begins_with("HINT_BREATH_") or String(hk).begins_with("HINT_RUN_") or String(hk).begins_with("HINT_CLIMB_") or String(hk).begins_with("HINT_PMS_")):
+				continue
+			for mode in ["keyboard", "gamepad"]:
+				Game.control_mode = mode
+				var segs := AbilityHints.parse(Text._filter_mode(str(Text._strings[lang][hk])))
+				var caps := segs.filter(func(sg): return sg.has("cap")).size()
+				var acts := segs.filter(func(sg): return sg.has("action")).size()
+				# Passive power-ups / states (no key to press) have no cap.
+				var passive: bool = hk in ["HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_PMS_CALM"]
+				# Leftover mark-up or a pad glyph outside a cap would draw literally / as tofu.
+				var stray := segs.any(func(sg):
+					if not sg.has("text"):
+						return false
+					var t: String = sg["text"]
+					if t.contains("[") or t.contains("]") or t.contains("*"):
+						return true
+					for g in Text._ICONS:
+						if t.contains(g):
+							return true
+					return false)
+				if stray or acts != 1 or (caps == 0 and not passive) or AbilityHints.line_width(Text._filter_mode(str(Text._strings[lang][hk]))) > 420:
+					bad_hints.append("%s/%s/%s" % [lang, hk, mode])
+	Game.control_mode = mode_was
+	check(bad_hints.is_empty(), "every ability hint parses as [key] caps + one *action* in all languages and both control modes %s" % str(bad_hints))
 
 	step("minigame 2 – chocolate")
 	await _go_trigger(pf, "mg2")

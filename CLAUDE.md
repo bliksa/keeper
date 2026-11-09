@@ -456,10 +456,13 @@ Dialog letters b/c/d/e → SB..SE; SF = the LH wave starts (trigger `wave`), SG 
 
 ## Ability hints (one way to announce abilities)
 
-`scripts/ui/ability_hint.gd` (`AbilityHints`): small light pills right-aligned directly
-under the top-right indicator, one per ability usable *right now*, the key part before
-": " in a dark key cap (gamepad glyphs drawn as images), a short fade in / out, an
-optional time bar. The owner calls `hints.update(dt, [key | {key, k}])` every frame and
+`scripts/ui/ability_hint.gd` (`AbilityHints`): lines right-aligned directly under the
+top-right indicator, one per ability usable *right now*, in one format (`parse()`):
+`[KEY]` = a tinted key cap (gamepad glyphs 🔴 🟡 ⬆ drawn as images inside it), `*action*` in
+yellow, the rest plain light text, all outlined over a soft dark shadow (no pill); e.g.
+`<KB>[SHIFT]</KB><GP>[🔴]</GP> to *focus*`, `<KB>[↑] + [↑]</KB><GP>[🟡] + [🟡]</GP> to *double jump*`
+(↑ in every language; passive states like the magnet / calm have no cap), a short fade
+in / out, an optional yellow time bar under the line. The owner calls `hints.update(dt, [key | {key, k}])` every frame and
 `hints.draw(ci, anchor)`; `hint_lines()` lists the shown keys (tests). Strings
 `HINT_BREATH_ATTACK` / `_CHARGE` / `_RHYTHM` (cave, `PlatformerHud._wanted_hints`:
 charged → attack, used up → charge, recharging → the in · hold · out rhythm; under the

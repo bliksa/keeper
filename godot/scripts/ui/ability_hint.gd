@@ -1,25 +1,34 @@
 class_name AbilityHints
 extends RefCounted
-## One way to announce abilities in every level: small right-aligned pills directly
-## under the top-right indicator (the cave's breath pill, the runner's water pill, the
-## climb's corner), one per ability that can be used right now, with its key.
+## One way to announce abilities in every level: right-aligned lines directly under the
+## top-right indicator (the cave's breath pill, the runner's water pill, the climb's heart
+## meter, the maze's breath pill), one per ability that can be used right now.
 ##
 ## The caller passes the wanted lines every frame to `update()` (an i18n key, or
 ## {key, k} with k = 0..1 for a draining time bar) and draws them with `draw()`.
-## Lines fade in / out (FADE s). Text: `Text.t(key)` (filtered by the control mode);
-## "<key part>: <description>" draws the key part as a small key cap, gamepad glyphs
-## (🔴 🟡 ⬆ …) as their images.
+## Lines fade in / out (FADE s). Text: `Text.t(key)` (filtered by the control mode) in
+## one format, e.g. `[SHIFT] to *focus*`, `[↑] + [↑] to *double jump*`:
+## `[…]` = a key cap (a tinted rounded square, white label; gamepad glyphs 🔴 🟡 ⬆ …
+## drawn as their images inside it), `*…*` = the action in yellow, the rest (" to ",
+## " + ") plain light text. Everything has a dark outline so it reads on any background.
+## `parse()` splits a line into these segments (tests).
 
 const FADE := 0.2
-const SIZE := 13
-const H := 26.0
-const GAP := 5.0
-const BG := Color("#f0eee9", 0.94)
-const INK := Color("#064e3b")
-const BORDER := Color(0.37, 0.61, 0.6, 0.35)
-const CAP := Color("#064e3b")
-const CAP_TEXT := Color("#f0eee9")
-const BAR := Color("#5f9b99")
+const SIZE := 15
+const H := 25.0
+const GAP := 6.0
+const CAP_H := 22.0
+const CAP_SIZE := 13
+const CAP := Color("#0f3d3a", 0.82)
+const CAP_RIM := Color("#7dd3c0", 0.55)
+const CAP_SHADE := Color(0, 0, 0, 0.55)
+const CAP_TEXT := Color("#ffffff")
+const ACTION := Color("#fbbf24")
+const TEXT := Color("#f8f5ee")
+const OUTLINE := Color("#1a1022", 0.85)
+const OUTLINE_W := 6
+const SHADOW := Color("#140a1c", 0.22)
+const BAR := Color("#fbbf24")
 
 ## key → {a: alpha 0..1, k: time bar (-1 = none), on: wanted this frame}
 var _lines := {}
@@ -76,7 +85,7 @@ func clear() -> void:
 ## Draws the lines under `anchor` (the indicator's bottom-right corner, or its
 ## bottom-centre with `centered`).
 func draw(ci: CanvasItem, anchor: Vector2, centered := false) -> void:
-	var y := anchor.y + 6.0
+	var y := anchor.y + 7.0
 	for key in _order:
 		if not _lines.has(key):
 			continue
@@ -85,86 +94,108 @@ func draw(ci: CanvasItem, anchor: Vector2, centered := false) -> void:
 		if a <= 0.0:
 			continue
 		var e := a * a * (3.0 - 2.0 * a)
-		draw_line_pill(ci, Text.t(key), Vector2(anchor.x, y - (1.0 - e) * 6.0), e, float(l.k), centered)
-		y += (H + GAP) * e
+		draw_hint(ci, Text.t(key), Vector2(anchor.x, y - (1.0 - e) * 6.0), e, float(l.k), centered)
+		y += (H + GAP + (5.0 if float(l.k) >= 0.0 else 0.0)) * e
 
 
-## One pill; returns its width. `pos` = its top-right corner (top-centre if `centered`).
-static func draw_line_pill(ci: CanvasItem, text: String, pos: Vector2, alpha: float, k := -1.0, centered := false) -> float:
-	var font: Font = Text.font_bold
-	var key_part := ""
-	var desc := text
-	var colon := text.find(": ")
-	if colon > 0:
-		key_part = text.substr(0, colon)
-		desc = text.substr(colon + 2)
-	var key_segs := _segments(key_part)
-	var desc_segs := _segments(desc)
-	var kw := _segs_width(font, key_segs)
-	var dw := _segs_width(font, desc_segs)
-	var w := 20.0 + dw + (kw + 12.0 + 7.0 if kw > 0 else 0.0)
-	var r := Rect2(pos.x - (w / 2 if centered else w), pos.y, w, H)
-	Draw.panel(ci, r, Color(BG, BG.a * alpha), H / 2, Color(BORDER, BORDER.a * alpha), 1.5)
-	var x := r.position.x + 10.0
-	var base := r.position.y + H / 2 + SIZE * 0.36 - (1.5 if k >= 0.0 else 0.0)
-	if kw > 0:
-		var cap := Rect2(r.position.x + 4, r.position.y + 4, kw + 12.0, H - 8.0 - (2.0 if k >= 0.0 else 0.0))
-		Draw.panel(ci, cap, Color(CAP, alpha), 6)
-		_draw_segs(ci, font, key_segs, Vector2(cap.position.x + 6, base), Color(CAP_TEXT, alpha), alpha)
-		x = cap.end.x + 7.0
-	_draw_segs(ci, font, desc_segs, Vector2(x, base), Color(INK, alpha), alpha)
-	if k >= 0.0:
-		var bw := (r.size.x - H) * clampf(k, 0, 1)
-		if bw > 0.5:
-			ci.draw_line(Vector2(r.position.x + H / 2, r.end.y - 3), Vector2(r.position.x + H / 2 + bw, r.end.y - 3), Color(BAR, alpha), 2.0, true)
-	return w
-
-
-## Text split into strings and gamepad glyphs ({icon: path}).
-static func _segments(s: String) -> Array:
+## A line split into segments: {cap: label} (a key cap; `icon` = a gamepad glyph image),
+## {action: text} (yellow), {text: text} (plain). Malformed mark-up stays plain text.
+static func parse(s: String) -> Array:
 	var out: Array = []
 	var cur := ""
-	var glyphs: Array = Text._ICONS.keys()
-	glyphs.sort_custom(func(p, q): return String(p).length() > String(q).length())
 	var i := 0
 	while i < s.length():
-		var hit := ""
-		for g in glyphs:
-			if s.substr(i, String(g).length()) == g:
-				hit = g
-				break
-		if hit != "":
+		var c := s[i]
+		var close := ""
+		if c == "[":
+			close = "]"
+		elif c == "*":
+			close = "*"
+		var end := s.find(close, i + 1) if close != "" else -1
+		if end > i + 1:
 			if cur != "":
-				out.append(cur)
+				out.append({"text": cur})
 				cur = ""
-			out.append({"icon": Text._ICONS[hit]})
-			i += hit.length()
+			var inner := s.substr(i + 1, end - i - 1)
+			if close == "]":
+				var seg := {"cap": inner}
+				var g := inner.strip_edges()
+				if Text._ICONS.has(g):
+					seg["icon"] = Text._ICONS[g]
+				out.append(seg)
+			else:
+				out.append({"action": inner})
+			i = end + 1
 		else:
-			cur += s[i]
+			cur += c
 			i += 1
 	if cur != "":
-		out.append(cur)
+		out.append({"text": cur})
 	return out
 
 
-static func _segs_width(font: Font, segs: Array) -> float:
+static func _seg_width(font: Font, seg: Dictionary) -> float:
+	if seg.has("cap"):
+		if seg.has("icon"):
+			return CAP_H
+		var tw := font.get_string_size(str(seg.cap), HORIZONTAL_ALIGNMENT_LEFT, -1, CAP_SIZE).x
+		return maxf(CAP_H, tw + 12.0)
+	var s: String = str(seg.get("action", seg.get("text", "")))
+	return font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, SIZE).x
+
+
+## The width of a line as drawn.
+static func line_width(text: String) -> float:
+	var font: Font = Text.font_bold
 	var w := 0.0
-	for s in segs:
-		if s is String:
-			w += font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, SIZE).x
-		else:
-			w += SIZE + 4.0
+	for seg in parse(text):
+		w += _seg_width(font, seg)
 	return w
 
 
-static func _draw_segs(ci: CanvasItem, font: Font, segs: Array, pos: Vector2, col: Color, alpha: float) -> void:
-	var x := pos.x
-	for s in segs:
-		if s is String:
-			ci.draw_string(font, Vector2(x, pos.y), s, HORIZONTAL_ALIGNMENT_LEFT, -1, SIZE, col)
-			x += font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, SIZE).x
+## One line; returns its width. `pos` = its top-right corner (top-centre if `centered`).
+static func draw_hint(ci: CanvasItem, text: String, pos: Vector2, alpha: float, k := -1.0, centered := false) -> float:
+	var font: Font = Text.font_bold
+	var segs := parse(text)
+	var w := 0.0
+	for seg in segs:
+		w += _seg_width(font, seg)
+	var x := pos.x - (w / 2 if centered else w)
+	var mid := pos.y + H / 2
+	var base := mid + SIZE * 0.36
+	var ol := Color(OUTLINE, OUTLINE.a * alpha)
+	# A soft dark shadow behind the line (two feathered layers), so it reads over
+	# platforms, trees and the casino lights without a pill of its own.
+	var back := Rect2(x - 6.0, pos.y + 1.0, w + 12.0, H - 2.0)
+	Draw.panel(ci, back.grow(4.0), Color(SHADOW, SHADOW.a * 0.5 * alpha), (H + 6.0) / 2)
+	Draw.panel(ci, back, Color(SHADOW, SHADOW.a * alpha), (H - 2.0) / 2)
+	for seg in segs:
+		var sw := _seg_width(font, seg)
+		if seg.has("cap"):
+			var r := Rect2(x, mid - CAP_H / 2, sw, CAP_H)
+			# A raised key: a dark shade under it, the tinted top with a light rim.
+			Draw.panel(ci, Rect2(r.position + Vector2(0, 2), r.size), Color(CAP_SHADE, CAP_SHADE.a * alpha), 5)
+			Draw.panel(ci, r, Color(CAP, CAP.a * alpha), 5, Color(CAP_RIM, CAP_RIM.a * alpha), 1)
+			if seg.has("icon"):
+				var tex: Texture2D = load(str(seg.icon))
+				var sz := CAP_H - 5.0
+				ci.draw_texture_rect(tex, Rect2(r.get_center() - Vector2(sz, sz) / 2, Vector2(sz, sz)), false, Color(1, 1, 1, alpha))
+			else:
+				var label: String = str(seg.cap)
+				var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, CAP_SIZE).x
+				ci.draw_string(font, Vector2(r.get_center().x - tw / 2, mid + CAP_SIZE * 0.36), label, HORIZONTAL_ALIGNMENT_LEFT, -1, CAP_SIZE, Color(CAP_TEXT, alpha))
 		else:
-			var tex: Texture2D = load(str(s.icon))
-			var sz := float(SIZE + 3)
-			ci.draw_texture_rect(tex, Rect2(x + 0.5, pos.y - SIZE * 0.36 - sz / 2, sz, sz), false, Color(1, 1, 1, alpha))
-			x += SIZE + 4.0
+			var s: String = str(seg.get("action", seg.get("text", "")))
+			var col: Color = ACTION if seg.has("action") else TEXT
+			ci.draw_string_outline(font, Vector2(x, base), s, HORIZONTAL_ALIGNMENT_LEFT, -1, SIZE, OUTLINE_W, ol)
+			ci.draw_string(font, Vector2(x, base), s, HORIZONTAL_ALIGNMENT_LEFT, -1, SIZE, Color(col, alpha))
+		x += sw
+	if k >= 0.0:
+		# The time left: a thin yellow bar under the line, draining from the left.
+		var x0 := pos.x - (w / 2 if centered else w)
+		var by := pos.y + H + 2.0
+		ci.draw_line(Vector2(x0, by), Vector2(x0 + w, by), Color(OUTLINE, 0.5 * alpha), 4.0, true)
+		var bw := w * clampf(k, 0, 1)
+		if bw > 0.5:
+			ci.draw_line(Vector2(x0 + w - bw, by), Vector2(x0 + w, by), Color(BAR, alpha), 2.0, true)
+	return w
