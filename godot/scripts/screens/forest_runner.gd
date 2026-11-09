@@ -99,7 +99,14 @@ const DOUBLE_V := 6.2
 const LANE_SPEED := 11.0
 const SLOW_SCALE := 0.4
 const SLOW_DRAIN := 28.0
-const SLOW_MIN := 6.0
+## Focus needs this much water to switch on (it then runs while any is left);
+## a double jump needs DOUBLE_MIN in the tank (both marked on the bar).
+const SLOW_MIN := 35.0
+const DOUBLE_MIN := 60.0
+## Water over a full tank goes into the reserve below the bar, which tops the
+## tank up again slowly (RESERVE_FLOW per second).
+const RESERVE_MAX := 50.0
+const RESERVE_FLOW := 4.0
 const DROP_WATER := 5.0
 ## Water (focus) a hit on an obstacle costs.
 const HIT_WATER := 8.0
@@ -154,6 +161,9 @@ var sun_pulse := 0.0
 var water_flash := 0.0
 ## Too little water for a jump: the pill shakes red for a moment.
 var water_short := 0.0
+## Which mark the missing water was for ("jump", "focus", "double"): it blinks.
+var short_for := ""
+var reserve := 0.0
 ## A slice lost in a hit: its place in the sun blinks red (s left).
 var sun_lost := 0.0
 const LOST_TIME := 1.4
@@ -213,7 +223,7 @@ const RECOVER_RAMP := 0.7
 
 func _ready() -> void:
 	_font = Text.font_bold
-	water = Game.water if Game.water > 0 else 30.0
+	water = Game.water if Game.water > 0 else 40.0
 	build_course()
 	_tree_rng.seed = 7
 	_extend_trees()
@@ -369,8 +379,10 @@ func jump() -> void:
 	# Jumping costs water, a double jump more; without enough there's no jump
 	# (some places can't be passed dry).
 	var cost := JUMP_WATER if jumps == 2 else DOUBLE_WATER
-	if water < cost:
+	var need := cost if jumps == 2 else maxf(cost, DOUBLE_MIN)
+	if water < need:
 		water_short = 0.5
+		short_for = "jump" if jumps == 2 else "double"
 		return
 	vy = JUMP_V if jumps == 2 else DOUBLE_V
 	water -= cost
@@ -409,7 +421,16 @@ func _update(dt: float) -> void:
 	# Slowed time: the world (and her fall) runs slower while her steering stays
 	# quick, so a tight spot can be read and taken. Not while bumped / carried.
 	var rolling := carry_t > 0 or bump_t > 0
-	var want_slow := not rolling and Input.is_action_pressed("slow_time") and water > (0.0 if _prev_slow else SLOW_MIN)
+	var pressing := Input.is_action_pressed("slow_time")
+	var want_slow := not rolling and pressing and water > (0.0 if _prev_slow else SLOW_MIN)
+	if pressing and not want_slow and not _prev_slow and not rolling and Input.is_action_just_pressed("slow_time"):
+		water_short = 0.5
+		short_for = "focus"
+	# The reserve tops the tank up slowly.
+	if reserve > 0 and water < 100:
+		var pour := minf(reserve, minf(100 - water, RESERVE_FLOW * dt))
+		reserve -= pour
+		water += pour
 	slow = want_slow
 	_prev_slow = slow
 	if slow:
@@ -618,7 +639,7 @@ func _hits(wdt: float) -> void:
 			"drop":
 				if absf(py - o.y) < 0.8:
 					o.taken = true
-					water = minf(100, water + DROP_WATER)
+					_add_water(DROP_WATER)
 					_fly("drop", o)
 					Audio.play_sfx("cink-%02d.wav" % (1 + int(time * 7) % 11), 0.35)
 			"vine":
@@ -630,6 +651,14 @@ func _hits(wdt: float) -> void:
 					o.taken = true
 					_fly("sun", o)
 					_sun_piece()
+
+
+## Water from a drop: into the tank, what doesn't fit into the reserve.
+func _add_water(n: float) -> void:
+	var room := 100.0 - water
+	water = minf(100, water + n)
+	if n > room:
+		reserve = minf(RESERVE_MAX, reserve + n - maxf(0, room))
 
 
 ## A sun piece: one more slice of the sun. Every SUN_PER_GAME a minigame, the
@@ -1257,7 +1286,7 @@ func _draw_intro_hud() -> void:
 			Draw.radial_glow(self, SUN_HUD, 90 * grow, Color(1, 0.9, 0.5, 0.5 * (1.0 - a)))
 		SpriteArt.draw_sun(self, SUN_HUD, 46 * maxf(0.05, grow), 0, 0.0, time)
 	if e > INTRO_FALL_AT:
-		draw_water_pill(self, WATER_HUD, water, false, time, SLOW_MIN)
+		draw_water_pill(self, WATER_HUD, water, false, time, SLOW_MIN, DOUBLE_MIN, reserve / RESERVE_MAX)
 
 
 ## The controls, for a few seconds at the start (when Iskra's dialog is skipped).
@@ -1303,7 +1332,7 @@ func _draw_hud() -> void:
 		Draw.radial_glow(self, Vector2(wr.position.x + 26, wr.get_center().y), 50, Color(0.37, 0.7, 0.94, 0.6 * water_flash / 0.45))
 	if water_short > 0:
 		wr.position.x += sin(water_short * 60.0) * 5.0
-	draw_water_pill(self, wr, water, slow, time, SLOW_MIN)
+	draw_water_pill(self, wr, water, slow, time, SLOW_MIN, DOUBLE_MIN, reserve / RESERVE_MAX, short_for if water_short > 0 else "")
 	if water_short > 0:
 		Draw.panel(self, wr.grow(2), Color(0, 0, 0, 0), 18, Color(0.94, 0.27, 0.27, water_short / 0.5), 3)
 	if not _slow_used and water >= SLOW_MIN:
@@ -1315,17 +1344,42 @@ func _draw_hud() -> void:
 
 
 ## The hydration pill: a drop and how full the water is (slowed time pulses it).
-static func draw_water_pill(ci: CanvasItem, r: Rect2, amount: float, slowing: bool, t: float, min_use := 6.0) -> void:
+## The hydration pill: the tank with marks where focus (eye ring) and the
+## double jump (two chevrons) switch on, and the reserve as a thin bar below.
+static func draw_water_pill(ci: CanvasItem, r: Rect2, amount: float, slowing: bool, t: float, min_use := 35.0, double_min := -1.0, reserve_k := -1.0, blink := "") -> void:
 	Draw.panel(ci, r, Color("#f0eee9"), 16, Color(0.37, 0.61, 0.6, 0.2), 2)
 	var drop_c := Vector2(r.position.x + 26, r.get_center().y + 1)
 	SpriteArt.draw_drop(ci, drop_c, 1.25, Color("#5fb3f0") if amount >= min_use else Color("#94a3b8"))
-	var bar := Rect2(r.position.x + 48, r.get_center().y - 7, r.size.x - 62, 14)
+	var bar := Rect2(r.position.x + 48, r.get_center().y - 9, r.size.x - 62, 14)
+	if reserve_k < 0:
+		bar.position.y += 2
 	Draw.panel(ci, bar, Color("#dbeafe"), 7)
 	if amount > 0.5:
 		var col := Color("#5fb3f0")
 		if slowing:
 			col = Color("#93c5fd").lerp(Color.WHITE, 0.25 + 0.25 * sin(t * 10))
 		Draw.panel(ci, Rect2(bar.position, Vector2(maxf(bar.size.y, bar.size.x * clampf(amount / 100.0, 0, 1)), bar.size.y)), col, 7)
-	# The least water slowed time needs.
-	var mx := bar.position.x + bar.size.x * min_use / 100.0
-	ci.draw_line(Vector2(mx, bar.position.y - 2), Vector2(mx, bar.end.y + 2), Color(0.02, 0.3, 0.23, 0.5), 1.5)
+	var ink := Color(0.02, 0.3, 0.23, 0.75)
+	var red := Color(0.94, 0.27, 0.27)
+	var on := fmod(t, 0.2) < 0.12
+	# Focus: a small ring (the focus vignette) above its mark.
+	var fx := bar.position.x + bar.size.x * min_use / 100.0
+	var fc := red if blink == "focus" and on else (ink if amount >= min_use else Color(0.4, 0.45, 0.5, 0.6))
+	ci.draw_line(Vector2(fx, bar.position.y - 2), Vector2(fx, bar.end.y + 1), fc, 2.0)
+	ci.draw_arc(Vector2(fx, bar.position.y - 7), 3.5, 0, TAU, 14, fc, 1.6, true)
+	ci.draw_circle(Vector2(fx, bar.position.y - 7), 1.2, fc)
+	if double_min > 0:
+		var dx := bar.position.x + bar.size.x * double_min / 100.0
+		var dc := red if blink == "double" and on else (ink if amount >= double_min else Color(0.4, 0.45, 0.5, 0.6))
+		ci.draw_line(Vector2(dx, bar.position.y - 2), Vector2(dx, bar.end.y + 1), dc, 2.0)
+		for k in 2:
+			var cy := bar.position.y - 4 - k * 4
+			ci.draw_polyline(PackedVector2Array([Vector2(dx - 3.5, cy), Vector2(dx, cy - 3), Vector2(dx + 3.5, cy)]), dc, 1.6, true)
+	if blink == "jump" and on:
+		Draw.panel(ci, bar.grow(1), Color(0, 0, 0, 0), 7, red, 2)
+	if reserve_k >= 0:
+		# The reserve: what didn't fit, pouring back in slowly.
+		var rb := Rect2(bar.position.x, bar.end.y + 4, bar.size.x, 5)
+		Draw.panel(ci, rb, Color(0.86, 0.92, 0.98), 2.5)
+		if reserve_k > 0.01:
+			Draw.panel(ci, Rect2(rb.position, Vector2(maxf(5, rb.size.x * clampf(reserve_k, 0, 1)), rb.size.y)), Color("#2563eb").lerp(Color("#5fb3f0"), 0.4), 2.5)
