@@ -203,9 +203,9 @@ func _report_state() -> void:
 
 func _set_state(s: String) -> void:
 	state = s
-	# The forest intro's dialogs sit at the top (Kyra walks below); minigames
-	# keep theirs at the bottom like everywhere else.
-	_node_box.at_top = s == "intro"
+	# The forest intro's dialogs sit at the top (Kyra walks below), also in its
+	# breathing minigame; the other minigames keep theirs at the bottom.
+	_node_box.at_top = s in ["intro", "mg1"]
 	_panel_box.at_top = _node_box.at_top
 	match s:
 		"intro", "mg1": Audio.play_bgm("forest.mp3", 0.4)

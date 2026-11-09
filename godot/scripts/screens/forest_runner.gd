@@ -255,9 +255,14 @@ func _ready() -> void:
 ## stage repeats further on).
 func _extend_trees() -> void:
 	while _tree_z < length + VIEW:
+		# A dense conifer forest: a few trees per side at every step, the nearest
+		# row close to the path, more and taller ones further out.
 		for side: float in [-1.0, 1.0]:
-			trees.append({"x": side * _tree_rng.randf_range(5.0, 10.0), "z": _tree_z + _tree_rng.randf_range(0, 3), "h": _tree_rng.randf_range(4.5, 8.0), "r": _tree_rng.randf_range(1.2, 2.2), "tone": _tree_rng.randf()})
-		_tree_z += _tree_rng.randf_range(2.5, 4.0)
+			var n := _tree_rng.randi_range(2, 4)
+			for k in n:
+				var x := side * (4.8 + k * _tree_rng.randf_range(1.6, 2.8) + _tree_rng.randf_range(0, 1.2))
+				trees.append({"x": x, "z": _tree_z + _tree_rng.randf_range(0, 1.8), "h": _tree_rng.randf_range(5.5, 10.5) + k * 0.6, "r": _tree_rng.randf_range(1.1, 1.8), "tone": _tree_rng.randf()})
+		_tree_z += _tree_rng.randf_range(1.4, 2.2)
 
 
 ## The course from the top-down map. Per cell:
@@ -1105,18 +1110,30 @@ func _draw() -> void:
 		_draw_grain()
 
 
+## A conifer (placeholder art): a short trunk and three or four stacked tiers,
+## narrower towards the top, the far ones fading into the haze.
 func _draw_tree(t: Dictionary) -> void:
 	var base := project(t.x, 0, t.z)
-	var top := project(t.x, t.h, t.z)
 	if base.z <= 0:
 		return
-	var trunk := _fog(Color("#5b3b24"), t.z)
-	draw_line(Vector2(base.x, base.y), Vector2(top.x, top.y), trunk, maxf(1, 0.35 * base.z))
-	var leaf := _fog(Color("#2f6b3a").lerp(Color("#4d8f45"), t.tone), t.z)
-	var r: float = t.r * base.z
-	draw_circle(Vector2(top.x, top.y), r, leaf)
-	draw_circle(Vector2(top.x - r * 0.6, top.y + r * 0.35), r * 0.75, leaf.darkened(0.08))
-	draw_circle(Vector2(top.x + r * 0.6, top.y + r * 0.3), r * 0.7, leaf.lightened(0.05))
+	var h: float = t.h
+	var r: float = t.r
+	var trunk_top := project(t.x, h * 0.18, t.z)
+	draw_line(Vector2(base.x, base.y), Vector2(trunk_top.x, trunk_top.y), _fog(Color("#4a2f1c"), t.z), maxf(1, 0.28 * base.z))
+	var dark := _fog(Color("#1f4d33").lerp(Color("#2e6a3f"), t.tone), t.z)
+	var tiers: int = 4 if h > 7.0 else 3
+	for k in tiers:
+		var f := float(k) / tiers
+		var y0 := h * (0.14 + 0.62 * f)
+		var y1 := h * (0.14 + 0.62 * f) + h * (0.42 - 0.08 * f)
+		var w := r * (1.0 - 0.62 * f)
+		var bl := project(t.x - w, y0, t.z)
+		var br := project(t.x + w, y0, t.z)
+		var tp := project(t.x, minf(y1, h), t.z)
+		var col := dark.lightened(0.07 * k)
+		draw_colored_polygon(PackedVector2Array([Vector2(bl.x, bl.y), Vector2(br.x, br.y), Vector2(tp.x, tp.y)]), col)
+		# A lighter edge on the sunny side.
+		draw_line(Vector2(tp.x, tp.y), Vector2(br.x, br.y), col.lightened(0.12), maxf(1, 0.04 * base.z))
 
 
 func _lanes_of(o: Dictionary) -> Array:
