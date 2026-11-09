@@ -354,15 +354,15 @@ func _run() -> void:
 	check(not rn.objects.any(func(o): return o.kind == "bird" and o.stage == 0), "stage 1 has no crows (only jumping and water)")
 	var roots: Array = rn.objects.filter(func(o): return o.kind == "root" and o.lane == -9)
 	var root0: Dictionary = roots[0]
-	rn.water = 50
-	var w_before := rn.water
+	rn.drops = 4
+	var w_before := rn.drops
 	rn.jump_to(root0.z - 0.4)
 	rn.py = 0
 	rn.vy = 0
 	await frames(3)
 	check(rn.bump_t > 0, "running into a root bounces her off")
 	check(rn.invuln > 2.9, "after a hit she blinks: nothing can hit her for 3 s")
-	check(rn.water <= w_before - ForestRunner.HIT_WATER + 0.01 or w_before < ForestRunner.HIT_WATER, "a hit costs focus (water)")
+	check(rn.drops <= w_before - ForestRunner.HIT_DROPS + 0.01, "a hit costs a drop")
 	await seconds(0.45)
 	check(rn.dist < root0.z - 4 and not root0.hit, "the path rolls back and the root waits for her again")
 	await frames(2)
@@ -378,9 +378,9 @@ func _run() -> void:
 	await frames(3)
 	check(rn.bump_t <= 0 and not root0.hit, "while she blinks she runs through an obstacle")
 	rn.jump_to(root0.z - 3.0)
-	rn.water = 50
+	rn.drops = 4
 	rn.jump()
-	check(rn.water == 50 - ForestRunner.JUMP_WATER, "a jump costs a little water")
+	check(rn.drops == 4 and rn.vy > 0, "a jump is free")
 	var cleared := await until(func(): return rn.dist > root0.z + 1.5, 3)
 	check(cleared and rn.bump_t <= 0 and not root0.hit, "a jump clears the root")
 	var birds: Array = rn.objects.filter(func(o): return o.kind == "bird" and o.z - rn.stages[o.stage].start > ForestRunner.CARRY_BACK + 6)
@@ -405,7 +405,7 @@ func _run() -> void:
 	rn.py = 0
 	rn.vy = 0
 	rn.bump_t = 0
-	rn.water = 100
+	rn.drops = 4
 	rn.jump_to(rbr.z - 3.1)
 	Input.action_press("slow_time")
 	await frames(2)
@@ -420,13 +420,15 @@ func _run() -> void:
 	rn.lane = 0 if rdrop.lane == -9 else rdrop.lane
 	rn.px = rn.lane * ForestRunner.LANE
 	rn.water = 10
+	rn.drops = 4
 	rn.py = 0
 	rn.jump_to(rdrop.z - 0.3)
 	await frames(3)
-	check(rdrop.taken and rn.water > 10 and rn.flyers.any(func(f): return f.kind == "drop"), "a water drop fills the focus bar (it flies up to it)")
+	check(rdrop.taken and rn.water > 10 and rn.flyers.any(func(f): return f.kind == "drop"), "a water drop fills the bar (it flies up to it)")
 	# Slowed time: the world runs slower while the water drains.
 	rn.objects.clear()
-	rn.water = 80
+	rn.drops = 4
+	rn.water = 0
 	var t0 := rn.dist
 	await seconds(0.5)
 	var normal := rn.dist - t0
@@ -437,38 +439,33 @@ func _run() -> void:
 	var slowed := rn.dist - t0
 	Input.action_release("slow_time")
 	await frames(3)
-	check(rn.slow == false and slowed < normal * 0.6 and rn.water < 80, "holding Slow slows time (%.1f m vs %.1f m) and uses water" % [slowed, normal])
-	rn.water = 2
+	check(rn.slow == false and slowed < normal * 0.6 and rn.drops < 4 and rn.drops > 3.0, "holding focus slows time (%.1f m vs %.1f m) and burns a drop a second" % [slowed, normal])
+	rn.drops = 0
+	rn.water = 0
 	Input.action_press("slow_time")
 	await frames(3)
 	check(not rn.slow, "no slow-down without water")
 	Input.action_release("slow_time")
-	# Focus switches on only from SLOW_MIN; a double jump needs DOUBLE_MIN.
-	rn.water = ForestRunner.SLOW_MIN - 5
-	Input.action_press("slow_time")
-	await frames(3)
-	check(not rn.slow and rn.short_for == "focus", "focus needs %d water to switch on (its mark blinks)" % int(ForestRunner.SLOW_MIN))
-	Input.action_release("slow_time")
-	await frames(2)
+	# The magazine: a double jump costs two drops; empty, it reloads from the bar.
 	rn.objects.clear()
 	rn.py = 0
 	rn.vy = 0
 	rn.jumps = 2
-	rn.water = ForestRunner.DOUBLE_MIN - 10
+	rn.drops = 4
+	rn.water = 100
 	rn.jump()
-	var w_one := rn.water
 	rn.jump()
-	check(rn.jumps == 1 and rn.water == w_one and rn.short_for == "double", "a double jump needs %d water (its mark blinks)" % int(ForestRunner.DOUBLE_MIN))
+	check(rn.jumps == 0 and absf(rn.drops - 2) < 0.01, "a double jump costs two drops")
 	rn.py = 0
 	rn.vy = 0
 	rn.jumps = 2
-	rn.water = 95
-	rn._add_water(ForestRunner.DROP_WATER * 2)
-	check(rn.water == 100 and absf(rn.reserve - 5) < 0.01, "water over a full tank goes into the reserve")
-	rn.water = 50
-	await seconds(0.5)
-	check(rn.reserve < 5 and rn.water > 50, "the reserve pours back into the tank")
-	rn.reserve = 0
+	rn.drops = 0
+	await frames(2)
+	check(rn.reload_t > 0, "an empty magazine reloads from the bar")
+	await seconds(ForestRunner.RELOAD_TIME * 0.5)
+	check(rn.drops > 0.5 and rn.drops < 3.9 and rn.water < 100, "it takes a while (the drops fill one by one, the bar goes down)")
+	await seconds(ForestRunner.RELOAD_TIME * 0.6 + 0.1)
+	check(absf(rn.drops - 4) < 0.05 and absf(rn.water - 0) < 2 and rn.reload_t <= 0, "four drops back, the bar paid for them")
 	# Side traps: placed ones, and random ones in the last stage.
 	rn.build_course()
 	rn.water = 0
@@ -595,11 +592,12 @@ func _run() -> void:
 	er.bump_t = 0
 	er.recover_t = 0
 	take_next.call()
-	er.water = 1
-	er.jumps = 2
+	er.drops = 1
+	er.water = 0
+	er.jumps = 1
 	er.vy = 0
 	er.jump()
-	check(er.vy <= 0 and er.jumps == 2 and er.water_short > 0, "without enough water she can't jump")
+	check(er.vy <= 0 and er.jumps == 1 and er.water_short > 0 and er.short_for == "double", "without two drops there's no double jump")
 	er.dist = er.stages[0].end
 	er._stage_end()
 	check(er.sun == 2 and er.stage == 1 and er.loops == 0, "a stage without pieces left goes on (no endless loop)")
