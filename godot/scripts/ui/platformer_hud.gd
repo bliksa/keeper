@@ -111,6 +111,9 @@ func _draw() -> void:
 	if platformer == null:
 		return
 	var font: Font = Text.font_bold
+	if not platformer.is_climb():
+		# The phase's announcement where the dialog box is (the climb has its own board).
+		PhaseBoard.draw(self, platformer.phase_note, platformer.time_ms, platformer.phase_speaker)
 	if platformer.is_meadow():
 		_draw_meadow(font)
 		if Game.has_breathing:
@@ -543,69 +546,14 @@ func _draw_board(font: Font, t: float) -> void:
 		var src := Rect2((ts - (av.size - Vector2(8, 8)) / k) / 2, (av.size - Vector2(8, 8)) / k)
 		draw_texture_rect_region(tex, av.grow(-4), src)
 	if not note.is_empty():
-		_draw_phase_note(font, note, r, t)
+		PhaseBoard.draw_title(self, font, note, r, t)
 	else:
 		draw_string(font, Vector2(Platformer.TICKER_LEFT, r.position.y + 44), Text.speaker_name(speaker).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("#4a7d7b"))
 	if not talk.is_empty() and not pf.dialog_open and note.is_empty():
 		_draw_board_talk(talk, r)
-	# Gold trim and the marquee: bulbs chasing along the top edge.
-	# The new phase: the strip lights up bulb by bulb from the left, then blinks all together.
-	var pt: float = note.get("t", -1.0)
-	var strip_k := clampf(pt / Platformer.PHASE_BULBS, 0, 1) if pt >= 0 else 1.0
-	var gold := Color("#f59e0b")
-	if pt >= 0 and pt < Platformer.PHASE_TIME - 0.6 and fmod(pt, 0.3) < 0.15:
-		gold = Color("#fde047")
-	draw_rect(Rect2(r.position.x, r.position.y, r.size.x * strip_k, 4), gold)
-	draw_rect(Rect2(r.position.x, r.position.y + 14, r.size.x * strip_k, 2), Color("#fbbf24", 0.8))
-	var step := 26.0
-	var n := int(1066 / step)
-	var chase := int(t / 110.0)
-	for i in n + 1:
-		var c := Vector2(8 + i * step, r.position.y + 9)
-		var on := (i + chase) % 3 == 0 and pf.wind < 0.5
-		if pt >= 0:
-			if pt < Platformer.PHASE_BULBS:
-				# Lighting up one by one, left to right (the rest still dark).
-				if float(i) / n > strip_k:
-					draw_circle(c, 3.5, Color("#92400e", 0.6))
-					continue
-				on = float(i) / n > strip_k - 0.12
-			elif pt < Platformer.PHASE_TIME - 0.6:
-				on = fmod(pt, 0.3) < 0.15
-		if on:
-			draw_circle(c, 7, Color(1, 0.85, 0.3, 0.35))
-		draw_circle(c, 3.5, Color("#fff7c2") if on else Color("#d97706"))
-
-
-## The new phase's announcement on the board (Platformer.phase_note): a big title popping
-## in and a sub-line under it, both fading out at the end; the speaker's name is not shown.
-func _draw_phase_note(font: Font, note: Dictionary, r: Rect2, t: float) -> void:
-	var nt: float = note.t
-	var a := clampf(nt / 0.25, 0, 1) * clampf((Platformer.PHASE_TIME - nt) / 0.4, 0, 1)
-	var title := Text.plain(Text.t(str(note.key)))
-	var size := 34
-	var right := 1066.0 - 24.0
-	var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	while tw > right - Platformer.TICKER_LEFT and size > 20:
-		size -= 2
-		tw = font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	var pop := 1.0 + 0.25 * (1.0 - clampf(nt / 0.3, 0, 1)) + 0.02 * sin(t / 90.0)
-	var tp := Vector2(Platformer.TICKER_LEFT, r.position.y + 62)
-	draw_set_transform(tp, 0, Vector2(pop, pop))
-	Draw.radial_glow(self, Vector2(tw / 2, -10), tw * 0.55, Color(1, 0.8, 0.25, 0.25 * a))
-	draw_string_outline(font, Vector2.ZERO, title, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 6, Color(0.47, 0.2, 0.03, a))
-	draw_string(font, Vector2.ZERO, title, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(1, 0.86, 0.3, a))
-	draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-	var sub: String = str(note.get("sub", ""))
-	if sub != "":
-		var line := Text.plain(Text.t(sub))
-		var f: Font = Text.font_dialog
-		var sa := clampf((nt - 0.35) / 0.3, 0, 1) * a
-		var w := right - Platformer.TICKER_LEFT
-		var fs := 17
-		while fs > 12 and f.get_multiline_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, w, fs).y > 52:
-			fs -= 1
-		draw_multiline_string(f, Vector2(Platformer.TICKER_LEFT, r.position.y + 86 + f.get_ascent(fs)), line, HORIZONTAL_ALIGNMENT_LEFT, w, fs, -1, Color(INK, sa))
+	# Gold trim and the marquee: bulbs chasing along the top edge (PhaseBoard: the same
+	# board announces every phase).
+	PhaseBoard.draw_marquee(self, r, t, note, pf.wind < 0.5)
 
 
 ## The transformation: the stopped ticker's letters come loose one by one and drift up

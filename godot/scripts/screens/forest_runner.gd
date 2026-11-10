@@ -30,6 +30,8 @@ signal show_dialog(id: String)
 signal sun_game(n: int)
 ## The level-start sequence is over (Main then shows dialog 2A).
 signal intro_done
+## The phase announcement (announce_phase) is over.
+signal phase_done
 
 ## Coming from the cave: Kyra fell out of the arena (its floor became the grain);
 ## the forest fades in over it, she drops in from above onto the path and stands
@@ -131,6 +133,8 @@ const BIRD_SPEED := 6.0
 ## Updated by Main.
 var active := false
 var dialog_open := false
+## The phase's announcement on a board where the dialog box is (PhaseBoard); the run waits.
+var phase_note := {}
 
 ## Progress along the path (m); the speed grows with it.
 var dist := 0.0
@@ -436,6 +440,12 @@ func _process(delta: float) -> void:
 			lost_flyers.erase(f)
 	if not dialog_open and intro <= 0:
 		loop_note = maxf(0, loop_note - dt)
+	if not phase_note.is_empty():
+		phase_note = PhaseBoard.tick(phase_note, dt)
+		if phase_note.is_empty():
+			phase_done.emit()
+			# (Main opens 2A on this; it sets dialog_open itself from the next frame.)
+			dialog_open = true
 	_update_flyers(dt)
 	land_t = maxf(0, land_t - dt)
 	hints.update(dt, _wanted_hints())
@@ -457,14 +467,14 @@ func _process(delta: float) -> void:
 		if end_t >= END_GLIDE and not _end_sent:
 			_end_sent = true
 			finished.emit()
-	if active and not dialog_open and not done and not waiting:
+	if active and not dialog_open and not done and not waiting and phase_note.is_empty():
 		_update(dt)
 	queue_redraw()
 
 
 ## Focus while a drop is ready, the double jump while two are.
 func _wanted_hints() -> Array:
-	if intro > 0 or not active or dialog_open or done or waiting:
+	if intro > 0 or not active or dialog_open or done or waiting or not phase_note.is_empty():
 		return []
 	var out: Array = []
 	if drops >= 1.0 or slow:
@@ -786,6 +796,13 @@ func _sun_piece() -> void:
 
 func show_controls() -> void:
 	loop_note = CONTROLS_TIME
+
+
+## The phase of the cycle this level is, announced like in the jackpot climb (a board with
+## a marquee where the dialog box is); the run waits, then phase_done.
+func announce_phase(key: String, sub := "") -> void:
+	phase_note = PhaseBoard.note(key, sub)
+	Audio.play_sfx("cink-11.wav", 0.5)
 
 
 ## Starts the level-start sequence (see INTRO_TIME).
@@ -1122,6 +1139,7 @@ func _draw() -> void:
 	if intro <= 0:
 		_draw_hud()
 		_draw_loop_note()
+		PhaseBoard.draw(self, phase_note, time * 1000.0, "Iskra")
 	else:
 		_draw_intro_hud()
 	_draw_flyers()

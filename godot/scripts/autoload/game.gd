@@ -73,6 +73,7 @@ const WATER_PER_DROP := 4
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	load_save()
 	_setup_input()
 	PlayerArt.load_game_defaults()
 	# SpriteArt.load_game_defaults() runs in Text._ready (it needs the characters).
@@ -94,6 +95,139 @@ func reset_run() -> void:
 	water = 0
 	seeds = 0
 	gate_shift = 0
+
+
+# --- the save (user://save.json; on the web Godot keeps user:// in IndexedDB) ----------
+## {language, muted, chapter, checkpoint, iron, reached, finished}: the language and the
+## sound switch; the furthest place of the current playthrough (chapter 1 cave / 2 forest
+## run / 3 jackpot climb / 4 PMS maze, and its checkpoint: the cave's 1–4 and 5 = the boss,
+## the run's stage 0–3, the climb's 1–4, the maze's 1; `iron` = the cave's iron there);
+## `reached` = the furthest chapter ever (the title's phase picker) and `finished` (the end
+## screen was reached). Written by save_set / progress / mark_finished, read at boot.
+## Main decides what counts (developer shortcuts don't: Main._no_save).
+const SAVE_PATH := "user://save.json"
+const CHAPTERS := 4
+var save_path := SAVE_PATH
+var save := {}
+## Nothing is written (web previews ?title=continue / ?title=finished put a made-up save
+## into memory: it must not reach the real one).
+var save_readonly := false
+
+
+func load_save() -> void:
+	save = {}
+	if not FileAccess.file_exists(save_path):
+		return
+	var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(save_path))
+	if d is Dictionary:
+		save = d
+
+
+func write_save() -> void:
+	if save_readonly:
+		return
+	var f := FileAccess.open(save_path, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(save, " "))
+	f.close()
+
+
+func save_set(key: String, value: Variant) -> void:
+	if save.get(key) == value:
+		return
+	save[key] = value
+	write_save()
+
+
+func saved_chapter() -> int:
+	return clampi(int(save.get("chapter", 0)), 0, CHAPTERS)
+
+
+func saved_checkpoint() -> int:
+	return int(save.get("checkpoint", 0))
+
+
+## Is there a place to continue from (the title's Continue)?
+func has_progress() -> bool:
+	return saved_chapter() >= 1
+
+
+## The furthest chapter ever reached (0 = none; all of them once the game was finished).
+func reached_chapter() -> int:
+	if bool(save.get("finished", false)):
+		return CHAPTERS
+	return clampi(maxi(int(save.get("reached", 0)), saved_chapter()), 0, CHAPTERS)
+
+
+func is_finished() -> bool:
+	return bool(save.get("finished", false))
+
+
+## A place was reached: saved when it is further than the saved one (a later chapter, or
+## a later checkpoint of the same one; the same place keeps the larger iron).
+func progress(chapter: int, checkpoint: int, iron_now := 0) -> bool:
+	var ch := saved_chapter()
+	var cp := saved_checkpoint()
+	if chapter < ch or (chapter == ch and checkpoint < cp):
+		return false
+	if chapter == ch and checkpoint == cp and iron_now <= int(save.get("iron", 0)):
+		return false
+	save["chapter"] = chapter
+	save["checkpoint"] = checkpoint
+	save["iron"] = iron_now
+	save["reached"] = maxi(int(save.get("reached", 0)), chapter)
+	write_save()
+	return true
+
+
+## A new playthrough starts (New game, Restart game, a phase from the picker): its place
+## is saved from here on, so the old one (Continue) goes; the phases reached, `finished`,
+## the language and the sound stay.
+func new_playthrough() -> void:
+	if not (save.has("chapter") or save.has("checkpoint") or save.has("iron")):
+		return
+	save.erase("chapter")
+	save.erase("checkpoint")
+	save.erase("iron")
+	write_save()
+
+
+## The end screen was reached: every phase stays open in the title's picker, and there is
+## nothing left to continue (the next playthrough saves its own place again).
+func mark_finished() -> void:
+	save["finished"] = true
+	save["reached"] = CHAPTERS
+	save.erase("chapter")
+	save.erase("checkpoint")
+	save.erase("iron")
+	write_save()
+
+
+## The language the game starts in: ?lang= on the web (and it is kept), else the saved
+## one, else the browser's (sk / pt; Czech readers get Slovak), else English.
+static func pick_language(query: String, saved: String, browser: String) -> String:
+	for c in [query.to_lower(), saved]:
+		if c in ["sk", "en", "pt"]:
+			return c
+	var b := browser.to_lower().substr(0, 2)
+	if b == "cs":
+		return "sk"
+	return b if b in ["sk", "pt"] else "en"
+
+
+func start_language() -> String:
+	var query := ""
+	var browser := ""
+	if OS.has_feature("web"):
+		var q: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('lang') || ''")
+		var b: Variant = JavaScriptBridge.eval("navigator.language || ''")
+		query = q if q is String else ""
+		browser = b if b is String else ""
+	var lang := pick_language(query, str(save.get("language", "")), browser)
+	if query.to_lower() == lang:
+		save_set("language", lang)
+	return lang
 
 
 ## Level rows used by the game. A level edited in the dev menu can replace the

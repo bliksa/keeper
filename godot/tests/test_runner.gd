@@ -91,6 +91,33 @@ func finish_dialog(expect: String) -> void:
 
 
 func _run() -> void:
+	# The test keeps its own save file (never the player's) and starts without one, in English.
+	Game.save_path = "user://test_save.json"
+	DirAccess.remove_absolute(Game.save_path)
+	Game.load_save()
+	Text.language = "en"
+	step("the save: language, sound, the furthest place")
+	check(Game.save.is_empty() and not Game.has_progress() and Game.reached_chapter() == 0 and not Game.is_finished(), "no save: nothing to continue")
+	check(Game.pick_language("", "", "sk-SK") == "sk" and Game.pick_language("", "", "pt-BR") == "pt" and Game.pick_language("", "", "de") == "en" and Game.pick_language("", "", "cs") == "sk" and Game.pick_language("", "", "") == "en", "the first run takes the browser's language (sk / pt, else en)")
+	check(Game.pick_language("", "pt", "sk") == "pt" and Game.pick_language("SK", "pt", "en") == "sk" and Game.pick_language("xx", "pt", "en") == "pt", "the saved language wins over the browser's, ?lang= over both")
+	Text.choose_language("sk")
+	check(FileAccess.file_exists(Game.save_path), "choosing a language writes the save")
+	# A restart: the autoloads read the file again.
+	Game.save = {}
+	Text.language = "en"
+	Game.load_save()
+	Text.language = Game.start_language()
+	check(Text.language == "sk" and Game.save.get("language") == "sk", "the language persists across a restart (the save is read back)")
+	check(Game.progress(1, 2, 7) and not Game.progress(1, 1, 30) and Game.progress(2, 0) and not Game.progress(1, 4, 9) and Game.saved_chapter() == 2 and Game.saved_checkpoint() == 0, "only a further place replaces the saved one")
+	Game.save = {}
+	Game.load_save()
+	check(Game.has_progress() and Game.saved_chapter() == 2 and Game.reached_chapter() == 2 and Game.save.get("language") == "sk", "the furthest place is read back too")
+	Game.mark_finished()
+	check(Game.is_finished() and not Game.has_progress() and Game.reached_chapter() == Game.CHAPTERS, "a finished game: nothing to continue, every phase open")
+	DirAccess.remove_absolute(Game.save_path)
+	Game.load_save()
+	Text.language = "en"
+
 	step("level data")
 	var rows: PackedStringArray = Game.load_level_rows()
 	var L := LevelData.build(rows)
@@ -200,9 +227,33 @@ func _run() -> void:
 				boot_long.append("%s/%s %s %s %d" % [lang, b.text, b.get_minimum_size(), b.size, b.get_theme_font_size("font_size")])
 	Text.language = lang_b
 	check(boot_long.is_empty(), "the boot screen's buttons fit their text with KeeperDyslexic in sk / en / pt %s" % str(boot_long))
+	var boot0 := main._menu as BootScreen
+	var lang_lbl := []
+	for lang in Text.LANGUAGES:
+		Text.language = lang
+		await frames(1)
+		lang_lbl.append(boot0._subs.text)
+		if boot0._subs.get_minimum_size().x > 148:
+			lang_lbl.append("too wide")
+	check(lang_lbl == ["JAZYK", "LANGUAGE", "IDIOMA"], "the flags' label says what they do: Language (not Subtitles) %s" % str(lang_lbl))
+	(boot0._flags["pt"] as TextureButton).pressed.emit()
+	check(Text.language == "pt" and Game.save.get("language") == "pt", "a flag switches the language and saves it")
+	(boot0._flags["en"] as TextureButton).pressed.emit()
+	Game.save_set("muted", true)
 	main._menu.started.emit()
 	await frames(5)
 	check(main.state == "title", "title screen")
+	check(Audio.muted, "the saved sound switch is applied after the boot screen")
+	var ts0 := main._menu as TitleScreen
+	ts0._mute_btn.pressed.emit()
+	check(not Audio.muted and Game.save.get("muted") == false, "the title's sound switch is saved")
+	check(not ts0.can_continue() and not ts0._continue_btn.visible and ts0._start_btn.text == Text.t("BTN_START") and not ts0._chapters[0].visible and not ts0._finished.visible, "no save: just Start and Credits (no Continue, no phases)")
+	var en_pills := [ts0._mute_btn.text, ts0._mode_btn.text]
+	Text.language = "sk"
+	await frames(1)
+	check(ts0._mute_btn.text == "SO ZVUKOM" and ts0._mode_btn.text == "KLÁVESNICA" and en_pills == ["SOUND ON", "KEYBOARD"] and ts0._mute_btn.tooltip_text == "Vypnúť zvuk", "the title's sound / control pills are translated")
+	Text.language = "en"
+	await frames(1)
 
 	step("dialog font")
 	var nb := node_box()
@@ -271,13 +322,29 @@ func _run() -> void:
 		for mode in ["keyboard", "gamepad"]:
 			Game.control_mode = mode
 			await frames(1)
-			for b in [ts._start_btn, ts._credits_btn, ts._mute_btn, ts._mode_btn] + main._pause._buttons:
+			for muted in [false, true]:
+				Audio.muted = muted
+				ts._refresh()
+				for b in [ts._start_btn, ts._credits_btn, ts._mute_btn, ts._mode_btn] + main._pause._buttons:
+					if not _button_fits(b):
+						menu_long.append("%s/%s" % [lang, b.text])
+			Audio.muted = false
+			# With a save: Continue / New game and the phases' label.
+			Game.save["chapter"] = 1
+			ts._refresh()
+			for b in [ts._continue_btn, ts._start_btn]:
 				if not _button_fits(b):
 					menu_long.append("%s/%s" % [lang, b.text])
+			if ts._phases_lbl.get_minimum_size().x > 256 or Text.font_bold.get_string_size(Text.t("TITLE_FINISHED"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x > 230:
+				menu_long.append("%s/phases" % lang)
+			Game.save.erase("chapter")
+			ts._refresh()
+			for pr in EndScreen.fit_problems():
+				menu_long.append("%s/end/%s" % [lang, pr])
 	Text.language = lang_t
 	Game.control_mode = mode_t
 	await frames(1)
-	check(menu_long.is_empty(), "the title's and the pause menu's buttons fit their text in sk / en / pt %s" % str(menu_long))
+	check(menu_long.is_empty(), "the title's (with and without a save), the pause menu's and the end screen's texts fit in sk / en / pt %s" % str(menu_long))
 	var mg_long := []
 	for lang in Text.LANGUAGES:
 		Text.language = lang
@@ -323,6 +390,21 @@ func _run() -> void:
 	var in_cave := await until(func(): return main.state == "platformer", 30)
 	Input.action_release("move_right")
 	check(in_cave, "entered the cave")
+	check(Game.saved_chapter() == 1 and Game.saved_checkpoint() == 1, "the save: the cave is reached")
+	var cave_note := await until(func(): return main.platformer != null and PhaseBoard.showing(main.platformer.phase_note), 4)
+	check(cave_note and main.platformer.phase_note.key == "CAVE_PHASE_NEW" and node_box().node_id() == "", "the cave opens with its phase on the board (Phase: menstruation), before 1A")
+	var phase_bad: Array = []
+	var phase_lang := Text.language
+	for lang in ["sk", "en", "pt"]:
+		Text.language = lang
+		phase_bad.append_array(PhaseBoard.fit_problems())
+		for pair in [["0B3", ["menštruáci", "menstruation", "menstruação"]], ["CAVE_PHASE_NEW", ["menštruáci", "menstruation", "menstruação"]], ["1B1", ["maternica", "uterus", "útero"]], ["RUN_PHASE_NEW", ["folikulárna", "follicular", "folicular"]], ["2A2", ["folikul", "follicle", "folículo"]], ["2E1", ["folikul", "follicle", "folículo"]], ["PMS_PHASE_NEW", ["luteálna", "luteal", "lútea"]]]:
+			var words: Array = pair[1]
+			if not words.any(func(w): return Text.plain(Text.t(str(pair[0]))).to_lower().contains(w)):
+				phase_bad.append("%s/%s" % [lang, pair[0]])
+	Text.language = phase_lang
+	check(phase_bad.is_empty(), "every phase's announcement fits; menstruation, the cramp and the follicle are named in sk / en / pt %s" % str(phase_bad))
+	check(Text.voice_file("0B3") == "" and Text.voice_file("1B1") == "" and Text.voice_file("0B4") != "" and Text.voice_file("1C2") == "" and Text.voice_file("1C3") == "DIA_046.wav" and Text.voice_file("DIA_034") == "" and Text.voice_file("DIA_043") == "" and Text.voice_file("DIA_033") == "DIA_033.wav", "rewritten (Slovak) lines don't play their old recording, also the DIA_ ones; the others still do")
 	await finish_dialog("1A")
 	var pf: Platformer = main.platformer
 	check(pf != null and pf.active, "platformer active")
@@ -428,6 +510,7 @@ func _run() -> void:
 	await finish_dialog("mg1_after")
 	await frames(3)
 	check(main.state == "platformer" and Game.checkpoint == 2, "back in the cave, checkpoint 2")
+	check(Game.saved_chapter() == 1 and Game.saved_checkpoint() == 2 and int(Game.save.get("iron", -1)) == Game.iron, "the save: the cave's checkpoint 2 with her iron")
 
 	step("minigame 3 – pipes")
 	await _go_trigger(pf, "mg3")
@@ -485,6 +568,7 @@ func _run() -> void:
 	await frames(5)
 	var run_ok := await until(func(): return main.state == "runner" and main.runner != null, 8)
 	check(run_ok and Game.level == 2, "the forest run (level 2) starts after the boss")
+	check(Game.saved_chapter() == 2 and Game.saved_checkpoint() == 0, "the save: the forest run is reached")
 
 	step("level 2 – the forest run")
 	var rn0: ForestRunner = main.runner
@@ -493,7 +577,17 @@ func _run() -> void:
 	check(rn_landed and rn0.py == 0 and rn0._handoff_at >= ForestRunner.INTRO_FADE - 0.1 and rn0._handoff_h > 0, "Kyra falls on from where she was in the arena and lands (back to us)")
 	var played := await until(func(): return rn0.intro <= 0, 4)
 	await frames(3)
-	check(played and node_box().node_id() == "" and rn0.loop_note > 0, "then the run starts right away (no further dialog), the controls shown briefly")
+	check(played and node_box().node_id() == "" and PhaseBoard.showing(rn0.phase_note) and rn0.phase_note.key == "RUN_PHASE_NEW" and rn0.phase_note.sub == "RUN_PHASE_SUB", "then the board announces the phase (New phase: follicular)")
+	var hold_d := rn0.dist
+	await frames(20)
+	check(rn0.dist == hold_d and rn0.loop_note == 0.0 and rn0.hint_lines().is_empty(), "the run waits while the phase is announced")
+	var intro_2a := await until(func(): return node_box().node_id() == "2A", PhaseBoard.READ_TIME + 2)
+	var a_parts: Array = Text.dialogs["2A"].parts
+	check(intro_2a and rn0.phase_note.is_empty() and a_parts.size() <= 3 and a_parts.any(func(pt): return pt.speaker == "Iskra"), "then the short 2A: Iskra introduces herself and the goal (%d parts)" % a_parts.size())
+	check(rn0.dist == hold_d, "the run still waits during 2A")
+	await finish_dialog("2A")
+	await frames(3)
+	check(node_box().node_id() == "" and rn0.loop_note > 0, "then the run starts, the controls shown briefly")
 	var rn: ForestRunner = main.runner
 	await frames(3)
 	check(rn.active and not rn.dialog_open, "the run is active")
@@ -883,6 +977,7 @@ func _run() -> void:
 	await frames(2)
 	pf = main.platformer
 	check(pf.is_climb() and pf.is_up() and not pf.is_summit() and pf.p.y > pf.level_h - 500, "the jackpot climb starts at the bottom")
+	check(Game.saved_chapter() == 3 and Game.saved_checkpoint() >= 1, "the save: the jackpot climb is reached")
 	check(not pf.wave.active and pf.camera_y > pf.level_h - 1200, "no LH wave; the camera starts at the bottom")
 	await seconds(0.5)
 	check(pf.p.is_grounded, "stands on the climb's floor")
@@ -1236,6 +1331,8 @@ func _run() -> void:
 	check(not is_instance_valid(pf), "the climb is gone")
 	var warm_fades := await until(func(): return pms.warm < 0.5, 4)
 	check(warm_fades and main._fade.modulate.a == 0.0, "the warm tint fades to the maze's dusk")
+	var pms_note := await until(func(): return PhaseBoard.showing(pms.phase_note), 4)
+	check(pms_note and pms.phase_note.key == "PMS_PHASE_NEW" and pms.phase_speaker == "Progesteronka" and node_box().node_id() == "" and pms.hold_input, "the maze announces its phase on the board (New phase: luteal), before 4A; she stands still meanwhile")
 	await finish_dialog("4A")
 	check(Text.dialogs["4A"].parts.any(func(pt): return pt.speaker == "Progesteronka"), "4A: Progesterónka greets her inside the corpus luteum")
 	var cooled := await until(func(): return pms.warm == 0.0 and pms.warm_t < 0, 6)
@@ -1246,7 +1343,7 @@ func _run() -> void:
 
 	step("level 4 – the PMS maze")
 	await _pms_play(pms)
-	check(main.state == "title" and Game.level == 1, "after 4E: back to the title")
+	await _end_and_continue()
 	main._dev_action("checkpoint6", 2)
 	var door_dev := await until(func(): return main.state == "platformer" and main.platformer != null and main.platformer.is_pms() and main.platformer.pms_items == 3, 8)
 	await frames(3)
@@ -2177,7 +2274,7 @@ func _run() -> void:
 	de.select("2C")
 	await frames(2)
 	var sp_pick: OptionButton = de._lines.get_child(0).find_children("*", "OptionButton", true, false)[0]
-	check(sp_pick.get_item_text(sp_pick.item_count - 1) == "New character…" and Text.speaker_name("Estrogenka") in ["Estra", "Estrogenka"], "each line has a speaker dropdown with the characters and New character…")
+	check(sp_pick.get_item_text(sp_pick.item_count - 1) == "New character…" and Text.speaker_name("Estrogenka") in ["Estra", "Estrogénka"], "each line has a speaker dropdown with the characters and New character…")
 	var dlg := de.character_dialog(0)
 	check(dlg != null, "New character asks for the name")
 	dlg.queue_free()
@@ -3006,6 +3103,163 @@ func _pms_play(pf: Platformer) -> void:
 	check(done and pf.hold_input, "the open door ends the level (pms_done)")
 	await finish_dialog("4E")
 	await frames(5)
+
+
+## After 4E: the end screen (the ring, four phases, the buttons), the save marks the game as
+## finished; then the title's Continue and phase picker with saves of different places.
+func _end_and_continue() -> void:
+	step("the end screen")
+	var es := main._menu as EndScreen
+	check(main.state == "end" and es != null and Game.level == 1 and main.platformer == null, "after 4E: the end screen (not the title)")
+	if es == null:
+		return
+	check(Game.is_finished() and not Game.has_progress() and Game.reached_chapter() == 4, "the save marks the game as finished")
+	check(EndScreen.PHASES.size() == 4 and es._cards.size() == 4 and EndScreen.PHASES.map(func(ph): return ph.name) == ["PHASE_MENSTRUATION", "PHASE_FOLLICULAR", "PHASE_OVULATION", "PHASE_LUTEAL"], "the four phases in the cycle's order")
+	var texts := {}
+	for ph: Dictionary in EndScreen.PHASES:
+		texts[Text.t(ph.text)] = true
+	check(texts.size() == 4 and not texts.has("END_PHASE_1") and Text.t("END_CLOSING") != "END_CLOSING", "one take-away per phase and a closing line")
+	# The ring runs clockwise from the top: each phase's connector lies in its card's corner.
+	var side_ok := true
+	for ph: Dictionary in EndScreen.PHASES:
+		var dp := EndScreen.day_point(ph.day, EndScreen.RING_OUT)
+		var r: Rect2 = ph.rect
+		if absf(dp.x - EndScreen.RING_C.x) > 20 and (dp.x > EndScreen.RING_C.x) != (r.position.x > EndScreen.RING_C.x):
+			side_ok = false
+	check(side_ok and EndScreen.day_point(1.0, 100).y < EndScreen.RING_C.y and EndScreen.day_point(8.0, 100).x > EndScreen.RING_C.x and EndScreen.day_point(22.0, 100).x < EndScreen.RING_C.x, "the ring runs clockwise from day 1 at the top; every card is on its phase's side (ovulation at the bottom)")
+	# The Enter that closed 4E can't skip it: nothing works until everything is shown.
+	var again := [0]
+	es.again_pressed.connect(func(): again[0] += 1)
+	_key(KEY_ENTER, true)
+	await frames(2)
+	_key(KEY_ENTER, false)
+	es._again.pressed.emit()
+	await frames(2)
+	check(main.state == "end" and again[0] == 0 and es._again.disabled and es._cards[3].modulate.a < 1.0, "the buttons wait until the cards have come in")
+	await seconds(EndScreen.READY + 0.2)
+	check(es.ready_for_input() and not es._again.disabled and es._cards.all(func(c): return c.modulate.a == 1.0) and es._again.modulate.a == 1.0, "then all four cards and both buttons show")
+	check(es.buttons().all(func(b): return _button_fits(b)) and es._again.text == Text.t("BTN_PLAY_AGAIN") and es._menu.text == Text.t("BTN_MAIN_MENU"), "Play again / Main menu fit their buttons")
+	es._menu.pressed.emit()
+	await frames(5)
+	var ts := main._menu as TitleScreen
+	check(main.state == "title" and ts != null, "Main menu goes to the title")
+	check(not ts._continue_btn.visible and ts._finished.visible and ts._start_btn.text == Text.t("BTN_START") and ts._chapters.all(func(b): return b.visible and not b.disabled), "a finished game: a Finished mark, no Continue, every phase open")
+	# Play again from the end screen: a new game from the forest.
+	main._go_end()
+	await frames(3)
+	es = main._menu as EndScreen
+	es.skip_intro()
+	_key(KEY_ENTER, true)
+	await frames(2)
+	_key(KEY_ENTER, false)
+	await frames(5)
+	check(main.state == "intro" and main.forest != null, "Play again (Enter) starts a new game")
+	main._quit_to_title()
+	await frames(3)
+
+	step("the title: Continue and the phases")
+	# A phase from the picker: the PMS maze from its start.
+	ts = main._menu as TitleScreen
+	ts._chapters[3].pressed.emit()
+	var pick_ok := await until(func(): return main.state == "platformer" and main.platformer != null and main.platformer.is_pms(), 6)
+	check(pick_ok, "the phase picker starts the PMS maze")
+	main._quit_to_title()
+	await frames(3)
+	# Saves of different places: Continue starts each at its level and checkpoint.
+	Game.save = {"language": "en", "chapter": 1, "checkpoint": 3, "iron": 9, "reached": 1}
+	Game.write_save()
+	Game.save = {}
+	Game.load_save()
+	main._go_title()
+	await frames(3)
+	ts = main._menu as TitleScreen
+	check(ts.can_continue() and ts._continue_btn.visible and ts._start_btn.text == Text.t("BTN_NEW_GAME") and not ts._finished.visible, "with a save: Continue above New game")
+	check(not ts._chapters[0].disabled and ts._chapters[1].disabled and ts._chapters[3].disabled and ts._continue_btn.position.y + ts._continue_btn.size.y <= ts._start_btn.position.y and ts._logo.position.y + ts._logo.size.y <= ts._continue_btn.position.y + 1, "only the phases reached are open; Continue sits between the logo and New game")
+	ts._chapters[2].pressed.emit()
+	await frames(3)
+	check(main.state == "title", "a locked phase does nothing")
+	ts._continue_btn.pressed.emit()
+	var c1 := await until(func(): return main.state == "platformer" and main.platformer != null and Game.level == 1, 6)
+	await frames(3)
+	check(c1 and Game.checkpoint == 3 and Game.cave_checkpoint == 3 and Game.iron == 9 and Game.has_breathing and main.platformer._start_checkpoint == 3 and not PhaseBoard.showing(main.platformer.phase_note), "Continue: the cave at checkpoint 3 with the saved iron")
+	main._quit_to_title()
+	await frames(3)
+	Game.save = {"chapter": 1, "checkpoint": 5, "iron": 14, "reached": 1}
+	(main._menu as TitleScreen).continue_pressed.emit()
+	var c1b := await until(func(): return main.state == "platformer" and main.platformer != null and main.platformer.boss.active, 8)
+	check(c1b and Game.checkpoint == 5 and Game.boss_iron == 14, "Continue: the boss fight with the saved iron")
+	main._quit_to_title()
+	await frames(3)
+	Game.save = {"chapter": 2, "checkpoint": 2, "reached": 2}
+	_key(KEY_ENTER, true)
+	await frames(2)
+	_key(KEY_ENTER, false)
+	var c2 := await until(func(): return main.state == "runner" and main.runner != null, 6)
+	await frames(3)
+	check(c2 and main.runner.stage == 2 and main.runner.sun == 2 * ForestRunner.SUN_PER_GAME, "Continue (Enter): the forest run at stage 3 with its sun pieces")
+	main._quit_to_title()
+	await frames(3)
+	Game.save = {"chapter": 3, "checkpoint": 3, "reached": 3}
+	(main._menu as TitleScreen).continue_pressed.emit()
+	# (The title stays during the fade: a second press, or New game, does nothing more.)
+	(main._menu as TitleScreen).continue_pressed.emit()
+	(main._menu as TitleScreen).start_pressed.emit()
+	await frames(2)
+	check(main.state == "title" and main._title_locked and Game.saved_chapter() == 3, "a start from the title locks it: New game during the fade does nothing")
+	var c3 := await until(func(): return main.state == "platformer" and main.platformer != null and main.platformer.is_climb(), 6)
+	await frames(3)
+	check(c3 and Game.checkpoint == 3 and main.platformer._start_checkpoint == 3, "Continue: the jackpot climb at its 2nd jackpot row")
+	check(str(main.platformer.phase_note.get("key", "")) == "CLIMB_PHASE_NEW", "a climb started from the title announces its phase on the board")
+	check(not main._title_locked, "the title's lock goes with the title")
+	main._quit_to_title()
+	await frames(3)
+	Game.save = {"chapter": 4, "checkpoint": 1, "reached": 4}
+	(main._menu as TitleScreen).continue_pressed.emit()
+	var c4 := await until(func(): return main.state == "platformer" and main.platformer != null and main.platformer.is_pms(), 6)
+	check(c4, "Continue: the PMS maze")
+	main._quit_to_title()
+	await frames(3)
+	# New game is a new playthrough: its place is saved from now on (the old Continue place
+	# goes), the language and the phases reached stay.
+	Game.save = {"language": "en", "chapter": 3, "checkpoint": 3, "iron": 4, "reached": 3}
+	(main._menu as TitleScreen).start_pressed.emit()
+	await frames(5)
+	check(main.state == "intro" and not Game.has_progress() and Game.reached_chapter() == 3 and Game.save.get("language") == "en", "New game starts from the forest: a new playthrough, the phases reached and the language stay")
+	check(Game.progress(1, 2, 5) and Game.saved_chapter() == 1 and Game.saved_checkpoint() == 2 and Game.reached_chapter() == 3, "the new playthrough saves its own place")
+	main._quit_to_title()
+	await frames(3)
+	# A phase from the picker is a new playthrough from that phase.
+	Game.save = {"chapter": 3, "checkpoint": 3, "reached": 3}
+	(main._menu as TitleScreen)._chapters[0].pressed.emit()
+	var p1 := await until(func(): return main.state == "platformer" and main.platformer != null and Game.level == 1, 6)
+	check(p1 and Game.saved_chapter() == 1 and Game.saved_checkpoint() == 1 and Game.reached_chapter() == 3, "a phase from the picker starts a new playthrough there")
+	main._quit_to_title()
+	await frames(3)
+	# Developer shortcuts don't touch the save.
+	Game.save = {"chapter": 1, "checkpoint": 1, "reached": 1}
+	main._dev_action("checkpoint6", 1)
+	await until(func(): return main.state == "platformer" and main.platformer != null and main.platformer.is_pms(), 6)
+	check(Game.saved_chapter() == 1 and Game.reached_chapter() == 1, "a developer shortcut doesn't move the save")
+	main._quit_to_title()
+	await frames(3)
+	# (Web ?run=hit, a shortcut that doesn't go through _dev_action.)
+	Game.save = {"chapter": 1, "checkpoint": 1, "reached": 1}
+	main._dev_runner_hits()
+	await until(func(): return main.state == "runner" and main.runner != null, 6)
+	check(Game.saved_chapter() == 1 and Game.reached_chapter() == 1 and main._no_save, "the web shortcut ?run=hit doesn't move the save")
+	main._quit_to_title()
+	await frames(3)
+	# A preview save (?title=continue / ?title=finished) is never written.
+	Game.save = {"chapter": 1, "checkpoint": 1, "reached": 1}
+	Game.write_save()
+	Game.save_readonly = true
+	Game.save.merge({"finished": true, "reached": Game.CHAPTERS}, true)
+	Game.save_set("muted", true)
+	Game.save_readonly = false
+	Game.load_save()
+	check(not Game.is_finished() and Game.reached_chapter() == 1 and not Game.save.has("muted"), "a read-only (preview) save is not written")
+	Game.save = {}
+	DirAccess.remove_absolute(Game.save_path)
 
 
 ## The maze's light is her energy: it drains (slower standing still), the radius follows it,

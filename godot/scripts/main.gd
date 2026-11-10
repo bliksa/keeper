@@ -6,7 +6,10 @@ extends Node
 ##   → platformer → boss → level 2 (the forest run, runner): mg8 memory → mg9 catch
 ##   → mg10 pairs → 2E → level 3 (the jackpot climb, id 5, up with the board)
 ##   → climb_top → 3E (on the board) → the transformation (the view turns upside down)
-##   → level 4 (the PMS maze, id 6): 4A, three comfort items (4B–4D), the door → 4E → title
+##   → level 4 (the PMS maze, id 6): 4A, three comfort items (4B–4D), the door → 4E
+##   → the end screen (EndScreen: the cycle's ring, a take-away per phase) → title / again
+## The save (Game.save, user://save.json): the furthest place reached (_progress); the
+## title's Continue (_continue_game) and phase picker (_start_chapter) start from it.
 ## Old levels (developer menu only): the meadow (id 2) → the old summit (id 3:
 ## mg5 iron plate → mg6 rhythm → mg7 body signals → LH wave chase → summit → title).
 ## plus the developer menu ("dev").
@@ -34,6 +37,14 @@ var _run_id := 0
 ## Running screen fades (killed when a run is aborted, so a fade frozen by the
 ## pause menu can't cover the new run).
 var _fade_tws: Array = []
+## A developer / web shortcut started this run (_dev_action, ?mg=, ?boss=, ?run=) or a debug
+## key was used in it: it doesn't touch the save. Cleared by a real start (new game,
+## Continue, a phase from the title).
+var _no_save := false
+## A start from the title is fading out (_start_saved): the title's buttons do nothing more.
+var _title_locked := false
+## _start_climb → _start_level: the climb announces its phase on the board.
+var _climb_announce := false
 
 
 func _ready() -> void:
@@ -111,6 +122,22 @@ func _ready() -> void:
 		var vq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('cave') || ''")
 		if vq is String and vq != "":
 			_dev_action.call_deferred("checkpoint", clampi(int(vq), 0, 4))
+		# ?end=1: the end screen (the cycle's ring); ?title=1: straight to the title;
+		# ?lang=sk|en|pt: the language (Game.start_language; it is saved).
+		var eq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('end') || ''")
+		if eq is String and eq != "":
+			_go_end.call_deferred()
+		var tq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('title') || ''")
+		if tq is String and tq != "":
+			# ?title=continue / ?title=finished: the title as with such a save (in memory
+			# only: Game.save_readonly, nothing of this visit is written).
+			if tq == "continue" or tq == "finished":
+				Game.save_readonly = true
+			if tq == "continue":
+				Game.save.merge({"chapter": 2, "checkpoint": 1, "reached": 2}, true)
+			elif tq == "finished":
+				Game.save.merge({"finished": true, "reached": Game.CHAPTERS}, true)
+			_go_title.call_deferred()
 
 
 ## ?climb=power: the climb with three ready hearts, a super jump and the magnet (their
@@ -130,6 +157,7 @@ func _dev_climb_powers() -> void:
 ## ?run=reload / ?climb=reload: the water's / the hearts' magazine emptied with a full
 ## reserve every few seconds: the reload plays drop by drop / heart by heart.
 func _dev_meter_reload(run_level: bool) -> void:
+	_no_save = true
 	var run := _run_id
 	if run_level:
 		await _start_runner(false, 1)
@@ -150,6 +178,7 @@ func _dev_meter_reload(run_level: bool) -> void:
 
 
 func _dev_boss_win() -> void:
+	_no_save = true
 	_clear_menu()
 	await _skip_to_boss(20)
 	await get_tree().create_timer(1.0).timeout
@@ -158,6 +187,7 @@ func _dev_boss_win() -> void:
 
 
 func _dev_runner_hits() -> void:
+	_no_save = true
 	await _start_runner(false, 1)
 	_node_box.close()
 	var run := _run_id
@@ -194,6 +224,7 @@ func _dev_runner_end() -> void:
 
 ## Opens a minigame on its own (developer shortcut ?mg=, tests).
 func open_minigame_for_dev(id: String) -> void:
+	_no_save = true
 	_clear_menu()
 	Game.has_breathing = true
 	Game.intro_done = true
@@ -248,7 +279,7 @@ func _set_state(s: String) -> void:
 				Audio.play_bgm("chamber.mp3" if Game.level == 1 else "forest.mp3", 0.5)
 		"runner": Audio.play_bgm("forest.mp3", 0.55)
 		"mg2", "mg3", "mg4", "mg5", "mg6", "mg7", "mg8", "mg9", "mg10", "mg11": Audio.play_bgm("minihra.mp3", 0.5)
-		"title": Audio.play_bgm("menu.mp3", 0.5)
+		"title", "end": Audio.play_bgm("menu.mp3", 0.5)
 
 
 ## Fade the screen to `col` (alpha `to`) over `time` seconds.
@@ -282,6 +313,7 @@ func _clear_minigame() -> void:
 
 
 func _clear_menu() -> void:
+	_title_locked = false
 	if _menu:
 		_menu.queue_free()
 		_menu = null
@@ -321,7 +353,8 @@ func _go_boot() -> void:
 	state = "boot"
 	var b := BootScreen.new()
 	b.started.connect(func():
-		Audio.muted = false
+		# (The sound switch is remembered: the title's SOUND ON / OFF.)
+		Audio.muted = bool(Game.save.get("muted", false))
 		_go_title())
 	b.dev_pressed.connect(func():
 		Audio.muted = false
@@ -336,10 +369,93 @@ func _go_title() -> void:
 	_node_box.close()
 	_set_dim(false)
 	_set_state("title")
+	_title_locked = false
 	var t := TitleScreen.new()
-	t.start_pressed.connect(_start_new_game)
+	t.start_pressed.connect(_title_new_game)
+	t.continue_pressed.connect(_continue_game)
+	t.chapter_pressed.connect(_start_chapter)
 	_menu_layer.add_child(t)
 	_menu = t
+
+
+## The end of the game: the cycle's ring with a take-away per phase (EndScreen), then
+## Play again (a new game) or the main menu.
+func _go_end() -> void:
+	_clear_menu()
+	_clear_world()
+	_node_box.close()
+	_panel_box.close()
+	_set_dim(false)
+	_set_state("end")
+	var e := EndScreen.new()
+	e.again_pressed.connect(_start_new_game)
+	e.menu_pressed.connect(_go_title)
+	_menu_layer.add_child(e)
+	_menu = e
+
+
+## A place of the real game was reached: remembered if it is the furthest (Game.progress).
+## chapter 1 cave (checkpoint 1–4, 5 = the boss; its iron), 2 forest run (stage 0–3),
+## 3 jackpot climb (1–4), 4 PMS maze (1).
+func _progress(chapter: int, checkpoint: int, iron := 0) -> void:
+	if not _no_save:
+		Game.progress(chapter, checkpoint, iron)
+
+
+## The title's New game (also Continue with nothing to continue).
+func _title_new_game() -> void:
+	if _title_locked:
+		return
+	_start_new_game()
+
+
+## The title's Continue: the furthest place of the playthrough, by the levels' own starts.
+func _continue_game() -> void:
+	if _title_locked:
+		return
+	if not Game.has_progress():
+		_start_new_game()
+		return
+	_start_saved(Game.saved_chapter(), Game.saved_checkpoint(), int(Game.save.get("iron", 0)))
+
+
+## The title's phase picker: a phase from its start (only the ones reached).
+func _start_chapter(n: int) -> void:
+	if _title_locked or n < 1 or n > Game.reached_chapter():
+		return
+	# A new playthrough from that phase: its places are saved from here on (the phases
+	# reached stay open in the picker).
+	Game.new_playthrough()
+	_start_saved(n, 0 if n == 2 else 1, Game.RETRY_IRON)
+
+
+## (The title stays on screen during the fade: it is locked and the run id bumped, so a
+## second press or an older pending start can't put another run on top.)
+func _start_saved(chapter: int, checkpoint: int, iron: int) -> void:
+	_title_locked = true
+	_run_id += 1
+	if _menu is TitleScreen:
+		_menu.set_process_unhandled_input(false)
+	_no_save = false
+	Game.reset_run()
+	Game.has_breathing = true
+	Game.intro_done = true
+	match chapter:
+		1:
+			if checkpoint >= 5:
+				_skip_to_boss(maxi(iron, Game.RETRY_IRON))
+			else:
+				var cp := clampi(checkpoint, 1, 4)
+				# (Past the first minigame she has met the cramps: 1B doesn't replay.)
+				Game.cramp_taught = cp >= 2
+				_start_cave(cp, 0 if cp == 1 else maxi(iron, Game.RETRY_IRON))
+		2:
+			Game.iron = 20
+			_start_runner(true, clampi(checkpoint, 0, 3))
+		3:
+			_start_climb(clampi(checkpoint, 1, 4), true, true)
+		_:
+			_start_pms(1)
 
 
 ## Developer mode: behind the team password once it is set up (DevAccess).
@@ -367,6 +483,7 @@ func _open_dev() -> void:
 
 
 func _dev_action(name: String, value: int) -> void:
+	_no_save = name != "new_game"
 	match name:
 		"new_game":
 			_start_new_game()
@@ -467,7 +584,12 @@ func _quit_to_title() -> void:
 	_go_title()
 
 
+## A new playthrough: the save's place (Continue) starts again with it, the phases reached
+## stay (Game.new_playthrough).
 func _start_new_game() -> void:
+	_no_save = false
+	_run_id += 1
+	Game.new_playthrough()
 	Game.reset_run()
 	_clear_menu()
 	_start_intro()
@@ -494,8 +616,11 @@ func _breathing_done() -> void:
 	Game.checkpoint = 1
 	_clear_minigame()
 	if Game.intro_done:
-		_start_cave(1, Game.iron)
-		_dialog("0D")
+		# (Developer shortcut ?mg=mg1.) 0D first, then the cave with its phase board.
+		var run := _run_id
+		_dialog("0D", func():
+			if run == _run_id:
+				_start_cave(1, Game.iron))
 	else:
 		_set_state("intro")
 		forest.has_breathing = true
@@ -530,8 +655,12 @@ func _start_summit(checkpoint: int, iron: int, fade := true) -> void:
 
 ## (Re)start the jackpot climb (level 3 of the game, id 5): 1 start, 2–4 the
 ## 1st–3rd jackpot row, 5 near the top. No iron, no game over.
-func _start_climb(checkpoint := 1, fade := true) -> void:
+## from_title (or checkpoint 1): the phase on the board ("New phase: ovulation"; a start from its beginning or
+## from the title: the hand-over from the forest run announces it itself, _into_climb).
+func _start_climb(checkpoint := 1, fade := true, from_title := false) -> void:
 	Game.upgrades = {}
+	_progress(3, clampi(checkpoint, 1, 4))
+	_climb_announce = from_title or checkpoint == 1
 	await _start_level(Game.CLIMB_ID, checkpoint, Game.iron, fade)
 
 
@@ -539,6 +668,7 @@ func _start_climb(checkpoint := 1, fade := true) -> void:
 ## three comfort items found; developer menu). 4A when it shows.
 func _start_pms(checkpoint := 1, fade := true) -> void:
 	var run := _run_id
+	_progress(4, 1)
 	await _start_level(Game.PMS_ID, mini(checkpoint, 1), Game.iron, fade)
 	if run != _run_id or platformer == null or not platformer.is_pms():
 		return
@@ -557,7 +687,7 @@ func _start_pms(checkpoint := 1, fade := true) -> void:
 	else:
 		await get_tree().create_timer(0.4).timeout
 		if run == _run_id and platformer != null and platformer.is_pms():
-			_dialog("4A")
+			_pms_phase_then_4a(platformer)
 
 
 ## The developer shortcut to the climb's wheel: from the 1st jackpot row onto the wheel's row.
@@ -610,6 +740,7 @@ func _into_pms(old: Platformer) -> void:
 	Game.level = Game.PMS_ID
 	Game.checkpoint = 1
 	Game.upgrades = {}
+	_progress(4, 1)
 	var pf := _make_platformer(Game.PMS_ID, 1)
 	pf.hold_input = true
 	_world_layer.add_child(pf)
@@ -622,8 +753,24 @@ func _into_pms(old: Platformer) -> void:
 	await get_tree().create_timer(Platformer.WARM_IRIS + 0.5, false).timeout
 	if run != _run_id or platformer != pf:
 		return
-	pf.hold_input = false
-	_dialog("4A")
+	_pms_phase_then_4a(pf)
+
+
+## The maze's phase on the board ("New phase: luteal"), then 4A. (Polled: the pause menu
+## can stop it half way.)
+## She stands still meanwhile (hold_input, as the forest run waits): nothing can be picked
+## up under the board, so no other dialog can be open when 4A comes.
+func _pms_phase_then_4a(pf: Platformer) -> void:
+	var run := _run_id
+	pf.hold_input = true
+	pf.announce_phase("PMS_PHASE_NEW", "PMS_PHASE_SUB", PhaseBoard.READ_TIME, 0.0, "Progesteronka")
+	while is_instance_valid(pf) and (pf.phase_showing() or _node_box.is_open()):
+		await get_tree().process_frame
+		if run != _run_id:
+			return
+	if run == _run_id and platformer == pf and is_instance_valid(pf):
+		pf.hold_input = false
+		_dialog("4A")
 
 
 ## retry: a "try again" (Main._retry_cave / _retry_boss): the level's dialog A doesn't replay,
@@ -653,6 +800,15 @@ func _start_level(lvl: int, checkpoint: int, iron: int, fade := true, retry := f
 		platformer.p.invuln_timer = 2
 		if lvl == 1 and checkpoint < 5 and Game.rest_y >= 0 and not platformer.place_at_rest(Game.rest_y):
 			Game.rest_y = -1.0
+	if lvl == 1 and not retry and checkpoint < 5:
+		_progress(1, clampi(checkpoint, 1, 4), iron)
+	if lvl == 1 and checkpoint <= 1 and not retry:
+		# The cave opens with its phase (the board, then 1A).
+		platformer.announce_phase("CAVE_PHASE_NEW", "CAVE_PHASE_SUB", PhaseBoard.READ_TIME, 0.9)
+	if lvl == Game.CLIMB_ID and _climb_announce:
+		# (The delay covers the fade from black, as in the cave.)
+		platformer.announce_phase("CLIMB_PHASE_NEW", "CLIMB_PHASE_SUB", Platformer.PHASE_TIME, 0.9 if fade else 0.0)
+	_climb_announce = false
 	_world_layer.add_child(platformer)
 	_set_state("platformer")
 	if fade:
@@ -822,7 +978,8 @@ func _on_trigger(name: String) -> void:
 			# The PMS maze is dark: the lantern makes her light bigger (4G).
 			_dialog(PmsMaze.LANTERN_DIALOG)
 		"pms_done":
-			# The open door: the cycle comes round (4E), then the title.
+			# The open door: the cycle comes round (4E), then the end screen (the game is
+			# finished: the save remembers it).
 			Game.checkpoint = 5
 			var run6 := _run_id
 			await get_tree().create_timer(0.8).timeout
@@ -830,7 +987,9 @@ func _on_trigger(name: String) -> void:
 				return
 			_dialog("4E", func():
 				Game.reset_run()
-				_go_title())
+				if not _no_save:
+					Game.mark_finished()
+				_go_end())
 		"jackpot":
 			# A jackpot row in the climb is a checkpoint (2..4 = the 1st..3rd row).
 			var reached := 0
@@ -839,9 +998,11 @@ func _on_trigger(name: String) -> void:
 					if e.trigger_type == "jackpot" and e.collected:
 						reached += 1
 			Game.checkpoint = clampi(reached + 1, 2, 4)
+			_progress(3, Game.checkpoint)
 		"end":
 			Game.checkpoint = 5
 			Game.boss_iron = Game.iron
+			_progress(1, 5, Game.iron)
 			_dialog("1C")
 		"game_over", "game_over_boss":
 			_set_dim(true)
@@ -967,6 +1128,7 @@ func _cave_checkpoint(n: int) -> void:
 	Game.cave_checkpoint = n
 	Game.checkpoint_iron = Game.iron
 	Game.rest_y = -1.0
+	_progress(1, n, Game.iron)
 
 
 func _mg4_done() -> void:
@@ -981,6 +1143,7 @@ func _back_to_cave() -> void:
 		# The forest run goes on with its next stage.
 		_set_state("runner")
 		runner.after_minigame()
+		_progress(2, clampi(runner.stage, 0, 3))
 		return
 	_set_state("platformer")
 
@@ -1092,6 +1255,7 @@ func _start_runner(fade := true, stage := 0, from_cave: Texture2D = null, over_c
 	Game.level = 2
 	Game.water = 0
 	Game.seeds = 0
+	_progress(2, clampi(stage, 0, 3))
 	runner = ForestRunner.new()
 	runner.finished.connect(_runner_done)
 	runner.sun_game.connect(_runner_minigame)
@@ -1121,13 +1285,25 @@ func _start_runner(fade := true, stage := 0, from_cave: Texture2D = null, over_c
 					var v: Array = (old_world as Platformer).exit_visual()
 					runner.handoff(v[0], v[1])
 				old_world.queue_free())
-		runner.intro_done.connect(runner.show_controls)
+		_runner_opening(runner)
 	elif stage == 0:
-		# The level start: the forest appears, Kyra jumps in, then Iskra talks.
+		# The level start: the forest appears, Kyra jumps in, then the phase and Iskra.
 		runner.start_intro(from_cave)
-		runner.intro_done.connect(func(): _dialog("2A"))
+		_runner_opening(runner)
 	else:
-		_dialog("2A")
+		_dialog("2A", runner.show_controls)
+
+
+## How the forest run opens once Kyra has landed: the phase on the board ("New phase:
+## follicular", ForestRunner.announce_phase; the run waits), then the short 2A (Iskra, the
+## goal, what water does), then the run starts with the controls line.
+func _runner_opening(rn: ForestRunner) -> void:
+	rn.intro_done.connect(func(): rn.announce_phase("RUN_PHASE_NEW", "RUN_PHASE_SUB"))
+	rn.phase_done.connect(func():
+		if runner == rn and state == "runner":
+			_dialog("2A", func():
+				if is_instance_valid(rn):
+					rn.show_controls()))
 
 
 func _runner_dialog(id: String) -> void:
@@ -1167,6 +1343,7 @@ func _into_climb() -> void:
 	Game.checkpoint = 1
 	Game.upgrades = {}
 	Game.has_breathing = true
+	_progress(3, 1)
 	var pf := _make_platformer(Game.CLIMB_ID, 1)
 	pf.rise_wait = CLIMB_IN + Platformer.RISE_GRACE
 	pf.sun_glow = 1.0
@@ -1223,11 +1400,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	# or with ?dev=1 on the web (Game.dev_unlocked), never for a normal player.
 	if not Game.dev_unlocked:
 		return
+	if state.begins_with("mg") and event.is_action_pressed("skip_minigame"):
+		# (X skips a minigame, Minigame._unhandled_input: not the player's progress either.)
+		_no_save = true
 	if state != "platformer" or not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	if platformer and platformer.corridor_t > 0:
 		# Walking into the corridor: the run is about to start.
 		return
+	if event.physical_keycode in [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_G, KEY_H, KEY_C, KEY_X]:
+		# A debug key: what follows in this run is not the player's progress.
+		_no_save = true
 	if event.shift_pressed and event.physical_keycode in [KEY_2, KEY_3, KEY_4, KEY_5]:
 		# Shift+2…5: jump to the minigame / boss (level 2: LH wave) trigger.
 		if platformer.is_climb():

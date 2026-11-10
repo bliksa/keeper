@@ -1,33 +1,38 @@
 {
- "_comment": "Dialogs. Story dialogs are named <level><letter> (0 = the prologue in the forest, 1 cave, 2 forest run, 3 jackpot climb, 4 the PMS maze, M the old meadow, S the old summit) and their lines <level><letter><n>, e.g. 2C3 = level 2, dialog C, line 3; the line's text key in data/i18n/<lang>.json is the same name. A lowercase letter in a level map starts the dialog of that level with that letter (c in level 2 = 2C); A is said when the level starts (except the jackpot climb, where 3A..3D explain the power-ups on the board and 3E ends it there, without buttons). Minigame talk (mg*_start / _after / ...) is not a story dialog and keeps its own names. Edit in Developer mode > Dialogs. Voice file = voice_overrides[key] or <key>.wav in assets/audio.",
+ "_comment": "Dialogs. Story dialogs are named <level><letter> (0 = the prologue in the forest, 1 cave, 2 forest run, 3 jackpot climb, 4 the PMS maze, M the old meadow, S the old summit) and their lines <level><letter><n>, e.g. 2C3 = level 2, dialog C, line 3; the line's text key in data/i18n/<lang>.json is the same name. A lowercase letter in a level map starts the dialog of that level with that letter (c in level 2 = 2C); A is said when the level starts (except the jackpot climb, where 3A..3D explain the power-ups on the board and 3E ends it there, without buttons). Minigame talk (mg*_start / _after / ...) is not a story dialog and keeps its own names. Edit in Developer mode > Dialogs. Voice file = voice_overrides[key] or <key>.wav in assets/audio. voice_stale = recordings (they are Slovak) that no longer match their rewritten Slovak line (muted, also the DIA_* keys that play <key>.wav by themselves; the wav files stay, re-record or re-add to voice_overrides).",
  "voice_overrides": {
   "0A1": "Kyra-001.wav",
   "0A2": "Kyra-002.wav",
   "0B1": "Kyra-003.wav",
   "0B2": "Kyra-004.wav",
-  "0B3": "DIA_005.wav",
   "0B4": "DIA_006.wav",
-  "0B5": "DIA_007.wav",
   "0C1": "DIA_008.wav",
   "0C2": "DIA_009.wav",
   "0D1": "breath_after.wav",
   "1A1": "DIA_010.wav",
   "1A2": "DIA_011.wav",
   "1A3": "DIA_012.wav",
-  "1B1": "DIA_013.wav",
   "1B2": "DIA_014.wav",
   "1C1": "DIA_044.wav",
-  "1C2": "DIA_045.wav",
   "1C3": "DIA_046.wav",
   "1D1": "DIA_047.wav",
   "1D2": "DIA_048.wav",
   "1D3": "DIA_049.wav",
   "1D5": "DIA_051.wav",
-  "1D6": "DIA_052.wav",
   "1E1": "DIA_053.wav",
   "1E2": "DIA_054.wav",
   "1E3": "DIA_055.wav",
   "1E4": "DIA_056.wav"
+ },
+ "voice_stale": {
+  "0B3": "DIA_005.wav",
+  "0B5": "DIA_007.wav",
+  "1B1": "DIA_013.wav",
+  "1C2": "DIA_045.wav",
+  "1D6": "DIA_052.wav",
+  "DIA_034": "DIA_034.wav",
+  "DIA_038": "DIA_038.wav",
+  "DIA_043": "DIA_043.wav"
  },
  "nodes": {
   "0A": {
@@ -215,10 +220,6 @@
     {
      "speaker": "Estrogenka",
      "text": "2A3"
-    },
-    {
-     "speaker": "Iskra",
-     "text": "2A4"
     }
    ],
    "buttons": [

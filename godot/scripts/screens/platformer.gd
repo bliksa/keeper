@@ -468,6 +468,8 @@ var powers_explained := {}
 ## The new phase's announcement on the board ({key, sub, t}; empty = none). The ticker and
 ## board dialogs wait for it; play and input don't.
 var phase_note := {}
+## Whose portrait the phase board shows (the cave / the PMS maze).
+var phase_speaker := "Estrogenka"
 ## The forest run's sun melting into the climb's light (1 → 0 over SUN_MELT s).
 var sun_glow := 0.0
 var _rest_ms := -1e9
@@ -798,11 +800,15 @@ func set_fade(a: float, hud_too := true) -> void:
 	_veil.modulate.a = a
 
 
-## The new phase on the board (the climb after the forest run): a big title (key) and a
-## sub-line, the marquee bulbs blinking in; the ticker starts after PHASE_TIME.
-func announce_phase(key: String, sub := "") -> void:
-	phase_note = {"key": key, "sub": sub, "t": 0.0}
-	Audio.play_sfx("cink-11.wav", 0.5)
+## The new phase: a big title (key) and a sub-line with the marquee bulbs blinking in
+## (PhaseBoard). In the climb on its board (the ticker starts after it); in the cave and
+## the PMS maze a board of its own where the dialog box is (PlatformerHud), and the level's
+## first dialog waits for it. delay: seconds before it shows (a fade still running).
+func announce_phase(key: String, sub := "", dur := PHASE_TIME, delay := 0.0, speaker := "Estrogenka") -> void:
+	phase_note = PhaseBoard.note(key, sub, dur, delay)
+	phase_speaker = speaker
+	if delay <= 0.0:
+		Audio.play_sfx("cink-11.wav", 0.5)
 
 
 func phase_showing() -> bool:
@@ -1111,14 +1117,13 @@ func _process(delta: float) -> void:
 		p.x = lerpf(_exit_x0, W / 2 - p.width / 2, mk * mk * (3 - 2 * mk))
 		if p.vy > 0:
 			camera_y = lerpf(camera_y, p.y - H * 0.4, 1.0 - pow(0.88, f60))
-	if not phase_note.is_empty():
-		phase_note.t += dt
-		if phase_note.t >= PHASE_TIME:
-			phase_note = {}
+	if is_climb() or not dialog_open:
+		# (Outside the climb the board sits where the dialog box is: it waits for a dialog.)
+		phase_note = PhaseBoard.tick(phase_note, dt)
 	sun_glow = maxf(0, sun_glow - dt / SUN_MELT)
 	if active:
 		_update(dt)
-		if active and not _initial_dialog_sent and _start_checkpoint <= 1 and not is_climb() and not is_pms():
+		if active and not _initial_dialog_sent and _start_checkpoint <= 1 and not is_climb() and not is_pms() and phase_note.is_empty():
 			_initial_dialog_sent = true
 			if skip_start_dialog:
 				return
@@ -4400,7 +4405,8 @@ func _update_firefly(dt: float, moving: bool) -> void:
 			ff_mode = "back"
 	if firefly == Vector2.INF:
 		firefly = home
-	var playing := active and not dialog_open and not hold_input
+	# (Not before 4A has introduced it: the phase board shows first.)
+	var playing := active and not dialog_open and not hold_input and phase_note.is_empty()
 	if playing:
 		ff_since += dt
 		ff_idle = 0.0 if moving else ff_idle + dt

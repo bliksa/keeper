@@ -9,14 +9,25 @@ signal language_changed
 
 const LANGUAGES := ["sk", "en", "pt"]
 
+## Not saved by the setter (tests and the dialog editor's preview switch it): the boot
+## screen's flags call choose_language.
 var language := "en":
 	set(v):
 		language = v
 		language_changed.emit()
 
+
+## The player picked a language: switch and remember it (Game.save).
+func choose_language(lang: String) -> void:
+	language = lang
+	Game.save_set("language", lang)
+
 var _strings := {}
 var dialogs := {}
 var voice_overrides := {}
+## Lines whose recording (Slovak) no longer matches the rewritten text: muted, also the
+## DIA_* keys that would play <key>.wav by themselves (data/dialogs.json "voice_stale").
+var voice_stale := {}
 var breathing_hints := {}
 ## Who speaks in dialogs (data/characters.json): id -> {name: {lang: s}, portrait: sprite id}.
 var characters := {}
@@ -55,6 +66,7 @@ func _ready() -> void:
 	var d: Dictionary = _load_json("res://data/dialogs.json")
 	dialogs = d.get("nodes", {})
 	voice_overrides = d.get("voice_overrides", {})
+	voice_stale = d.get("voice_stale", {})
 	breathing_hints = d.get("breathing_hints", {})
 	var ch: Variant = _load_json("res://data/characters.json")
 	characters = ch.get("characters", {}) if ch is Dictionary else {}
@@ -83,6 +95,8 @@ func _ready() -> void:
 	font_dialog_bold = _dialog_font("res://assets/fonts/KeeperDyslexic-Bold.otf")
 	font = font_dialog
 	font_bold = font_dialog_bold
+	# The saved language (Game.save), ?lang= or the browser's on the first run.
+	language = Game.start_language()
 
 
 ## OpenDyslexic has very tall built-in line spacing (≈ 1.9 × size); trimmed to
@@ -175,6 +189,8 @@ func portrait_of(speaker: String) -> String:
 func voice_file(key: String) -> String:
 	if voice_overrides.has(key):
 		return voice_overrides[key]
+	if voice_stale.has(key):
+		return ""
 	if key.begins_with("DIA_"):
 		return key + ".wav"
 	return ""

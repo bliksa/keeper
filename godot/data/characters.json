@@ -11,7 +11,7 @@
   },
   "Estrogenka": {
    "name": {
-    "sk": "Estrogenka",
+    "sk": "Estrogénka",
     "en": "Estra",
     "pt": "Estra"
    },
@@ -28,8 +28,8 @@
   "Progesteronka": {
    "name": {
     "sk": "Progesterónka",
-    "en": "Progesterone",
-    "pt": "Progesterona"
+    "en": "Gesta",
+    "pt": "Gesta"
    },
    "portrait": "portrait_progesterone"
   }

@@ -13,7 +13,7 @@ godot/                     Godot 4.4.1 project (GL Compatibility, 1066×600)
   scripts/main.gd          game flow / state machine (boot → title → forest → cave → boss → forest run → jackpot climb
                            → the transformation → PMS maze)
   scripts/autoload/        Game (state + input actions), Text (strings, dialogs, fonts), Audio
-  scripts/screens/         boot, title, forest_intro, platformer (cave + boss; jackpot climb; PMS maze; old meadow;
+  scripts/screens/         boot, title, end_screen (EndScreen: the end, the cycle's ring), forest_intro, platformer (cave + boss; jackpot climb; PMS maze; old meadow;
                            old summit + LH wave), forest_runner (level 2: the forest run, map data/levels/forest_run.txt),
                            pms_maze (PmsMaze: the maze's reachability check + its code-drawn art)
   scripts/minigames/       breathing, choco_puzzle (mg2), pipes (mg3), prices (mg4),
@@ -247,7 +247,7 @@ repeat). A stage whose pieces can no longer all be found repeats
 except within `GRACE`. Water works like the jackpot climb's hearts, like a gun's magazine in a shooter (one model, `scripts/meter_model.gd` `MeterModel`, drawn by `scripts/ui/meter_hud.gd` `MeterHud`; the run keeps `meter`, the climb `Platformer.meter`): the **magazine** `mag` (4 drops, fractional: `drops`, the four drops in the pill top-right, `draw_water_pill`) is what the abilities spend; the **reserve** `reserve` (up to `reserve_max` = 4 more: the line round the pill, `MeterHud.draw_reserve`, a notch per unit, a badge "+N" left of the pill). Every path drop `D`/`U` (`DROP_WATER` = `Platformer.HEART_FILL`, 20 % of a drop, `_add_water` → `meter.fill`) goes into the magazine first (the part-filled drop fills), only a full magazine sends it into the reserve (the flying pickup goes to its slot, `meter.last_slot`, / to the badge and lights it up on arrival: the run calls `fill(n, false)`, no flash at pickup). **Reload** (`meter.update(dt)` every frame of play, returns the units landed: a click each): when the magazine is empty at once, when part-empty after `RELOAD_DELAY` (1.2 s) without spending; one unit leaves the reserve every `RELOAD_GAP` (0.45 s; the part-filled slot is topped up first) and flies `RELOAD_FLY` (0.38 s) from the badge in an arc into its slot (`meter.flyers`, a part of a unit flies smaller; the slot pops: `land_flash`; a shimmer sweeps the pill, `reload_glow`). Spending (`spend` / `drain` / `hold`) stops a part-empty reload (units in the air still land) and restarts the wait; a reload that began with an empty magazine (`reload_from_empty`) runs to the end in whole units, so held focus doesn't flicker. The badge shows whole units ("+N"; under one unit it is dim and its icon part-filled). `meter.reset(mag, reserve)` for starts, dev shortcuts and tests (web `?run=reload` / `?climb=reload`: an empty magazine with a full reserve every 4 s). The run starts with 4 + `START_RESERVE` (1). A jump is free, a double jump costs `DOUBLE_DROPS` = 2 (`meter.spend`), focus (`slow_time`) burns `FOCUS_DRAIN` = 1 drop/s, a hit `HIT_DROPS` = 1 (`meter.drain`). The map comes from `tools/gen_forest_run.py` (fluid: every obstacle row has `min_gap` rows of reaction time at the stage speed, the free path moves one over; the generator checks it). `jump_to(z)` moves her (and the stage) for tests / the dev menu
 ("Forest run", "Stage 2", "Stage 3"). Level editor: tool group "Forest run",
 `_draw_runner_row/_cell`, test play `_start_runner_test` (minigames skipped).
-Level start (from the boss: `main._on_boss_defeated` plays dialog 1D in the arena while the nuts form their ring into the grain; then `_into_forest` waits for the ring to close, the floor is gone and Kyra hops up and over to the middle, then falls, growing towards us (`Platformer.start_exit_fall`, `EXIT_HOP`, `EXIT_GROW`, PlayerArt option `grow`), the camera following, then `_start_runner(..., over_cave = true)` fades the run in over the arena (`start_intro(null, true)`, `Platformer.hide_egg`): when the arena goes, the run takes Kyra over where she was on screen (`Platformer.exit_visual` → `ForestRunner.handoff`) and she falls on onto the path, growing to her size there (`HANDOFF_FALL`, `land_t`) and lands with her back to us, the grain flies to the top-left and opens into the sun (`_draw_grain`, `_draw_intro_hud`), the trees appear from the screen centre (`_intro_k`, `INTRO_TREES`), then `intro_done` → `show_controls` (instead of 2A). Web shortcut `?boss=win` opens the arena with the boss just beaten. Dialogs 2A (start from the dev menu), 2B (notifications, letter b), 2C (side traps, letter c), 2E (end). No seeds in the run.
+Level start (from the boss: `main._on_boss_defeated` plays dialog 1D in the arena while the nuts form their ring into the grain; then `_into_forest` waits for the ring to close, the floor is gone and Kyra hops up and over to the middle, then falls, growing towards us (`Platformer.start_exit_fall`, `EXIT_HOP`, `EXIT_GROW`, PlayerArt option `grow`), the camera following, then `_start_runner(..., over_cave = true)` fades the run in over the arena (`start_intro(null, true)`, `Platformer.hide_egg`): when the arena goes, the run takes Kyra over where she was on screen (`Platformer.exit_visual` → `ForestRunner.handoff`) and she falls on onto the path, growing to her size there (`HANDOFF_FALL`, `land_t`) and lands with her back to us, the grain flies to the top-left and opens into the sun (`_draw_grain`, `_draw_intro_hud`), the trees appear from the screen centre (`_intro_k`, `INTRO_TREES`), then `intro_done` → `Main._runner_opening`: the phase on the board (`ForestRunner.announce_phase("RUN_PHASE_NEW", "RUN_PHASE_SUB")`, the run waits; see "Phase announcements") → `phase_done` → the short 2A (Kyra, Iskra introduces herself and the goal, Estrogénka on hits and water) → `show_controls`. Web shortcut `?boss=win` opens the arena with the boss just beaten. Dialogs 2A (the start, after the phase board), 2B (notifications, letter b), 2C (side traps, letter c), 2E (end). No seeds in the run.
 
 ## Old level 2: the meadow (follicular phase, horizontal; dev menu only)
 
@@ -454,7 +454,7 @@ tea / bottle / blanket), `D` the door (entity `door`). Each item: `_take_comfort
 `pms_items` + `pms_found[tier]` (the HUD slot), trigger `pms_item_<tier+1>` → Main opens 4B / 4C / 4D
 (`PmsMaze.ITEM_DIALOGS`, in any pickup order); the third, whichever it is, opens the door (`door_open`) and
 Main plays 4F (`PmsMaze.DOOR_DIALOG`) after its tip; touching it open → `_pms_done` → trigger `pms_done` → 4E →
-`reset_run` → title. No hazards, no death (out of the maze → back to `last_ground`). Its
+`reset_run` → the end screen (see "The save, Continue and the end screen"). No hazards, no death (out of the maze → back to `last_ground`). Its
 mechanic is her light (energy, rest, an unreliable gauge: see "The maze's light" below; the view
 always stays upside down). HUD `PlatformerHud._draw_pms`: the three item slots top-left (upright),
 the energy gauge top-right (`draw_energy_pill`, label `HUD_LBL_ENERGY`), ability hints
@@ -538,6 +538,23 @@ player on the trigger row's platform (or column, in the meadow). Flow in
 Dialog letters b/c/d/e → SB..SE; SF = the LH wave starts (trigger `wave`), SG = the end
 (trigger `summit` → SG → title). Minigame talk `mg5_*`–`mg7_*` (strings `DIA_G*`, `MG5_*`–`MG7_*`).
 
+## Phase announcements (all four levels)
+
+`scripts/ui/phase_board.gd` (`PhaseBoard`): every level opens by naming its phase of the cycle in the
+same way, a board where the dialog box is (the dialog-box panel, a portrait, the casino marquee lighting
+up bulb by bulb) with a big title and a sub-line: `CAVE_PHASE_NEW` / `_SUB` ("Phase: menstruation"; Main
+`_start_level`, checkpoint ≤ 1 and not a retry; 1A waits for it), `RUN_PHASE_*` ("New phase: follicular";
+`ForestRunner.announce_phase`, the run waits, then `phase_done` → 2A), `CLIMB_PHASE_*` (on the climb's own
+board, `PlatformerHud._draw_board` uses `PhaseBoard.draw_title` / `draw_marquee`, `Platformer.PHASE_TIME`; from the run by `_into_climb`, from the title / its start by `_start_climb` → `_start_level`, `_climb_announce`),
+`PMS_PHASE_*` ("New phase: luteal"; `Main._pms_phase_then_4a`: `hold_input` meanwhile, then 4A). A note = `PhaseBoard.note(key,
+sub, dur, delay)` ticked by its owner (`tick`), `READ_TIME` = 4.5 s where it is read standing; `showing()`;
+`fit_problems()` (the test checks sk / en / pt). `Platformer.announce_phase(key, sub, dur, delay, speaker)`.
+
+The recordings are **Slovak** (one voice for every language). A line whose Slovak text was rewritten is muted:
+out of `voice_overrides` and into `voice_stale` in `data/dialogs.json` (`Text.voice_stale`; `Text.voice_file`
+honours it for the `DIA_*` keys that play `<key>.wav` by themselves too), which keeps which wav was theirs
+(re-record, then move them back).
+
 ## HUD labels and centred icons
 
 Every HUD indicator has a small label under it (`Draw.hud_label` / `label_rect` / `label_bottom`: KeeperDyslexic
@@ -579,6 +596,49 @@ Branch `backup/v1-jaskyna` (commit pinned as `V1_SHA` in `.github/workflows/web.
 is built into the site at `/v1/`. Branch `backup/v2-zahrada-hore` holds the first
 level-2 draft (the upward garden, now level 3). Tags cannot be pushed from
 sessions (403).
+
+## The save, Continue and the end screen
+
+**The save** is `Game.save` (a dict in `user://save.json`, `Game.save_path`; on the web `user://` is IndexedDB):
+`language`, `muted`, the furthest place of the current playthrough (`chapter` 1 cave / 2 forest run / 3 jackpot
+climb / 4 PMS maze, `checkpoint`: cave 1–4 and 5 = the boss, the run's stage 0–3, the climb 1–4, the maze 1; `iron`
+= the cave's iron there), `reached` (the furthest chapter ever) and `finished`. `Game.load_save()` at boot,
+`save_set(key, value)`, `progress(chapter, checkpoint, iron)` (only a further place replaces the saved one),
+`mark_finished()` (clears the place: nothing to continue; every phase stays open), `has_progress()`,
+`reached_chapter()`, `is_finished()`. The control mode is not saved (it follows the device touched).
+
+**Language**: `Text._ready` sets `Game.start_language()` = `pick_language(?lang=, saved, navigator.language)`:
+`?lang=sk|en|pt` (and it is saved) > the save > the browser's (sk, pt; cs → sk) > en. The `Text.language` setter
+does not save (tests and the dialog editor switch it); the boot screen's flags call `Text.choose_language(lang)`.
+The boot label is `UI_LANGUAGE` ("Language", the flags switch the whole game). The title's sound switch is saved
+(`muted`, applied when the boot screen is left); its pills are `UI_SOUND_ON/OFF`, `UI_KEYBOARD` / `UI_GAMEPAD`.
+
+**What is saved when** (`Main._progress`, skipped while `_no_save`: a run started by `_dev_action` / a web
+shortcut (`_dev_boss_win`, `_dev_runner_hits`, `_dev_meter_reload`) / `open_minigame_for_dev` or once a debug
+key was used in it; cleared by New game, Continue, a phase from the title): the cave's start and
+each `_cave_checkpoint`, the boss (`end`), the run's start and the stage after each minigame (`_back_to_cave`),
+the climb's start and each `jackpot`, the maze (`_into_pms` / `_start_pms`), the end (`pms_done` → 4E →
+`Game.mark_finished()`).
+
+**Title** (`TitleScreen.layout()`): without a save just Start / Credits. With a place to continue: `Continue`
+(`BTN_CONTINUE_GAME`, green, above; Enter / 🔵) → `Main._continue_game` → `_start_saved(chapter, checkpoint, iron)`
+(the levels' own starts: `_start_cave` / `_skip_to_boss`, `_start_runner(true, stage)`, `_start_climb`,
+`_start_pms`), and Start reads "New game" (`BTN_NEW_GAME`, 🟡; `Main._start_new_game` → `Game.new_playthrough()`: the saved place goes, since the new
+playthrough saves its own; `reached` / `finished` / language / sound stay; the same for Restart game and a phase
+from the picker). A start from the title locks it during the fade (`_title_locked`, `_run_id` bumped). Once a chapter was reached,
+the row "Phases" under Credits: four buttons with the levels' motifs (`EndScreen.draw_motif`), locked beyond
+`reached_chapter()` → `chapter_pressed(n)` → `Main._start_chapter(n)` (that phase from its start). A finished game
+shows a tick + `TITLE_FINISHED`. Web `?title=1` (straight to the title), `?title=continue` / `?title=finished`
+(as with such a save, in memory only: `Game.save_readonly`, `write_save` does nothing).
+
+**The end screen** (`scripts/screens/end_screen.gd`, `EndScreen`; `Main._go_end`, state `end`, after 4E; web
+`?end=1`): the ring of the 28 days in the wheel's colours (`FertilityWheel.day_color`, day 1 at the top,
+clockwise, `day_point`, a marker going round, "~28 days"), four cards (`PHASES`: name `PHASE_*`, ONE take-away
+`END_PHASE_1..4`, colour, connector day, rect; clockwise from the top right: menstruation = iron nut, follicular =
+sun, ovulation = heart, luteal = lantern), `END_TITLE`, `END_CLOSING`, `END_NOTE`, then Play again (`again_pressed`
+→ a new game; Enter / 🔵) and Main menu (`menu_pressed`; 🔴). The cards come in one by one; buttons and keys work
+only from `READY` s (`ready_for_input()`, `skip_intro()` for tests), so the Enter that closed 4E can't skip it.
+`EndScreen.fit_problems()` is checked by the test in sk / en / pt.
 
 ## Pause menu
 

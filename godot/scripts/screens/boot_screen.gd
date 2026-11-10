@@ -2,7 +2,7 @@ class_name BootScreen
 extends Control
 ## First screen (port of the web loading screen): fullscreen toggle,
 ## "start game" (unlocks audio in browsers), "dev" (straight to developer mode)
-## and subtitle language.
+## and the language (the flags switch the whole game's language; it is saved).
 
 signal started
 signal dev_pressed
@@ -62,7 +62,7 @@ func _ready() -> void:
 		tb.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 		tb.position = Vector2(x, 340)
 		tb.size = Vector2(32, 24)
-		tb.pressed.connect(func(): Text.language = lang)
+		tb.pressed.connect(func(): Text.choose_language(lang))
 		add_child(tb)
 		_flags[lang] = tb
 		x += 36
@@ -124,7 +124,7 @@ func _refresh() -> void:
 		_fit_text(b)
 		_center_icon(b)
 		b.size = b.custom_minimum_size
-	_subs.text = Text.t("UI_SUBTITLES").to_upper()
+	_subs.text = Text.t("UI_LANGUAGE").to_upper()
 	_dev.tooltip_text = Text.t("UI_DEVELOPER_MODE")
 	for lang in _flags:
 		var tb: TextureButton = _flags[lang]
