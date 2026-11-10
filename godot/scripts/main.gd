@@ -98,10 +98,11 @@ func _ready() -> void:
 				_dev_climb_powers.call_deferred()
 			elif cq == "reload":
 				_dev_meter_reload.call_deferred(false)
-		# ?pms=1: the PMS maze from its start (?pms=door: all three items found).
+		# ?pms=1: the PMS maze from its start (?pms=door: all three items found; ?pms=lantern:
+		# from the start with the lantern).
 		var pq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('pms') || ''")
 		if pq is String and pq != "":
-			_dev_action.call_deferred("checkpoint6", 2 if pq == "door" else 1)
+			_dev_action.call_deferred("checkpoint6", 2 if pq == "door" else (3 if pq == "lantern" else 1))
 		# ?cave=N: the cave from checkpoint N (with breathing; its ability hints).
 		var vq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('cave') || ''")
 		if vq is String and vq != "":
@@ -535,7 +536,10 @@ func _start_pms(checkpoint := 1, fade := true) -> void:
 	await _start_level(Game.PMS_ID, mini(checkpoint, 1), Game.iron, fade)
 	if run != _run_id or platformer == null or not platformer.is_pms():
 		return
-	if checkpoint >= 2:
+	if checkpoint == 3:
+		# (Web ?pms=lantern) from the start, the lantern already found.
+		platformer.dev_lantern()
+	if checkpoint == 2:
 		platformer.dev_all_comforts()
 		platformer.dev_near_door()
 	else:
@@ -764,6 +768,9 @@ func _on_trigger(name: String) -> void:
 			_dialog(PmsMaze.ITEM_DIALOGS[int(name.right(1)) - 1], func():
 				if platformer == pf6 and pf6 != null and pf6.pms_items >= PmsMaze.ITEMS.size():
 					_dialog(PmsMaze.DOOR_DIALOG))
+		"pms_lantern":
+			# The PMS maze is dark: the lantern makes her light bigger (4G).
+			_dialog(PmsMaze.LANTERN_DIALOG)
 		"pms_done":
 			# The open door: the cycle comes round (4E), then the title.
 			Game.checkpoint = 5

@@ -284,6 +284,7 @@ const GROUPS := [
 		["W", "brick-wall", "Wall (W): solid from every side"],
 		["&", "coffee", "Comfort item (&): tea, hot-water bottle, blanket (by order)"],
 		["D", "door-open", "Door (D): opens when all three items are found"],
+		["+", "lightbulb", "Lantern (+): her light in the dark grows"],
 		["P", "map-pin", "Spawn point (P)"],
 		["=", "rectangle-horizontal", "Platform (=): one-way, from above"],
 	]},
@@ -632,6 +633,8 @@ func _draw_grid() -> void:
 				"&":
 					ci.draw_circle(mid, 11, Color("#f9a8d4", 0.35))
 					ci.draw_circle(mid, 6, Color("#fbcfe8"))
+				"+":
+					PmsMaze.draw_lantern(ci, mid, 0.0, 0.8)
 				"D":
 					ci.draw_rect(Rect2(cell.position.x + 6, cell.position.y + 3, cell.size.x - 12, cell.size.y - 3), Color("#3b2f4b"))
 					ci.draw_rect(Rect2(cell.position.x + 9, cell.position.y + 6, cell.size.x - 18, cell.size.y - 6), Color("#fde68a", 0.8))

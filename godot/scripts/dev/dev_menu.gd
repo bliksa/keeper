@@ -262,6 +262,7 @@ func _build_shortcuts() -> void:
 		["4 · PMS maze", "luteal phase · upside down", Color.from_hsv(215.0 / 360, 0.7, 0.75), [
 			["Start", "The PMS maze (drawn upside down, the arrows feel reversed), 4A", "checkpoint6", 1],
 			["Transformation", "The climb's top: the jackpot, 3E on the board, then the view turns into the maze", "pms_transform", 0],
+			["Lantern", "The dark maze from the start with the lantern found (the bigger light)", "checkpoint6", 3],
 			["Door open", "The maze with all three comfort items found, beside the door", "checkpoint6", 2]]],
 	]
 	for c in cols.size():

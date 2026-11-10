@@ -43,6 +43,7 @@ extends RefCounted
 ##   W      wall (solid from every side; consecutive W in a row merge into one block)
 ##   &      comfort item (by order in the map: warm tea, hot-water bottle, soft blanket)
 ##   D      the door (opens when all three items are found; touching it ends the level)
+##   +      the lantern (the maze is dark: it makes the light round Kyra bigger)
 
 const COLS := 25
 ## The jackpot climb is wider (drawn zoomed out, Platformer.CLIMB_ZOOM = COLS / CLIMB_COLS):
@@ -62,7 +63,7 @@ const PALETTE := {
 	"6": "Minigame: iron plate", "7": "Minigame: rhythm", "8": "Minigame: body signals",
 	"9": "LH wave", "E": "Summit / top",
 	"!": "Spring (boost)", "$": "Heart", ":": "Bell", "?": "Joker", "0": "Jackpot row", "Z": "Minigame: the wheel",
-	"W": "Wall (PMS maze)", "&": "Comfort item", "D": "Door (PMS maze)",
+	"W": "Wall (PMS maze)", "&": "Comfort item", "D": "Door (PMS maze)", "+": "Lantern (PMS maze)",
 	"#": "River", "Y": "Light seed", "K": "Minigame: memory", "M": "Minigame: catch", "Q": "Minigame: pairs", "G": "Gate",
 }
 
@@ -91,7 +92,7 @@ class Plat:
 
 class Ent:
 	var id: int
-	var type: String # iron | spike | enemy | trigger | text | updraft | seed | spring | heart | bell | joker | comfort | door
+	var type: String # iron | spike | enemy | trigger | text | updraft | seed | spring | heart | bell | joker | comfort | door | lantern
 	var x: float
 	var y: float
 	var w: float
@@ -234,6 +235,9 @@ static func build(level_rows: PackedStringArray, rh := ROW_H, horizontal := fals
 					e = _ent("comfort", x + CELL_W / 2 - 18, y + rh - 52, 36, 40)
 					e.tier = comforts
 					comforts += 1
+				"+":
+					# The lantern, standing on the ground below it.
+					e = _ent("lantern", x + CELL_W / 2 - 14, y + rh - 46, 28, 40)
 				"D":
 					e = _ent("door", x + CELL_W / 2 - 26, y + rh - 104, 52, 104)
 				"?":

@@ -169,6 +169,15 @@ func _run() -> void:
 	var blocked := rows6.duplicate()
 	blocked[rows6.size() - 2] = "W".repeat(25)
 	check(not PmsMaze.check(blocked).ok, "the reachability check notices a walled-in door")
+	check(c6.get("lantern", 0) == 1 and reach6.lantern.x >= 0 and not reach6.unreachable.has(reach6.lantern), "the dark maze has one lantern and the check reaches it %s" % str(reach6.lantern))
+	var lant_shut := rows6.duplicate()
+	var lnr: int = reach6.lantern.x - 1
+	var lnc: int = reach6.lantern.y
+	lant_shut[lnr] = lant_shut[lnr].substr(0, lnc - 1) + "W+W" + lant_shut[lnr].substr(lnc + 2)
+	lant_shut[lnr - 1] = lant_shut[lnr - 1].substr(0, lnc - 1) + "WWW" + lant_shut[lnr - 1].substr(lnc + 2)
+	check(not PmsMaze.check(lant_shut).ok, "the check includes the lantern (a walled-in lantern fails)")
+	var fp := PmsMaze.fly_path(rows6, Vector2i(1, 1), Vector2i(23, 22))
+	check(fp.size() > 20 and fp.all(func(v): return rows6[v.x][v.y] != "W"), "the firefly's way through the maze avoids the walls (%d cells)" % fp.size())
 	check(LevelData.parse_text(LevelData.to_text(rows6)) == rows6 and Game.LEVELS.keys().find(Game.PMS_ID) == Game.LEVELS.keys().find(Game.CLIMB_ID) + 1, "maze text round-trips; it comes after the climb in the level list")
 
 	step("pipes layouts are solvable")
@@ -1201,6 +1210,7 @@ func _run() -> void:
 	check(maze_on and Game.level == Game.PMS_ID and main.state == "platformer", "the PMS maze (level 6) comes in")
 	var pms: Platformer = main.platformer
 	check(pms.view_flip == 1.0 and pms.warm > 0.9 and pms.warm_t >= 0 and pms._world.modulate.b < 0.7, "the maze starts upside down inside the yellow body (warm amber)")
+	check(pms._dark.visible and pms.light_radius() > 1000, "the arrival: the warm light still fills the screen (%d px)" % pms.light_radius())
 	await frames(2)
 	check(not is_instance_valid(pf), "the climb is gone")
 	var warm_fades := await until(func(): return pms.warm < 0.5, 4)
@@ -1209,6 +1219,8 @@ func _run() -> void:
 	check(Text.dialogs["4A"].parts.any(func(pt): return pt.speaker == "Progesteronka"), "4A: Progesterónka greets her inside the corpus luteum")
 	var cooled := await until(func(): return pms.warm == 0.0 and pms.warm_t < 0, 6)
 	check(cooled and pms._world.modulate == Color.WHITE, "the maze has its dusky colours after the warm start")
+	check(absf(pms.light_radius() - pms.light_r) < 1.0 and pms.light_r < Platformer.LIGHT_R + 1, "the warm light shrank to her light in the dark (%d px)" % pms.light_radius())
+	check(Text.dialogs["4A"].parts.any(func(pt): return pt.text == "4A6"), "4A introduces the firefly")
 	check(pms.modulate.a == 1.0 and not pms.hold_input and pms.p.is_grounded, "Kyra settled onto her platform; control is back after 4A")
 
 	step("level 4 – the PMS maze")
@@ -1224,6 +1236,7 @@ func _run() -> void:
 	var dev_top := await until(func(): return main.platformer != null and main.platformer.is_climb() and main.platformer.climb_won, 8)
 	check(dev_top, "the developer menu's Transformation starts at the climb's top")
 	var tpf: Platformer = main.platformer
+	check(not tpf._dark.visible, "the darkness is only in the maze (not in the climb)")
 	var g6 := 0
 	while is_instance_valid(tpf) and main.platformer == tpf and tpf.prerod_t < Platformer.PREROD_T_LUTEUM and g6 < 400:
 		g6 += 1
@@ -2110,7 +2123,7 @@ func _run() -> void:
 	check(de != null and de.ids_in("2") == ["2A", "2B", "2C", "2E"] and de.ids_in("0").size() == 4, "the Dialogs tab lists each level's dialogs (2A–2E, 0A–0D)")
 	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", Game.CLIMB_ID) == "3B" and Text.dialog_for_letter("b", 3) == "SB" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
 	check(de.ids_in("mg").has("mg8_start") and not DialogEditor.is_story("mg8_start"), "minigame talk is listed apart, under its own names")
-	check(de.ids_in("4") == ["4A", "4B", "4C", "4D", "4E", "4F"] and Text.dialog_for_letter("a", Game.PMS_ID) == "4A" and DialogEditor.BY_GAME.has("4A") and DialogEditor.BY_GAME.has("4E") and DialogEditor.BY_GAME.has("4F"), "the PMS maze's dialogs 4A–4F are listed (started by the game)")
+	check(de.ids_in("4") == ["4A", "4B", "4C", "4D", "4E", "4F", "4G"] and Text.dialog_for_letter("a", Game.PMS_ID) == "4A" and DialogEditor.BY_GAME.has("4A") and DialogEditor.BY_GAME.has("4E") and DialogEditor.BY_GAME.has("4F") and DialogEditor.BY_GAME.has("4G"), "the PMS maze's dialogs 4A–4G are listed (started by the game)")
 	# Saving the files as they are changes nothing (same format as in the repo).
 	var bundled := {"godot/data/dialogs.json": FileAccess.get_file_as_string("res://data/dialogs.json"),
 		"godot/data/characters.json": FileAccess.get_file_as_string("res://data/characters.json")}
@@ -2651,6 +2664,7 @@ func _climb_ent(pf: Platformer, type: String) -> LevelData.Ent:
 func _pms_play(pf: Platformer) -> void:
 	var events: Array = []
 	pf.trigger.connect(func(n): events.append(n))
+	await _pms_dark(pf)
 	check(absf(pf._world.rotation - PI) < 0.05 and pf.view_flip == 1.0, "the maze's world is drawn rotated 180°")
 	# Right moves her right in the world, which is left on screen.
 	var xf := pf._player_layer.get_transform()
@@ -2695,11 +2709,18 @@ func _pms_play(pf: Platformer) -> void:
 	await frames(30)
 	check(pf.hud.hint_lines() == ["HINT_PMS_BREATHE"], "the maze's ability hint: hold to breathe %s" % str(pf.hud.hint_lines()))
 	_check_labels(pf.hud.labels, ["HUD_LBL_COMFORT", "HUD_LBL_BREATH"], "PMS maze")
+	pf.ff_mode = "follow"
+	pf.ff_idle = 0.0
+	pf.ff_since = 0.0
 	Input.action_press("breathe")
 	await seconds(Platformer.CALM_FILL + 0.2)
 	Input.action_release("breathe")
 	check(pf.calm_t > 0 and pf.calm_charge == 0.0, "a full breath calms the world")
+	check(pf.ff_mode == "follow" and pf.ff_idle <= 0.0, "breathing in (standing still) is not idling: the firefly stays with her (%s)" % pf.ff_mode)
+	var ff_layer := pf._ff_node.get_parent().get_parent() as CanvasLayer
+	check(ff_layer != null and ff_layer.layer < 7 and pf.player_layer > 8, "the firefly is drawn under the dim (7) and the dialog box (8), on layer %d" % (ff_layer.layer if ff_layer else -1))
 	await seconds(1.3)
+	check(pf.light_r > Platformer.LANTERN_R + Platformer.CALM_LIGHT * 0.6, "the calm widens her light (%d px)" % pf.light_r)
 	check(pf.steady > 0.95 and absf(pf.view_angle() - PI) < 0.002 and pf.hud.hint_lines().has("HINT_PMS_CALM"), "while calm the view stops swaying (steady %.2f)" % pf.steady)
 	pf.calm_t = 0.01
 	await frames(3)
@@ -2749,6 +2770,54 @@ func _pms_play(pf: Platformer) -> void:
 	check(done and pf.hold_input, "the open door ends the level (pms_done)")
 	await finish_dialog("4E")
 	await frames(5)
+
+
+## The dark maze: the light follows her on screen (the rotated view), the firefly guides her
+## to the nearest thing to find after she stands still, the lantern makes the light bigger.
+func _pms_dark(pf: Platformer) -> void:
+	await frames(2)
+	var ls := pf.dark_lights()
+	var sc := pf.screen_of(pf.p.center())
+	var upright := Vector2(Platformer.W, Platformer.H) - (pf.p.center() - Vector2(pf.camera_x, pf.camera_y))
+	check(pf._dark.visible and ls.size() >= 2 and Vector2(ls[0].x, ls[0].y).distance_to(sc) < 1.0 and sc.distance_to(upright) < 30, "the maze is dark, lit round Kyra where she is on the rotated screen %s (≈ %s)" % [sc, upright])
+	check(pf.firefly != Vector2.INF and pf.firefly.distance_to(pf.p.center()) < 160, "the firefly is with her")
+	Input.action_press("move_left")
+	await frames(25)
+	Input.action_release("move_left")
+	await frames(2)
+	var sc2 := pf.screen_of(pf.p.center())
+	check(Vector2(pf.dark_lights()[0].x, pf.dark_lights()[0].y).distance_to(sc2) < 1.0 and sc2.x > sc.x + 10, "her light follows her on screen (left in the world = right on screen: %d → %d)" % [sc.x, sc2.x])
+	# Standing still: the firefly flies ahead to the nearest thing to find (by the way).
+	pf.ff_mode = "follow"
+	pf.ff_idle = 0.0
+	pf.ff_since = 0.0
+	var from := pf._cell_of(pf.p.center())
+	var nearest: LevelData.Ent = null
+	var best := 99999
+	for e in pf.level.entities:
+		if not e.collected and e.type in ["comfort", "lantern"]:
+			var n := PmsMaze.fly_path(pf.level.rows, from, pf._cell_of(e.rect().get_center())).size()
+			if n > 0 and n < best:
+				best = n
+				nearest = e
+	var guiding := await until(func(): return pf.ff_mode == "guide", Platformer.FF_IDLE + 1.0)
+	check(guiding and pf.ff_goal == nearest and nearest != null and nearest.type == "lantern", "after standing still the firefly guides her to the nearest thing to find (%s)" % (pf.ff_goal.type if pf.ff_goal else "-"))
+	var d0 := pf.firefly.distance_to(nearest.rect().get_center())
+	await seconds(1.2)
+	check(pf.firefly.distance_to(nearest.rect().get_center()) < d0 - 150 and pf.dark_lights()[1].z > 30, "the firefly flies the way there, with its light (%d → %d px)" % [d0, pf.firefly.distance_to(nearest.rect().get_center())])
+	var back := await until(func(): return pf.ff_mode == "follow", 12)
+	check(back, "… and comes back to her")
+	# The lantern: a bigger light.
+	var r0 := pf.light_r
+	pf.p.x = nearest.x + nearest.w / 2 - pf.p.width / 2
+	pf.p.y = nearest.y + nearest.h - pf.p.height
+	pf.p.vy = 0
+	var lit := await until(func(): return node_box().node_id() == PmsMaze.LANTERN_DIALOG, 3)
+	check(lit and pf.has_lantern and nearest.collected, "the lantern is picked up (%s)" % PmsMaze.LANTERN_DIALOG)
+	await finish_dialog(PmsMaze.LANTERN_DIALOG)
+	await seconds(1.5)
+	check(pf.light_r > r0 + 90 and pf.light_radius() > Platformer.LIGHT_R + 90, "the lantern makes her light bigger (%d → %d px)" % [r0, pf.light_r])
+	check(pf.dark_lights().size() == 2, "no glimmer where the lantern lay")
 
 
 func _go_trigger(pf: Platformer, kind: String) -> void:

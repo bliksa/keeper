@@ -46,7 +46,7 @@ tools/                     setup_godot.sh, test.sh, export_web.sh, gen_climb.py 
   `6/7/8` minigames, `9` LH wave, `E` summit; the jackpot climb: `!` spring, `$` heart,
   `:` bell, `?` joker, `0` jackpot row, `Z` the wheel of the cycle (mg11), `E` the top; no letters
   there; the PMS maze: `W` wall,
-  `&` comfort item, `D` door). Keep 25 columns. Minigame / boss /
+  `&` comfort item, `D` door, `+` lantern). Keep 25 columns. Minigame / boss /
   wave / summit triggers span the whole row. `Game.LEVELS` maps level id → file.
 - **Dialogs**: story dialogs are named `<level><letter>` (0 = prologue in the forest,
   1 cave, 2 forest run, 3 jackpot climb (level id 5), 4 PMS maze (level id 6), M old meadow, S old summit (level id 3);
@@ -427,7 +427,9 @@ screen (dark amber → amber, never black). Then `prerod_turned` / `prerod_finis
 makes the maze (`_make_platformer`, already upside down), Kyra 70 px above her spawn,
 `start_warm()` (no crossfade): its `_veil` draws the opening clearing from the middle
 (`WARM_IRIS`), Kyra and the HUD come in with it, the world starts tinted `WARM_TINT` (`warm`
-1 → 0 over `WARM_FADE`: the hormones drop) to the maze's dusk; the climb is freed, 4A opens
+1 → 0 over `WARM_FADE`: the hormones drop) to the maze's dusk, and the warm light closes in on her
+into the maze's darkness (`light_radius()` = `light_r` + `WARM_LIGHT` · warm; the dark is tinted
+`PmsMaze.DARK_WARM` → `DARK` meanwhile); the climb is freed, 4A opens
 after `WARM_IRIS + 0.5` s (a pausable timer). The climb's top no longer draws the summit egg.
 4A: Progesterónka greets her inside the corpus luteum. The view is one transform:
 `_apply_view()` sets position / rotation / scale of `_bg`, `_world`, `_player_layer` from the
@@ -461,12 +463,31 @@ three item slots top-left (upright), the breath pill top-right, ability hints
 `merge_columns`; items, the door, `deco_spots` + `draw_deco`: a melting clock, a floating
 chair, a tilted frame, a sock; the hazy dusk `draw_bg`). `PmsMaze.check(rows)` = the map
 check (the grid with the jump physics: one row per single jump, two per double; every item
-and the door reachable, no soft lock), run by the test. Dialogs 4A–4F (speakers Kyra,
+and the door (and the lantern) reachable, no soft lock), run by the test. Dialogs 4A–4G (speakers Kyra,
 Progesterónka = `Progesteronka` in `characters.json`, portrait `portrait_progesterone`, a plain
 disc until it has art; Estrogenka). Flow: `Main._start_pms(checkpoint)` (1 start + 4A, 2 the
 door open beside it), dev menu column "4 · PMS maze" (`checkpoint6`), web `?pms=1` /
-`?pms=door`; keys: 1–4 restart, 5 opens the door. Music `menu.mp3`. Level editor: tool group
-"PMS maze" (W, &, D, P, =), test play upside down, the door restarts the test with a toast.
+`?pms=door` / `?pms=lantern` (checkpoint 3, `dev_lantern`; dev menu "Lantern"); keys: 1–4 restart, 5 opens the
+door. Music `menu.mp3`. Level editor: tool group "PMS maze" (W, &, D, +, P, =), test play upside down, the door
+restarts the test with a toast.
+
+**The dark maze** (level 6 only): `Platformer._dark`, a full-screen `ColorRect` with a small canvas shader
+(`DARK_SHADER`) on `_veil` (over the world and the haze, under the HUD; Kyra's layer 9 stays above): the colour
+`PmsMaze.DARK` (dusky violet, very dark but not black) with up to four soft holes of light in screen px
+(`dark_lights()`: [x, y, radius] for Kyra, the firefly, the lantern still lying in the maze (a glimmer), the open
+door), set every frame by `_update_dark()`; positions through the rotated, swaying view (`screen_of(world)` =
+the player layer's transform). Her light `light_r`: `LIGHT_R`, `LANTERN_R` with the lantern, + `CALM_LIGHT` while
+the calm breath lasts (`_update_light`, smooth). **The lantern** `+` (entity `lantern`, `_take_lantern` →
+`has_lantern`, trigger `pms_lantern` → Main 4G = `PmsMaze.LANTERN_DIALOG`); she then carries it floating at her
+side (`PmsMaze.draw_lantern`); no HUD slot. `PmsMaze.check` includes the lantern (`lantern` in its result).
+**The firefly** (`firefly`, world px; drawn in screen space by `_draw_firefly` on `_ff_node`, the HUD layer right over
+`_dark`, so it stays under the dim and the dialog box; `PmsMaze.draw_firefly`; introduced in 4A6):
+`ff_mode` "follow" (floats round her with a lag) → "guide" (`firefly_guide()`: after `FF_IDLE` s standing still (breathing in
+or calm doesn't count) or `FF_LOST` s without finding anything, to the nearest thing still to find by the way through the maze,
+`PmsMaze.fly_path` (a 4-neighbour BFS round the walls): the lantern, the comfort items, the door once open; along
+`ff_path` at `FF_SPEED`, at most `FF_REACH` px, waits `FF_HOLD` s) → "back". The test checks the light follows
+her on the rotated screen, the firefly guides to the nearest item, the lantern and the calm widen the light, and
+that the darkness is only in the maze.
 
 ## Old level 3: the summit (ovulation; dev menu only)
 

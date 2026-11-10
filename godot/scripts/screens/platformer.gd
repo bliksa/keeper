@@ -215,6 +215,43 @@ const CALM_TIME := 6.0
 ## Blob wobble (px) and view sway (radians) in the maze, both calmed by the breath.
 const PMS_WOBBLE := 4.0
 const PMS_SWAY := 0.022
+## The dark maze (_dark): the light round Kyra (radius, screen px), with the lantern, how much
+## the calm breath widens it, and the firefly's own little light.
+const LIGHT_R := 150.0
+const LANTERN_R := 275.0
+const CALM_LIGHT := 60.0
+const FIREFLY_R := 70.0
+## The warm arrival's light (light_radius: light_r + WARM_LIGHT · warm, the screen is lit
+## while warm is high, then it closes in on her as the warm fades).
+const WARM_LIGHT := 2600.0
+## The firefly guides her (firefly_guide) to the nearest thing still to find (the lantern, a
+## comfort item, the door once open): after FF_IDLE s standing still or FF_LOST s without
+## finding anything; it flies FF_SPEED px/s at most FF_REACH px along the way, waits FF_HOLD s
+## there and comes back.
+const FF_IDLE := 2.0
+const FF_LOST := 30.0
+const FF_SPEED := 300.0
+const FF_REACH := 1100.0
+const FF_HOLD := 1.8
+## The darkness: a soft-edged hole per light (screen px; xy = centre, z = radius).
+const DARK_SHADER := """
+shader_type canvas_item;
+uniform vec4 dark : source_color = vec4(0.05, 0.02, 0.09, 0.93);
+uniform vec2 size = vec2(1066.0, 600.0);
+uniform vec3 l0 = vec3(0.0, 0.0, 0.0);
+uniform vec3 l1 = vec3(0.0, 0.0, 0.0);
+uniform vec3 l2 = vec3(0.0, 0.0, 0.0);
+uniform vec3 l3 = vec3(0.0, 0.0, 0.0);
+float hole(vec2 q, vec3 l) {
+	if (l.z <= 0.5) return 0.0;
+	return 1.0 - smoothstep(l.z * 0.35, l.z, distance(q, l.xy));
+}
+void fragment() {
+	vec2 q = UV * size;
+	float lit = max(max(hole(q, l0), hole(q, l1)), max(hole(q, l2), hole(q, l3)));
+	COLOR = vec4(dark.rgb, dark.a * (1.0 - lit));
+}
+"""
 
 
 ## Updated by Main.
@@ -293,6 +330,22 @@ var _pms_done_sent := false
 var calm_charge := 0.0
 var calm_t := 0.0
 var steady := 0.0
+## The dark maze: the lantern found, the light's radius now (grows to LANTERN_R, the calm
+## breath widens it), the darkness overlay (screen space, under the HUD).
+var has_lantern := false
+var light_r := LIGHT_R
+var _dark: ColorRect
+var _ff_node: Node2D
+## The firefly (world px; INF until the maze's first frame): "follow" her, "guide" along
+## ff_path (world points) to ff_goal, then "back". ff_idle = s standing still, ff_since = s
+## since she last found something.
+var firefly := Vector2.INF
+var ff_mode := "follow"
+var ff_path: Array[Vector2] = []
+var ff_goal: LevelData.Ent = null
+var ff_idle := 0.0
+var ff_since := 0.0
+var ff_hold := 0.0
 var deco: Array = []
 ## Tops of the walls, landed on like platforms (built in setup).
 var wall_tops: Array[LevelData.Plat] = []
@@ -838,6 +891,22 @@ func _ready() -> void:
 	_veil = Node2D.new()
 	_veil.draw.connect(_draw_veil)
 	layer.add_child(_veil)
+	# The maze's darkness: over the world and the veil's haze, under the HUD (and Kyra's layer).
+	_dark = ColorRect.new()
+	_dark.size = Vector2(W, H)
+	_dark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := Shader.new()
+	sh.code = DARK_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = sh
+	_dark.material = mat
+	_dark.visible = false
+	_veil.add_child(_dark)
+	# The firefly roams the maze: drawn in screen space right over the darkness, so it stays
+	# under the dim and the dialog box (Kyra's layer 9 is above them).
+	_ff_node = Node2D.new()
+	_ff_node.draw.connect(_draw_firefly)
+	_veil.add_child(_ff_node)
 	_veil_body = Node2D.new()
 	_veil_body.draw.connect(_draw_veil_body)
 	_veil.add_child(_veil_body)
@@ -981,12 +1050,14 @@ func _process(delta: float) -> void:
 		_shake = Vector2((randf() - 0.5) * 4, (randf() - 0.5) * 4)
 	_update_view(dt)
 	_apply_view()
+	_update_dark()
 	_backdrop.queue_redraw()
 	_bg.queue_redraw()
 	_world.queue_redraw()
 	_player_layer.queue_redraw()
 	_veil.queue_redraw()
 	_veil_body.queue_redraw()
+	_ff_node.queue_redraw()
 	hud.queue_redraw()
 
 
@@ -1385,6 +1456,9 @@ func _update(dt: float) -> void:
 	# --- breathing (the maze has its own calming breath)
 	if is_pms():
 		_update_calm(dt, breathe)
+		_update_light(dt)
+		# Breathing in or calm is not idling: the firefly stays with her (and its light).
+		_update_firefly(dt, left or right or absf(p.vx) > 0.4 or not p.is_grounded or breathe or calm_charge > 0 or calm_t > 0)
 	elif Game.has_breathing:
 		if breathe_pressed and p.breath_charges > 0 and p.breathing_cooldown <= 0 and not dialog_open:
 			p.is_breathing = 40
@@ -1737,6 +1811,9 @@ func _update_entities(dt: float, d60: float) -> void:
 			"door":
 				if touching and door_open > 0.6 and not _pms_done_sent:
 					_pms_done()
+			"lantern":
+				if touching and not p.is_dead:
+					_take_lantern(e)
 			"updraft":
 				if touching and not p.is_dead and not p.is_recharging and p.held_by_cramp == -1:
 					p.vy = maxf(p.vy - 1.1 * d60, -9.0)
@@ -2286,6 +2363,8 @@ func _draw_world() -> void:
 				PmsMaze.draw_item(ci, PmsMaze.ITEMS[clampi(e.tier, 0, 2)], cc, t, 1.15)
 			"door":
 				PmsMaze.draw_door(ci, e, t, pms_items, clampf(door_open / 0.6, 0, 1))
+			"lantern":
+				PmsMaze.draw_lantern(ci, e.rect().get_center() + Vector2(0, 4 + sin(t / 800.0) * 2), t, 1.1, 0.75)
 			"trigger":
 				if e.trigger_type == "teleport":
 					ci.draw_rect(e.rect(), Color(190 / 255.0, 24 / 255.0, 93 / 255.0, 0.1))
@@ -2516,6 +2595,11 @@ func _draw_player() -> void:
 		# Pulled into the yellow body (the transformation) she spins slowly.
 		"spin": _pull_spin(),
 	})
+	if is_pms():
+		if has_lantern:
+			# Her lantern floats at her side, swinging a little.
+			var lp := p.center() + Vector2(24 if p.facing_right else -24, 4 + sin(time_ms / 320.0) * 2.5)
+			PmsMaze.draw_lantern(ci, lp, time_ms, 0.8, 1.0, sin(time_ms / 540.0) * 0.14)
 	if in_water:
 		# Swimming: the river covers everything below the surface.
 		ci.draw_rect(Rect2(p.x - 40, level.water_top + 14, p.width + 80, 120), Color(0.35, 0.65, 0.9, 0.75))
@@ -3992,9 +4076,174 @@ func _take_comfort(e: LevelData.Ent) -> void:
 	Audio.play_sfx("cink-%02d.wav" % (3 + pms_items * 2), 0.45)
 	# Keyed by which item it is (its tip, its HUD slot), not by how many were found.
 	trigger.emit("pms_item_%d" % (tier + 1))
+	ff_since = 0.0
 	if pms_items >= PmsMaze.ITEMS.size() and door_open <= 0:
 		door_open = 0.01
 		Audio.play_sfx("finished.wav", 0.5)
+
+
+## The lantern: her light grows (light_r → LANTERN_R); Main plays 4G.
+func _take_lantern(e: LevelData.Ent) -> void:
+	e.collected = true
+	has_lantern = true
+	ff_since = 0.0
+	_sparkles(e.rect().get_center(), 14)
+	Audio.play_sfx("cink-09.wav", 0.5)
+	trigger.emit("pms_lantern")
+
+
+## The light round Kyra: LIGHT_R, LANTERN_R with the lantern, + CALM_LIGHT while calm; it
+## grows and shrinks smoothly.
+func _update_light(dt: float) -> void:
+	var want := (LANTERN_R if has_lantern else LIGHT_R) + (CALM_LIGHT if calm_t > 0 else 0.0)
+	light_r += (want - light_r) * (1.0 - exp(-2.2 * dt))
+	if absf(want - light_r) < 0.5:
+		light_r = want
+
+
+## Her light on screen now (px): the warm arrival (warm 1 → 0) shrinks from the whole
+## screen down to light_r as the hormones drop.
+func light_radius() -> float:
+	var w := clampf(warm, 0, 1)
+	return light_r + WARM_LIGHT * w
+
+
+## A world point on screen (the rotated, swaying view: the player layer's transform).
+func screen_of(world: Vector2) -> Vector2:
+	return _player_layer.get_transform() * world
+
+
+## The lights in the dark (screen px): [centre.x, centre.y, radius] for Kyra, the firefly,
+## the lantern still lying in the maze (a faint glimmer) and the open door.
+func dark_lights() -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	var kc := screen_of(p.center())
+	out.append(Vector3(kc.x, kc.y, light_radius()))
+	if firefly != Vector2.INF:
+		var fc := screen_of(firefly)
+		out.append(Vector3(fc.x, fc.y, FIREFLY_R * (0.9 + 0.1 * sin(time_ms / 260.0)) * _player_layer.modulate.a))
+	for e in level.entities:
+		if e.collected:
+			continue
+		if e.type == "lantern":
+			var lc := screen_of(e.rect().get_center())
+			out.append(Vector3(lc.x, lc.y, 55.0 + 8.0 * sin(time_ms / 400.0)))
+		elif e.type == "door" and door_open > 0:
+			var dc := screen_of(e.rect().get_center())
+			out.append(Vector3(dc.x, dc.y, 130.0 * clampf(door_open / 0.6, 0, 1)))
+	return out
+
+
+## The maze's darkness (level 6 only): its colour (warm amber while the yellow body's warmth
+## lingers) and the holes of light.
+func _update_dark() -> void:
+	_dark.visible = is_pms()
+	if not is_pms():
+		return
+	var mat := _dark.material as ShaderMaterial
+	mat.set_shader_parameter("dark", PmsMaze.DARK.lerp(PmsMaze.DARK_WARM, clampf(warm, 0, 1)))
+	var ls := dark_lights()
+	for i in 4:
+		mat.set_shader_parameter("l%d" % i, ls[i] if i < ls.size() else Vector3.ZERO)
+
+
+## The firefly on screen (the HUD layer, over the darkness, under the dim and dialogs), at its
+## place in the rotated, swaying view.
+func _draw_firefly() -> void:
+	if not is_pms() or firefly == Vector2.INF:
+		return
+	# Faded with Kyra (the veil's own fade already applies to this node).
+	var a := clampf(_player_layer.modulate.a / maxf(_veil.modulate.a, 0.001), 0, 1)
+	PmsMaze.draw_firefly(_ff_node, screen_of(firefly), time_ms, a)
+
+
+## The grid cell [row, col] of a world point.
+func _cell_of(v: Vector2) -> Vector2i:
+	return Vector2i(clampi(int(v.y / level.row_h), 0, level.rows.size() - 1), clampi(int(v.x / LevelData.CELL_W), 0, LevelData.COLS - 1))
+
+
+func _cell_mid(c: Vector2i) -> Vector2:
+	return Vector2((c.y + 0.5) * LevelData.CELL_W, (c.x + 0.5) * level.row_h)
+
+
+## The firefly: it floats round her with a gentle lag; standing still FF_IDLE s (or FF_LOST s
+## without finding anything) sends it ahead along the way to the nearest thing to find.
+func _update_firefly(dt: float, moving: bool) -> void:
+	var home := p.center() + Vector2(-34 if p.facing_right else 34, -44) + Vector2(sin(time_ms / 700.0) * 14, sin(time_ms / 450.0) * 8)
+	if firefly == Vector2.INF:
+		firefly = home
+	var playing := active and not dialog_open and not hold_input
+	if playing:
+		ff_since += dt
+		ff_idle = 0.0 if moving else ff_idle + dt
+	else:
+		ff_idle = minf(ff_idle, 0.0)
+	match ff_mode:
+		"follow":
+			firefly = firefly.lerp(home, 1.0 - exp(-3.0 * dt))
+			if playing and (ff_idle >= FF_IDLE or ff_since >= FF_LOST):
+				if not firefly_guide():
+					ff_idle = 0.0
+					ff_since = 0.0
+		"guide":
+			if ff_goal != null and ff_goal.collected:
+				ff_mode = "back"
+			elif ff_path.is_empty():
+				ff_hold += dt
+				firefly += Vector2(sin(time_ms / 300.0), cos(time_ms / 380.0)) * 12.0 * dt
+				if ff_hold >= FF_HOLD:
+					ff_mode = "back"
+			else:
+				firefly = firefly.move_toward(ff_path[0], FF_SPEED * dt)
+				if firefly.distance_to(ff_path[0]) < 2.0:
+					ff_path.pop_front()
+		"back":
+			firefly = firefly.move_toward(home, FF_SPEED * 1.4 * dt)
+			if firefly.distance_to(home) < 24.0:
+				ff_mode = "follow"
+				ff_goal = null
+				# A short rest before it guides again.
+				ff_idle = -1.0
+
+
+## Sends the firefly ahead to the nearest thing still to find (by the way through the maze,
+## not as the crow flies): the lantern, the comfort items, the door once open. False = none.
+func firefly_guide() -> bool:
+	var from := _cell_of(p.center())
+	var best: Array[Vector2i] = []
+	var goal: LevelData.Ent = null
+	for e in level.entities:
+		if e.collected or not (e.type in ["comfort", "lantern"] or (e.type == "door" and door_open > 0)):
+			continue
+		var path := PmsMaze.fly_path(level.rows, from, _cell_of(e.rect().get_center()))
+		if not path.is_empty() and (goal == null or path.size() < best.size()):
+			best = path
+			goal = e
+	if goal == null:
+		return false
+	ff_path.clear()
+	var at := firefly
+	var left := FF_REACH
+	var pts: Array[Vector2] = []
+	for i in range(1, best.size()):
+		pts.append(_cell_mid(best[i]))
+	if not pts.is_empty():
+		pts[pts.size() - 1] = goal.rect().get_center() + Vector2(0, -20)
+	for q in pts:
+		var d := at.distance_to(q)
+		if d > left:
+			ff_path.append(at.move_toward(q, left))
+			break
+		ff_path.append(q)
+		left -= d
+		at = q
+	ff_goal = goal
+	ff_mode = "guide"
+	ff_hold = 0.0
+	ff_idle = 0.0
+	ff_since = 0.0
+	Audio.play_sfx("cink-01.wav", 0.25)
+	return true
 
 
 ## The open door: the level is over (Main plays 4E, then the title).
@@ -4033,6 +4282,15 @@ func dev_all_comforts() -> void:
 	pms_items = PmsMaze.ITEMS.size()
 	pms_found = [true, true, true]
 	door_open = maxf(door_open, 0.6)
+
+
+## Developer shortcut (the maze): the lantern found (the bigger light at once).
+func dev_lantern() -> void:
+	for e in level.entities:
+		if e.type == "lantern":
+			e.collected = true
+	has_lantern = true
+	light_r = LANTERN_R
 
 
 ## Developer shortcut (the maze): stand a few cells beside the door.
