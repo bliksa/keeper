@@ -378,7 +378,7 @@ func _run() -> void:
 				var caps := segs.filter(func(sg): return sg.has("cap")).size()
 				var acts := segs.filter(func(sg): return sg.has("action")).size()
 				# Passive power-ups / states (no key to press) have no cap.
-				var passive: bool = hk in ["HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_CLIMB_FUEL_BURN", "HINT_PMS_CALM"]
+				var passive: bool = hk in ["HINT_CLIMB_MAGNET", "HINT_CLIMB_ROCKET", "HINT_CLIMB_FUEL_BURN", "HINT_PMS_RESTING"]
 				# Leftover mark-up or a pad glyph outside a cap would draw literally / as tofu.
 				var stray := segs.any(func(sg):
 					if not sg.has("text"):
@@ -2123,7 +2123,7 @@ func _run() -> void:
 	check(de != null and de.ids_in("2") == ["2A", "2B", "2C", "2E"] and de.ids_in("0").size() == 4, "the Dialogs tab lists each level's dialogs (2A–2E, 0A–0D)")
 	check(Text.dialog_for_letter("c", ForestRunner.LEVEL_ID) == "2C" and Text.dialog_for_letter("b", Game.CLIMB_ID) == "3B" and Text.dialog_for_letter("b", 3) == "SB" and Text.dialog_for_letter("z", 1) == "", "letter c in level 2 starts dialog 2C")
 	check(de.ids_in("mg").has("mg8_start") and not DialogEditor.is_story("mg8_start"), "minigame talk is listed apart, under its own names")
-	check(de.ids_in("4") == ["4A", "4B", "4C", "4D", "4E", "4F", "4G"] and Text.dialog_for_letter("a", Game.PMS_ID) == "4A" and DialogEditor.BY_GAME.has("4A") and DialogEditor.BY_GAME.has("4E") and DialogEditor.BY_GAME.has("4F") and DialogEditor.BY_GAME.has("4G"), "the PMS maze's dialogs 4A–4G are listed (started by the game)")
+	check(de.ids_in("4") == ["4A", "4B", "4C", "4D", "4E", "4F", "4G", "4H"] and Text.dialog_for_letter("a", Game.PMS_ID) == "4A" and DialogEditor.BY_GAME.has("4A") and DialogEditor.BY_GAME.has("4E") and DialogEditor.BY_GAME.has("4F") and DialogEditor.BY_GAME.has("4G") and DialogEditor.BY_GAME.has("4H"), "the PMS maze's dialogs 4A–4H are listed (started by the game)")
 	# Saving the files as they are changes nothing (same format as in the repo).
 	var bundled := {"godot/data/dialogs.json": FileAccess.get_file_as_string("res://data/dialogs.json"),
 		"godot/data/characters.json": FileAccess.get_file_as_string("res://data/characters.json")}
@@ -2664,6 +2664,8 @@ func _climb_ent(pf: Platformer, type: String) -> LevelData.Ent:
 func _pms_play(pf: Platformer) -> void:
 	var events: Array = []
 	pf.trigger.connect(func(n): events.append(n))
+	# (The gauge's foggy spells are played on their own, in _pms_light.)
+	pf.fog_wait = 999.0
 	await _pms_dark(pf)
 	check(absf(pf._world.rotation - PI) < 0.05 and pf.view_flip == 1.0, "the maze's world is drawn rotated 180°")
 	# Right moves her right in the world, which is left on screen.
@@ -2705,25 +2707,9 @@ func _pms_play(pf: Platformer) -> void:
 		await frames(1)
 		through = through or pf.p.y < floor3.end.y - 1
 	check(not through and pf.p.y >= floor3.end.y - 0.5, "a wall stops her from below")
-	# The breath: hold to breathe in, then the world is calm a while (steady).
-	await frames(30)
-	check(pf.hud.hint_lines() == ["HINT_PMS_BREATHE"], "the maze's ability hint: hold to breathe %s" % str(pf.hud.hint_lines()))
-	_check_labels(pf.hud.labels, ["HUD_LBL_COMFORT", "HUD_LBL_BREATH"], "PMS maze")
-	pf.ff_mode = "follow"
-	pf.ff_idle = 0.0
-	pf.ff_since = 0.0
-	Input.action_press("breathe")
-	await seconds(Platformer.CALM_FILL + 0.2)
-	Input.action_release("breathe")
-	check(pf.calm_t > 0 and pf.calm_charge == 0.0, "a full breath calms the world")
-	check(pf.ff_mode == "follow" and pf.ff_idle <= 0.0, "breathing in (standing still) is not idling: the firefly stays with her (%s)" % pf.ff_mode)
 	var ff_layer := pf._ff_node.get_parent().get_parent() as CanvasLayer
 	check(ff_layer != null and ff_layer.layer < 7 and pf.player_layer > 8, "the firefly is drawn under the dim (7) and the dialog box (8), on layer %d" % (ff_layer.layer if ff_layer else -1))
-	await seconds(1.3)
-	check(pf.light_r > Platformer.LANTERN_R + Platformer.CALM_LIGHT * 0.6, "the calm widens her light (%d px)" % pf.light_r)
-	check(pf.steady > 0.95 and absf(pf.view_angle() - PI) < 0.002 and pf.hud.hint_lines().has("HINT_PMS_CALM"), "while calm the view stops swaying (steady %.2f)" % pf.steady)
-	pf.calm_t = 0.01
-	await frames(3)
+	await _pms_light(pf, events)
 	# The door is closed until all three items are found.
 	var door: LevelData.Ent = null
 	var items: Array = []
@@ -2746,11 +2732,13 @@ func _pms_play(pf: Platformer) -> void:
 		for e in items:
 			if e.tier == tier:
 				it = e
+		pf.pms_light = 0.2
 		pf.p.x = it.x + it.w / 2 - pf.p.width / 2
 		pf.p.y = it.y + it.h - pf.p.height
 		pf.p.vy = 0
 		var did: String = PmsMaze.ITEM_DIALOGS[tier]
 		var got := await until(func(): return node_box().node_id() == did, 3)
+		check(pf.pms_light == 1.0 and pf.light_burst > 0.3, "the %s fills her energy, with a warm burst of light (%.2f, burst %.2f)" % [PmsMaze.ITEMS[tier], pf.pms_light, pf.light_burst])
 		var slots_ok := true
 		for k in 3:
 			slots_ok = slots_ok and pf.pms_found[k] == pick_order.slice(0, n + 1).has(k)
@@ -2770,6 +2758,258 @@ func _pms_play(pf: Platformer) -> void:
 	check(done and pf.hold_input, "the open door ends the level (pms_done)")
 	await finish_dialog("4E")
 	await frames(5)
+
+
+## The maze's light is her energy: it drains (slower standing still), the radius follows it,
+## rest (hold the ability) refills it and keeps her put, the firefly settles beside her; the
+## gauge top-right is wrong in its foggy spells (explained once) and right outside them.
+func _pms_light(pf: Platformer, events: Array) -> void:
+	pf.fog_wait = 999.0
+	pf.fog_t = 0.0
+	pf.ff_mode = "follow"
+	pf.ff_idle = -30.0
+	pf.ff_since = 0.0
+	pf.p.vx = 0
+	await until(func(): return pf.p.is_grounded, 3)
+	pf.pms_light = 1.0
+	await frames(30)
+	_check_labels(pf.hud.labels, ["HUD_LBL_COMFORT", "HUD_LBL_ENERGY"], "PMS maze")
+	check(pf.hud.hint_lines().is_empty(), "full energy: no ability hint %s" % str(pf.hud.hint_lines()))
+	check(pf.fog_k() == 0.0 and pf.gauge() == pf.pms_light, "outside a foggy spell the gauge tells the truth")
+	# Draining: slowly standing still, faster moving.
+	var e0 := pf.pms_light
+	await seconds(1.0)
+	var still := e0 - pf.pms_light
+	e0 = pf.pms_light
+	for dir in ["move_right", "move_left"]:
+		Input.action_press(dir)
+		await seconds(0.5)
+		Input.action_release(dir)
+	var moved := e0 - pf.pms_light
+	check(still > 0.0 and moved > still * 3 and moved > Platformer.LIGHT_DRAIN * 0.8 and moved < Platformer.LIGHT_DRAIN * 1.3, "her energy drains while she moves (%.4f in 1 s), much slower standing still (%.4f)" % [moved, still])
+	check(1.0 / Platformer.LIGHT_DRAIN >= 45.0 and 1.0 / Platformer.LIGHT_DRAIN <= 60.0, "full → spent in 45–60 s of play")
+	# The radius follows the energy; the lantern raises it; never no light.
+	pf.p.vx = 0
+	await seconds(1.5)
+	var r_full := pf.light_r
+	var sway_full := pf.tired_k()
+	pf.pms_light = 0.1
+	await seconds(2.5)
+	var r_low := pf.light_r
+	check(pf.has_lantern and absf(r_full - pf.light_for(1.0)) < 12 and absf(r_low - pf.light_for(pf.pms_light)) < 4 and r_low < r_full - 100, "her light's radius follows the energy (%d → %d px)" % [r_full, r_low])
+	check(pf.light_for(0.0) == Platformer.LANTERN_MIN and Platformer.LIGHT_MIN >= 60.0, "a small glow always stays (%d px, %d without the lantern)" % [Platformer.LANTERN_MIN, Platformer.LIGHT_MIN])
+	pf.has_lantern = false
+	var plain_full := pf.light_for(1.0)
+	var plain_low := pf.light_for(0.1)
+	pf.has_lantern = true
+	check(plain_full == Platformer.LIGHT_R and pf.light_for(1.0) == Platformer.LANTERN_R and pf.light_for(1.0) > plain_full + 90 and pf.light_for(0.1) > plain_low, "the lantern raises the light at every energy")
+	check(pf.tired_k() > sway_full + 0.3, "tired, the world sways a bit more (%.2f → %.2f)" % [sway_full, pf.tired_k()])
+	check(pf.hud.hint_lines() == ["HINT_PMS_REST"], "low energy: the hint to rest %s" % str(pf.hud.hint_lines()))
+	# Rest while the firefly is away guiding: it comes back and settles beside her.
+	pf.ff_mode = "follow"
+	pf.ff_idle = Platformer.FF_IDLE
+	var away := await until(func(): return pf.ff_mode == "guide", 2)
+	await seconds(0.6)
+	check(away and pf.ff_mode == "guide" and pf.firefly.distance_to(pf.p.center()) > 100, "(the firefly flew ahead: %s, %d px)" % [pf.ff_mode, pf.firefly.distance_to(pf.p.center())])
+	var x0 := pf.p.x
+	var e_low := pf.pms_light
+	Input.action_press("breathe")
+	await frames(8)
+	check(pf.resting and pf.p.is_sitting and not pf.rest_filling() and pf.pms_light <= e_low, "holding the ability she sits down to rest; nothing refills in the first %.1f s" % Platformer.REST_DELAY)
+	check(pf.ff_mode != "guide", "resting calls the firefly back (%s)" % pf.ff_mode)
+	Input.action_press("move_right")
+	var jump := InputEventAction.new()
+	jump.action = "jump"
+	jump.pressed = true
+	pf._unhandled_input(jump)
+	var guided := false
+	for i in int((Platformer.FF_IDLE + 1.2) * 60):
+		await frames(1)
+		guided = guided or pf.ff_mode == "guide"
+	Input.action_release("move_right")
+	check(absf(pf.p.x - x0) < 1.0 and pf.p.is_grounded and pf.p.vy == 0.0, "she can't walk or jump while she rests (%.1f → %.1f)" % [x0, pf.p.x])
+	check(pf.pms_light > e_low + Platformer.REST_FILL * 2.0 and pf.light_r > r_low + 25, "rest refills her energy and the light grows (%.2f → %.2f, %d → %d px)" % [e_low, pf.pms_light, r_low, pf.light_r])
+	check(not guided and pf.ff_mode == "follow" and pf.firefly.distance_to(pf.firefly_rest_spot()) < 30, "resting longer than its idle time, the firefly doesn't fly off: it sits beside her (%s, %d px)" % [pf.ff_mode, pf.firefly.distance_to(pf.firefly_rest_spot())])
+	check(pf.rest_k > 0.95 and pf.dark_lights()[1].z > Platformer.FIREFLY_R * 1.2, "… and glows brighter (%d px)" % pf.dark_lights()[1].z)
+	check(pf.hud.hint_lines() == ["HINT_PMS_RESTING"], "while resting: the resting hint with the energy as its bar %s" % str(pf.hud.hint_lines()))
+	pf.pms_light = 0.97
+	await seconds(0.5)
+	check(pf.pms_light == 1.0 and pf.resting, "rest fills the energy to full")
+	Input.action_release("breathe")
+	await frames(40)
+	check(not pf.resting and not pf.p.is_sitting and pf.hud.hint_lines().is_empty(), "letting go ends the rest (no hint at full energy) %s" % str(pf.hud.hint_lines()))
+	Input.action_press("move_right")
+	await frames(15)
+	Input.action_release("move_right")
+	check(pf.p.x > x0 + 10, "… and she walks again")
+	# The gauge: its first foggy spell is explained (once), the spell goes on after it.
+	pf.pms_light = 0.8
+	pf.p.vx = 0
+	events.clear()
+	pf.fog_wait = 0.2
+	var fogged := await until(func(): return events.has("pms_fog"), 3)
+	check(fogged and pf.fog_t > 0 and pf.fog_told and not pf.fog_explained, "the gauge's first foggy spell starts; it only counts as explained once 4H is read")
+	await until(func(): return node_box().node_id() == PmsMaze.FOG_DIALOG, 2)
+	await frames(3)
+	var fog_at := pf.fog_t
+	var e_at := pf.pms_light
+	await seconds(0.6)
+	check(pf.dialog_open and pf.fog_t == fog_at and pf.pms_light == e_at and not pf.fog_explained, "the spell and the energy wait while 4H is open (%.2f s left, energy %.3f)" % [pf.fog_t, pf.pms_light])
+	await finish_dialog(PmsMaze.FOG_DIALOG)
+	check(pf.fog_explained, "4H closed: the gauge is explained")
+	check(Text.dialogs[PmsMaze.FOG_DIALOG].parts[0].speaker == "Progesteronka", "%s: Progesterónka explains the unreliable gauge" % PmsMaze.FOG_DIALOG)
+	await seconds(0.8)
+	check(pf.fog_k() == 1.0 and absf(pf.gauge() - pf.pms_light) > 0.15, "in a foggy spell the gauge is wrong (shows %.2f, the energy is %.2f)" % [pf.gauge(), pf.pms_light])
+	var cleared := await until(func(): return pf.fog_t == 0.0, Platformer.FOG_LEN.y + 1)
+	check(cleared and pf.gauge() == pf.pms_light and pf.fog_wait >= Platformer.FOG_GAP.x and pf.fog_wait <= Platformer.FOG_GAP.y, "after the spell the gauge is right again; the next comes in %.1f s" % pf.fog_wait)
+	pf.fog_wait = 0.1
+	var again := await until(func(): return pf.fog_t > 0, 2)
+	await frames(20)
+	check(again and events.count("pms_fog") == 1 and not node_box().is_open(), "later spells are not explained again")
+	for mode in Platformer.FOG_MODES:
+		pf.start_fog(mode, 3.0)
+		var worst := 0.0
+		var seen: Array = []
+		for i in 60:
+			await frames(1)
+			if pf.fog_k() == 1.0:
+				worst = maxf(worst, absf(pf.gauge() - pf.pms_light))
+				if not seen.has(snappedf(pf.gauge(), 0.01)):
+					seen.append(snappedf(pf.gauge(), 0.01))
+		check(worst > 0.1 and (mode != "freeze" or seen.size() == 1) and (mode != "jitter" or seen.size() > 2), "a '%s' spell: the gauge is off by %.2f (%d values)" % [mode, worst, seen.size()])
+	pf.fog_t = 0.0
+	pf.fog_wait = 999.0
+	check(pf.gauge() == pf.pms_light, "… and right again when it ends")
+	check(events.count("pms_fog") == 1, "the gauge was explained once")
+	await _pms_light_edges(pf, events)
+	pf.pms_light = 1.0
+	pf.tired = 0.0
+
+
+## The maze's light, the edge cases: the rest hint only where resting works, Shift in the air,
+## losing the ground, a dialog while resting, the gauge's explanation replaced by another
+## dialog or due while she is in the air, the sway not snapping when the energy jumps.
+func _pms_light_edges(pf: Platformer, events: Array) -> void:
+	var jump := InputEventAction.new()
+	jump.action = "jump"
+	jump.pressed = true
+	pf.fog_t = 0.0
+	pf.fog_wait = 999.0
+	pf.p.vx = 0
+	await until(func(): return pf.p.is_grounded, 3)
+	# The rest hint: only once the light is visibly small, and only on the ground.
+	pf.pms_light = Platformer.REST_HINT + 0.1
+	await frames(40)
+	check(pf.hud.hint_lines().is_empty(), "above %.2f energy: no rest hint yet %s" % [Platformer.REST_HINT, str(pf.hud.hint_lines())])
+	pf.pms_light = 0.3
+	await frames(20)
+	check(pf.hud.hint_lines() == ["HINT_PMS_REST"], "a small light, on the ground: the hint to rest %s" % str(pf.hud.hint_lines()))
+	# Shift held in the air does nothing (and the hint doesn't promise it) until she lands.
+	pf._unhandled_input(jump)
+	await frames(3)
+	Input.action_press("breathe")
+	var air := 0
+	var rested_in_air := false
+	var hinted_in_air := false
+	for i in 240:
+		await frames(1)
+		if pf.p.is_grounded:
+			break
+		air += 1
+		rested_in_air = rested_in_air or pf.resting or pf.p.is_sitting
+		hinted_in_air = hinted_in_air or not pf.hud._wanted_hints().is_empty()
+	check(air > 10 and not rested_in_air, "the ability held in the air doesn't rest (%d frames in the air)" % air)
+	check(not hinted_in_air, "… and no rest hint in the air, where it can't be used")
+	var landed := await until(func(): return pf.resting, 2)
+	check(landed and pf.p.is_grounded, "… she sits down to rest when she lands")
+	await seconds(Platformer.REST_DELAY + 0.3)
+	check(pf.rest_filling() and pf.pms_light > 0.3, "(resting: the energy comes back, %.2f)" % pf.pms_light)
+	# Losing the ground ends the rest.
+	pf.p.y -= 40
+	pf.p.is_grounded = false
+	await frames(2)
+	check(not pf.p.is_grounded and not pf.resting and not pf.rest_filling(), "losing the ground ends the rest")
+	var again := await until(func(): return pf.resting, 2)
+	check(again, "(still held: she rests again on landing)")
+	await seconds(Platformer.REST_DELAY + 0.2)
+	# A dialog ends the rest; neither the energy nor a foggy spell moves while it is open.
+	pf.start_fog("drift", 4.0)
+	await frames(10)
+	main._dialog(PmsMaze.LANTERN_DIALOG)
+	await frames(3)
+	var e0 := pf.pms_light
+	var f0 := pf.fog_t
+	await seconds(1.0)
+	check(pf.dialog_open and not pf.resting and not pf.rest_filling(), "a dialog ends the rest (the ability still held)")
+	check(pf.pms_light == e0 and pf.fog_t == f0 and f0 > 0, "in a dialog the energy neither drains nor refills and the foggy spell waits (%.3f, %.2f s)" % [pf.pms_light, pf.fog_t])
+	check(pf.hud.hint_lines().is_empty() or pf.hud._wanted_hints().is_empty(), "no ability hint in a dialog")
+	Input.action_release("breathe")
+	await finish_dialog(PmsMaze.LANTERN_DIALOG)
+	await frames(5)
+	check(not pf.resting and events.count("pms_fog") == 1, "after the dialog she is up again (the ability let go)")
+	pf.fog_t = 0.0
+	# The gauge's explanation replaced by another dialog before it was read: it comes again.
+	pf.fog_told = false
+	pf.fog_explained = false
+	pf.pms_light = 0.8
+	events.clear()
+	pf.fog_wait = 0.1
+	await until(func(): return node_box().node_id() == PmsMaze.FOG_DIALOG, 4)
+	check(events.count("pms_fog") == 1 and pf.fog_told and pf.fog_count > 0 and pf.fog_mode == "drift", "(the first spell again: 4H opens)")
+	main._dialog(PmsMaze.LANTERN_DIALOG)
+	await finish_dialog(PmsMaze.LANTERN_DIALOG)
+	check(not pf.fog_explained and not node_box().is_open(), "another dialog took 4H's place: the gauge is not explained yet")
+	var retold := await until(func(): return events.count("pms_fog") == 2, Platformer.FOG_RETELL + Platformer.FOG_TELL + 2.0)
+	check(retold and not pf.fog_explained, "… so the first spell and its explanation come again")
+	await finish_dialog(PmsMaze.FOG_DIALOG)
+	check(pf.fog_explained, "… and reading 4H to its end explains it")
+	await seconds(0.6)
+	check(events.count("pms_fog") == 2 and pf.fog_told, "… once")
+	# The explanation waits for her to land (a dialog opening mid-jump is easily lost).
+	pf.fog_t = 0.0
+	pf.fog_told = false
+	pf.fog_explained = false
+	events.clear()
+	pf.start_fog("", 5.0)
+	await seconds(Platformer.FOG_TELL - 0.25)
+	pf._unhandled_input(jump)
+	var due_in_air := false
+	var told_in_air := false
+	for i in 300:
+		await frames(1)
+		var due: bool = pf.fog_len - pf.fog_t >= Platformer.FOG_TELL
+		if events.has("pms_fog"):
+			told_in_air = not pf.p.is_grounded
+			break
+		due_in_air = due_in_air or (due and not pf.p.is_grounded)
+	check(due_in_air and events.has("pms_fog") and not told_in_air, "the explanation waits until she stands on the ground")
+	await finish_dialog(PmsMaze.FOG_DIALOG)
+	check(pf.fog_explained and events.count("pms_fog") == 1, "(explained)")
+	# … and not right beside something to pick up (its dialog would take 4H's place).
+	var spot := Vector2(pf.p.x, pf.p.y)
+	var item: LevelData.Ent = null
+	for e in pf.level.entities:
+		if e.type == "comfort" and not e.collected:
+			item = e
+			break
+	check(not pf._near_pickup(), "(nothing to pick up beside her)")
+	if item != null:
+		pf.p.x = item.x + item.w + 30
+		pf.p.y = item.y + item.h - pf.p.height
+		check(pf._near_pickup(), "beside a comfort item the explanation would wait")
+		pf.p.x = spot.x
+		pf.p.y = spot.y
+	pf.fog_t = 0.0
+	pf.fog_wait = 999.0
+	# The sway follows the energy smoothly: a pickup's refill doesn't snap the view.
+	pf.pms_light = 0.02
+	await seconds(2.5)
+	var k_low := pf.tired_k()
+	pf.pms_light = 1.0
+	await frames(1)
+	var step_k := absf(pf.tired_k() - k_low)
+	await seconds(2.5)
+	check(k_low > 1.4 and step_k < 0.05 and pf.tired_k() < 1.02, "the sway eases when the energy jumps (%.2f, %.3f in one frame, then %.2f)" % [k_low, step_k, pf.tired_k()])
 
 
 ## The dark maze: the light follows her on screen (the rotated view), the firefly guides her
@@ -3019,6 +3259,7 @@ func _hud_layout() -> void:
 		["HUD_LBL_WATER", ForestRunner.WATER_HUD, ForestRunner.hint_anchor()],
 		["HUD_LBL_HEARTS", heart_pill, Vector2(heart_pill.end.x, Draw.label_bottom(heart_pill))],
 		["HUD_LBL_COMFORT", PlatformerHud.PMS_SLOTS, Vector2(-1, -1)],
+		["HUD_LBL_ENERGY", cave_pill, Vector2(cave_pill.end.x, Draw.label_bottom(cave_pill))],
 	]
 	for lang in ["sk", "en", "pt"]:
 		Text.language = lang
@@ -3062,6 +3303,13 @@ func _hud_layout() -> void:
 		if absf(empty.get_center().y - heart_pill.get_center().y) > 1.0:
 			off.append("an empty heart %.1f off" % (empty.get_center().y - heart_pill.get_center().y))
 	_centred(off, "hearts", Draw.bounds(hearts), heart_pill)
+	# The maze's energy gauge: the light + the bar as one row centred in its pill.
+	var en := PlatformerHud.energy_layout(cave_pill)
+	var en_icon: Vector2 = en.icon
+	var en_bar: Rect2 = en.bar
+	var en_row := Rect2(en_icon - Vector2.ONE * PlatformerHud.ENERGY_ICON_R, Vector2.ONE * PlatformerHud.ENERGY_ICON_R * 2).merge(en_bar)
+	if absf(en_row.get_center().x - cave_pill.get_center().x) > 0.5 or absf(en_bar.get_center().y - cave_pill.get_center().y) > 0.5 or absf(en_icon.y - cave_pill.get_center().y) > 0.5 or en_row.position.x < cave_pill.position.x + 8:
+		off.append("the energy gauge's row %s in %s" % [str(en_row), str(cave_pill)])
 	# The reserve's badge: its icon + "+N" as one row centred in the badge.
 	for n in [0, 3, 12]:
 		var lay := MeterHud.badge_layout(water, n)

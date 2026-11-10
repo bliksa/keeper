@@ -99,10 +99,10 @@ func _ready() -> void:
 			elif cq == "reload":
 				_dev_meter_reload.call_deferred(false)
 		# ?pms=1: the PMS maze from its start (?pms=door: all three items found; ?pms=lantern:
-		# from the start with the lantern).
+		# from the start with the lantern; ?pms=low: little energy; ?pms=fog: a foggy gauge).
 		var pq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('pms') || ''")
 		if pq is String and pq != "":
-			_dev_action.call_deferred("checkpoint6", 2 if pq == "door" else (3 if pq == "lantern" else 1))
+			_dev_action.call_deferred("checkpoint6", {"door": 2, "lantern": 3, "low": 4, "fog": 5}.get(pq, 1))
 		# ?cave=N: the cave from checkpoint N (with breathing; its ability hints).
 		var vq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('cave') || ''")
 		if vq is String and vq != "":
@@ -539,6 +539,12 @@ func _start_pms(checkpoint := 1, fade := true) -> void:
 	if checkpoint == 3:
 		# (Web ?pms=lantern) from the start, the lantern already found.
 		platformer.dev_lantern()
+	elif checkpoint == 4:
+		# (Web ?pms=low) from the start with little energy: a small light, the rest hint.
+		platformer.dev_low_light()
+	elif checkpoint == 5:
+		# (Web ?pms=fog) from the start, the gauge's first foggy spell right after 4A.
+		platformer.dev_fog()
 	if checkpoint == 2:
 		platformer.dev_all_comforts()
 		platformer.dev_near_door()
@@ -768,6 +774,14 @@ func _on_trigger(name: String) -> void:
 			_dialog(PmsMaze.ITEM_DIALOGS[int(name.right(1)) - 1], func():
 				if platformer == pf6 and pf6 != null and pf6.pms_items >= PmsMaze.ITEMS.size():
 					_dialog(PmsMaze.DOOR_DIALOG))
+		"pms_fog":
+			# The energy gauge's first foggy spell: it can't always be trusted (4H).
+			# Only reading it to its end counts: if another dialog takes its place, the maze
+			# explains it again (Platformer._update_fog).
+			var pf7 := platformer
+			_dialog(PmsMaze.FOG_DIALOG, func():
+				if platformer == pf7 and pf7 != null:
+					pf7.fog_was_explained())
 		"pms_lantern":
 			# The PMS maze is dark: the lantern makes her light bigger (4G).
 			_dialog(PmsMaze.LANTERN_DIALOG)

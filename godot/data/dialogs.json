@@ -443,6 +443,17 @@
     "BTN_CONTINUE"
    ]
   },
+  "4H": {
+   "parts": [
+    {
+     "speaker": "Progesteronka",
+     "text": "4H1"
+    }
+   ],
+   "buttons": [
+    "BTN_GOT_IT"
+   ]
+  },
   "MA": {
    "parts": [
     {

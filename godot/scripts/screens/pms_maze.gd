@@ -14,6 +14,8 @@ const ITEM_DIALOGS := ["4B", "4C", "4D"]
 const DOOR_DIALOG := "4F"
 ## The lantern (LevelData "+"): her light grows (Platformer.LANTERN_R).
 const LANTERN_DIALOG := "4G"
+## The energy gauge's first foggy spell (Platformer.start_fog): it can't always be trusted.
+const FOG_DIALOG := "4H"
 ## The maze is dark (Platformer._dark): the light round Kyra, the firefly's, the lantern's.
 const DARK := Color(0.045, 0.022, 0.085, 0.93)
 ## The darkness while the warm amber of the yellow body still lingers (Platformer.warm).
@@ -275,7 +277,7 @@ static func draw_bg(ci: CanvasItem, vs: Vector2, t: float, cam_y: float, level_h
 	for b in bands:
 		var y0 := full.position.y + full.size.y * b / bands
 		ci.draw_rect(Rect2(full.position.x, y0, full.size.x, full.size.y / bands + 1), top.lerp(bot, (b + 0.5) / bands))
-	# Slow fog: wide soft ellipses drifting sideways (calmer while she breathes).
+	# Slow fog: wide soft ellipses drifting sideways (calmer while she rests).
 	var drift := 1.0 - 0.6 * steady
 	for i in 9:
 		var depth := 0.15 + 0.07 * (i % 4)
@@ -397,9 +399,10 @@ static func draw_lantern(ci: CanvasItem, c: Vector2, t: float, s := 1.0, lit := 
 
 
 ## The firefly: a glowing yellow-green dot with a soft halo and two quick little wings.
-static func draw_firefly(ci: CanvasItem, c: Vector2, t: float, a := 1.0) -> void:
+## glow > 1 = brighter (settled beside her while she rests).
+static func draw_firefly(ci: CanvasItem, c: Vector2, t: float, a := 1.0, glow := 1.0) -> void:
 	var pulse := 0.8 + 0.2 * sin(t / 260.0)
-	Draw.radial_glow(ci, c, 36 * pulse, Color(FIREFLY, 0.6 * a), Color(FIREFLY_CORE, 0.75 * a))
+	Draw.radial_glow(ci, c, 36 * pulse * (0.6 + 0.4 * glow), Color(FIREFLY, minf(1.0, 0.6 * glow) * a), Color(FIREFLY_CORE, minf(1.0, 0.75 * glow) * a))
 	var flap := 0.55 + 0.45 * absf(sin(t / 45.0))
 	for side in [-1.0, 1.0]:
 		ci.draw_set_transform(c + Vector2(side * 4, -3), side * 0.5, Vector2(1.0, flap))

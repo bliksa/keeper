@@ -410,7 +410,7 @@
  "4A4": "Mudanças de humor, cansaço, inchaço ou desejos de comida são comuns. É normal e passa.",
  "4A5": "Encontra três coisas que ajudam: chá quente, um saco de água quente e uma manta macia. Aí a porta abre.",
  "4A6": "Aqui dentro está a escurecer. Este pirilampo fica contigo: fica quieta um momento e ele mostra-te o caminho.",
- "4A7": "As setas parecem trocadas, por isso vou com calma. E vou ser gentil comigo pelo caminho.",
+ "4A7": "As setas parecem trocadas, por isso vou com calma. E quando a minha luz ficar pequena, descanso.",
  "4B1": "Chá quente! Uma bebida quente, refeições regulares e água suficiente ajudam com o inchaço e o cansaço.",
  "4C1": "Um saco de água quente na barriga ou nas costas alivia as cólicas. Uma caminhada ou alongamentos também.",
  "4D1": "Uma manta macia: descanso. Dormir bem e menos cafeína, sal e álcool tornam a TPM mais leve.",
@@ -420,8 +420,9 @@
  "4E3": "Obrigada por jogares, guardiã. Fim… e um novo começo.",
  "4F1": "As três! A porta está aberta.",
  "4G1": "Uma lanterna! Agora vejo muito mais longe à minha volta.",
- "HINT_PMS_BREATHE": "<KB>mantém [SHIFT]</KB><GP>mantém [🔴]</GP> para *acalmar o mundo*",
- "HINT_PMS_CALM": "*calma*",
+ "4H1": "Vês a barra de energia a tremer? Hoje às vezes engana. Confia na luz à tua volta: quando ficar pequena, descansa.",
+ "HINT_PMS_REST": "<KB>mantém [SHIFT]</KB><GP>mantém [🔴]</GP> para *descansar*",
+ "HINT_PMS_RESTING": "*a descansar*",
  "PMS_ITEMS": "Conforto",
  "HUD_LBL_IRON": "Ferro",
  "HUD_LBL_BREATH": "Respiração",
@@ -429,6 +430,7 @@
  "HUD_LBL_WATER": "Água",
  "HUD_LBL_HEARTS": "Corações",
  "HUD_LBL_COMFORT": "Conforto",
+ "HUD_LBL_ENERGY": "Energia",
  "PREROD_EGG": "O ovócito é libertado: ovulação!",
  "PREROD_LUTEUM": "O que fica para trás torna-se o corpo lúteo, o corpo amarelo. Ele produz progesterona."
 }

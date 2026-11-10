@@ -410,7 +410,7 @@
  "4A4": "Mood swings, tiredness, bloating or cravings are common. It's normal, and it passes.",
  "4A5": "Find three things that help: warm tea, a hot-water bottle and a soft blanket. Then the door opens.",
  "4A6": "It's getting dark in here. This firefly will stay with you: stand still a moment and it shows you the way.",
- "4A7": "Arrows feel reversed, so I'll take it slowly. And I'll be kind to myself on the way.",
+ "4A7": "Arrows feel reversed, so I'll take it slowly. And when my light gets small, I'll rest.",
  "4B1": "Warm tea! A warm drink, regular meals and enough water help with bloating and low energy.",
  "4C1": "A hot-water bottle on the belly or back relaxes cramps. A walk or gentle stretching helps too.",
  "4D1": "A soft blanket: rest. Good sleep and less caffeine, salt and alcohol make PMS easier.",
@@ -420,8 +420,9 @@
  "4E3": "Thank you for playing, keeper. The end… and a new beginning.",
  "4F1": "All three! The door is open.",
  "4G1": "A lantern! Now I can see much further around me.",
- "HINT_PMS_BREATHE": "<KB>hold [SHIFT]</KB><GP>hold [🔴]</GP> to *calm the world*",
- "HINT_PMS_CALM": "*calm*",
+ "4H1": "See the energy bar flicker? Today it sometimes lies. Trust the light around you: when it gets small, rest.",
+ "HINT_PMS_REST": "<KB>hold [SHIFT]</KB><GP>hold [🔴]</GP> to *rest*",
+ "HINT_PMS_RESTING": "*resting*",
  "PMS_ITEMS": "Comfort",
  "HUD_LBL_IRON": "Iron",
  "HUD_LBL_BREATH": "Breath",
@@ -429,6 +430,7 @@
  "HUD_LBL_WATER": "Water",
  "HUD_LBL_HEARTS": "Hearts",
  "HUD_LBL_COMFORT": "Comfort",
+ "HUD_LBL_ENERGY": "Energy",
  "PREROD_EGG": "The egg is released: ovulation!",
  "PREROD_LUTEUM": "What stays behind becomes the corpus luteum, the yellow body. It makes progesterone."
 }

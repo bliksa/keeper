@@ -263,6 +263,7 @@ func _build_shortcuts() -> void:
 			["Start", "The PMS maze (drawn upside down, the arrows feel reversed), 4A", "checkpoint6", 1],
 			["Transformation", "The climb's top: the jackpot, 3E on the board, then the view turns into the maze", "pms_transform", 0],
 			["Lantern", "The dark maze from the start with the lantern found (the bigger light)", "checkpoint6", 3],
+			["Low energy", "The maze from the start with little energy: a small light, hold Shift to rest", "checkpoint6", 4],
 			["Door open", "The maze with all three comfort items found, beside the door", "checkpoint6", 2]]],
 	]
 	for c in cols.size():

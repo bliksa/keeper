@@ -410,7 +410,7 @@
  "4A4": "Výkyvy nálad, únava, nafúknuté bruško či chute na sladké sú bežné. Je to normálne a prejde to.",
  "4A5": "Nájdi tri veci, ktoré pomáhajú: teplý čaj, termofor a mäkkú deku. Potom sa otvoria dvere.",
  "4A6": "Tu dnu sa stmieva. Táto svetluška pôjde s tebou: chvíľu postoj a ukáže ti cestu.",
- "4A7": "Šípky sú akoby naopak, tak pôjdem pomaly. A budem k sebe cestou milá.",
+ "4A7": "Šípky sú akoby naopak, tak pôjdem pomaly. A keď moje svetlo zoslabne, oddýchnem si.",
  "4B1": "Teplý čaj! Teplý nápoj, pravidelné jedlo a dosť vody pomáhajú pri nafúknutí aj únave.",
  "4C1": "Termofor na bruško alebo kríže uvoľní kŕče. Pomôže aj prechádzka či jemné naťahovanie.",
  "4D1": "Mäkká deka: oddych. Dobrý spánok a menej kofeínu, soli a alkoholu uľahčia PMS.",
@@ -420,8 +420,9 @@
  "4E3": "Ďakujem, že si hrala, strážkyňa. Koniec… a nový začiatok.",
  "4F1": "Všetky tri! Dvere sú otvorené.",
  "4G1": "Lampáš! Teraz okolo seba vidím oveľa ďalej.",
- "HINT_PMS_BREATHE": "<KB>podrž [SHIFT]</KB><GP>podrž [🔴]</GP> na *upokojenie sveta*",
- "HINT_PMS_CALM": "*pokoj*",
+ "4H1": "Vidíš, ako ukazovateľ energie bliká? Dnes občas klame. Ver svetlu okolo seba: keď sa zmenší, oddýchni si.",
+ "HINT_PMS_REST": "<KB>podrž [SHIFT]</KB><GP>podrž [🔴]</GP> na *oddych*",
+ "HINT_PMS_RESTING": "*oddychuješ*",
  "PMS_ITEMS": "Útecha",
  "HUD_LBL_IRON": "Železo",
  "HUD_LBL_BREATH": "Dych",
@@ -429,6 +430,7 @@
  "HUD_LBL_WATER": "Voda",
  "HUD_LBL_HEARTS": "Srdiečka",
  "HUD_LBL_COMFORT": "Útecha",
+ "HUD_LBL_ENERGY": "Energia",
  "PREROD_EGG": "Vajíčko sa uvoľnilo: ovulácia!",
  "PREROD_LUTEUM": "Čo zostalo, sa mení na žlté teliesko. To vyrába progesterón."
 }

@@ -42,6 +42,7 @@ const BY_GAME := {
 	"4E": "the PMS maze's open door (the end of the game)",
 	"4F": "the PMS maze's last comfort item found (the door opens)",
 	"4G": "the PMS maze's lantern found (her light in the dark grows)",
+	"4H": "the PMS maze's energy gauge goes foggy for the first time (it can't always be trusted)",
 	"MA": "the start of the old meadow", "MF": "the locked gate", "MG": "the open gate (end)",
 	"SA": "the start of the old summit", "SF": "the LH wave (old summit)", "SG": "the old summit (end)",
 }

@@ -73,7 +73,7 @@ transformation / `_start_pms`). Minigame talk
 - **Flow** (what happens after a trigger/minigame): `scripts/main.gd`.
 - **Input**: actions are created in code in `scripts/autoload/game.gd`. One scheme in every
   level: move ← → (A/D) / D-pad, jump + double jump ↑ / Space / W / 🟡 (X), and the level's
-  ability on Shift / 🔴 (B, RB): breathe (cave), focus (`slow_time`, forest run), calm (PMS maze), breathe and,
+  ability on Shift / 🔴 (B, RB): breathe (cave), focus (`slow_time`, forest run), rest (PMS maze), breathe and,
   once earned, dash (`run`, summit). Kyra always runs (no walk / run key). Texts say
   <KB>Shift</KB><GP>🔴</GP> and <KB>UP / Space</KB><GP>🟡</GP>.
 
@@ -454,20 +454,21 @@ tea / bottle / blanket), `D` the door (entity `door`). Each item: `_take_comfort
 `pms_items` + `pms_found[tier]` (the HUD slot), trigger `pms_item_<tier+1>` → Main opens 4B / 4C / 4D
 (`PmsMaze.ITEM_DIALOGS`, in any pickup order); the third, whichever it is, opens the door (`door_open`) and
 Main plays 4F (`PmsMaze.DOOR_DIALOG`) after its tip; touching it open → `_pms_done` → trigger `pms_done` → 4E →
-`reset_run` → title. No hazards, no death (out of the maze → back to `last_ground`). The
-breath (Shift / 🔴, `_update_calm`): hold `CALM_FILL` s to fill, then `CALM_TIME` s calm
-(`calm_t`): `steady` → 1 stops the sway, calms the blobs and the fog (the view stays upside
-down: easing it halfway would turn the world sideways). HUD `PlatformerHud._draw_pms`: the
-three item slots top-left (upright), the breath pill top-right, ability hints
-`HINT_PMS_BREATHE` / `HINT_PMS_CALM`. Art in `PmsMaze` (walls / platforms as breathing blobs,
+`reset_run` → title. No hazards, no death (out of the maze → back to `last_ground`). Its
+mechanic is her light (energy, rest, an unreliable gauge: see "The maze's light" below; the view
+always stays upside down). HUD `PlatformerHud._draw_pms`: the three item slots top-left (upright),
+the energy gauge top-right (`draw_energy_pill`, label `HUD_LBL_ENERGY`), ability hints
+`HINT_PMS_REST` / `HINT_PMS_RESTING`. Art in `PmsMaze` (walls / platforms as breathing blobs,
 `merge_columns`; items, the door, `deco_spots` + `draw_deco`: a melting clock, a floating
 chair, a tilted frame, a sock; the hazy dusk `draw_bg`). `PmsMaze.check(rows)` = the map
 check (the grid with the jump physics: one row per single jump, two per double; every item
-and the door (and the lantern) reachable, no soft lock), run by the test. Dialogs 4A–4G (speakers Kyra,
+and the door (and the lantern) reachable, no soft lock), run by the test. Dialogs 4A–4H (speakers Kyra,
 Progesterónka = `Progesteronka` in `characters.json`, portrait `portrait_progesterone`, a plain
 disc until it has art; Estrogenka). Flow: `Main._start_pms(checkpoint)` (1 start + 4A, 2 the
 door open beside it), dev menu column "4 · PMS maze" (`checkpoint6`), web `?pms=1` /
-`?pms=door` / `?pms=lantern` (checkpoint 3, `dev_lantern`; dev menu "Lantern"); keys: 1–4 restart, 5 opens the
+`?pms=door` / `?pms=lantern` (checkpoint 3, `dev_lantern`; dev menu "Lantern") / `?pms=low` (checkpoint 4,
+`dev_low_light`: little energy; dev menu "Low energy") / `?pms=fog` (checkpoint 5, `dev_fog`: the gauge's first
+foggy spell right after 4A); keys: 1–4 restart, 5 opens the
 door. Music `menu.mp3`. Level editor: tool group "PMS maze" (W, &, D, +, P, =), test play upside down, the door
 restarts the test with a toast.
 
@@ -476,18 +477,43 @@ restarts the test with a toast.
 `PmsMaze.DARK` (dusky violet, very dark but not black) with up to four soft holes of light in screen px
 (`dark_lights()`: [x, y, radius] for Kyra, the firefly, the lantern still lying in the maze (a glimmer), the open
 door), set every frame by `_update_dark()`; positions through the rotated, swaying view (`screen_of(world)` =
-the player layer's transform). Her light `light_r`: `LIGHT_R`, `LANTERN_R` with the lantern, + `CALM_LIGHT` while
-the calm breath lasts (`_update_light`, smooth). **The lantern** `+` (entity `lantern`, `_take_lantern` →
+the player layer's transform). Her light `light_r` follows her energy (below). **The lantern** `+` (entity `lantern`, `_take_lantern` →
 `has_lantern`, trigger `pms_lantern` → Main 4G = `PmsMaze.LANTERN_DIALOG`); she then carries it floating at her
 side (`PmsMaze.draw_lantern`); no HUD slot. `PmsMaze.check` includes the lantern (`lantern` in its result).
 **The firefly** (`firefly`, world px; drawn in screen space by `_draw_firefly` on `_ff_node`, the HUD layer right over
 `_dark`, so it stays under the dim and the dialog box; `PmsMaze.draw_firefly`; introduced in 4A6):
-`ff_mode` "follow" (floats round her with a lag) → "guide" (`firefly_guide()`: after `FF_IDLE` s standing still (breathing in
-or calm doesn't count) or `FF_LOST` s without finding anything, to the nearest thing still to find by the way through the maze,
+`ff_mode` "follow" (floats round her with a lag) → "guide" (`firefly_guide()`: after `FF_IDLE` s standing still (resting
+doesn't count: it never flies off while she rests) or `FF_LOST` s without finding anything, to the nearest thing still to find by the way through the maze,
 `PmsMaze.fly_path` (a 4-neighbour BFS round the walls): the lantern, the comfort items, the door once open; along
 `ff_path` at `FF_SPEED`, at most `FF_REACH` px, waits `FF_HOLD` s) → "back". The test checks the light follows
-her on the rotated screen, the firefly guides to the nearest item, the lantern and the calm widen the light, and
+her on the rotated screen, the firefly guides to the nearest item, the lantern widens the light, and
 that the darkness is only in the maze.
+
+**The maze's light = her energy** (the PMS tiredness; replaces the old calm breath). `pms_light` 0..1: the radius
+of her light is `light_for(energy)` = lerp(`LIGHT_MIN`, `LIGHT_R`, energy), with the lantern lerp(`LANTERN_MIN`,
+`LANTERN_R`, energy) (never no light), followed smoothly by `light_r` (`_update_light(dt, moving)`). It drains
+`LIGHT_DRAIN` per s while she moves or jumps (full → spent in 55 s of play), `LIGHT_DRAIN_STILL` standing still,
+not in dialogs; `tired_k()` (1 … 1 + `PMS_TIRED`) grows the view's sway and the blobs' wobble as it drops (from
+`tired`, the spent energy eased at `TIRED_EASE`, so a pickup's refill doesn't snap the view).
+**Rest** (Shift / 🔴 held on the ground, `_update_rest`): `resting` → she sits, left / right and the jump are
+ignored; after `REST_DELAY` (0.4 s, `rest_filling()`) the energy comes back `REST_FILL` (20 %/s), `rest_k` 0..1
+eases in: the firefly comes back from guiding, settles at `firefly_rest_spot()` beside her and glows brighter
+(`FIREFLY_REST`; its own light never depends on the energy). Letting go (or a dialog, losing the ground) ends it.
+Hints: `HINT_PMS_REST` only below `REST_HINT` (0.5: the light is visibly small), on the ground (where resting
+works) and not resting, `HINT_PMS_RESTING` with the (true) energy as its bar while resting. **Comfort items** fill the energy (`_take_comfort`: `pms_light` = 1, `light_burst` → +
+`LIGHT_BURST` px for `BURST_TIME` s, a ring of glints). The maze is doable without resting (the light only gets
+small, nothing fails); 4A7 mentions resting. **The unreliable gauge**: the top-right pill shows `gauge()`, which
+is `pms_light` except in a foggy spell (`_update_fog`: `fog_wait` s of play, first `FOG_FIRST` = 12 s then
+`FOG_GAP` 8–15 s; `start_fog(mode, length)`, `fog_t` of `fog_len` = `FOG_LEN` 3–5 s, `fog_k()` eased over
+`FOG_EDGE`): `fog_mode` "drift" (off by `fog_off`, slowly waving), "jitter" (hops between wrong values) or
+"freeze" (stuck at a wrong value); `draw_energy_pill` then turns violet with a border, wavy static, stray
+dashes, a shivering flickering bar and a blinking "?" on the light icon (`PlatformerHud.energy_layout`: icon +
+bar centred, checked by `_hud_layout`). The first spell (a drift, the longest) is explained once, `FOG_TELL` s
+into it, when she stands on the ground and nothing to pick up is beside her (`_near_pickup`): trigger `pms_fog`
+(`fog_told`) → Main 4H (`PmsMaze.FOG_DIALOG`, Progesterónka: the bar sometimes lies, trust the
+light around you, rest when it gets small); only 4H read to its end counts (`fog_was_explained()` →
+`fog_explained`): if another dialog took its place, the first spell and 4H come again after `FOG_RETELL` s;
+spells pause in dialogs. The test (`_pms_light`) plays all of it.
 
 ## Old level 3: the summit (ovulation; dev menu only)
 
@@ -516,7 +542,7 @@ Dialog letters b/c/d/e → SB..SE; SF = the LH wave starts (trigger `wave`), SG 
 
 Every HUD indicator has a small label under it (`Draw.hud_label` / `label_rect` / `label_bottom`: KeeperDyslexic
 12 px, light text, dark outline, centred; keys `HUD_LBL_IRON` / `_BREATH` / `_SUN` / `_WATER` / `_HEARTS` /
-`_COMFORT`); the ability hints start under the label (`Draw.label_bottom(pill)`). Icons are centred by their drawn
+`_COMFORT` / `_ENERGY`); the ability hints start under the label (`Draw.label_bottom(pill)`). Icons are centred by their drawn
 bounds: `MeterHud.drop_at` / `heart_at` (`SpriteArt.heart_mid`, the outline's point included), `SpriteArt.bell_mid`,
 `PlatformerHud.icon_row_items` (the breath pill's text + icon row, text by its ink), `PmsMaze.item_bounds` +
 `PlatformerHud.pms_item_scale`, the reserve badge's `MeterHud.badge_layout`. The test `_hud_layout` checks both.
@@ -528,7 +554,7 @@ top-right indicator, one per ability usable *right now*, in one format (`parse()
 `[KEY]` = a tinted key cap (gamepad glyphs 🔴 🟡 ⬆ drawn as images inside it), `*action*` in
 yellow, the rest plain light text, all outlined over a soft dark shadow (no pill); e.g.
 `<KB>[SHIFT]</KB><GP>[🔴]</GP> to *focus*`, `<KB>[↑] + [↑]</KB><GP>[🟡] + [🟡]</GP> to *double jump*`
-(↑ in every language; passive states like the magnet / calm have no cap), a short fade
+(↑ in every language; passive states like the magnet / resting have no cap), a short fade
 in / out, an optional yellow time bar under the line. The owner calls `hints.update(dt, [key | {key, k}])` every frame and
 `hints.draw(ci, anchor)`; `hint_lines()` lists the shown keys (tests). Strings
 `HINT_BREATH_ATTACK` / `_CHARGE` / `_RHYTHM` (cave, `PlatformerHud._wanted_hints`:
@@ -536,7 +562,7 @@ charged → attack, used up → charge, recharging → the in · hold · out rhy
 breath pill, which may follow Kyra), `HINT_RUN_FOCUS` / `HINT_RUN_DOUBLE` (forest run,
 `ForestRunner._wanted_hints`: focus with ≥ 1 drop and no reload, double jump with ≥ 2),
 `HINT_CLIMB_*` (jackpot climb, under the heart meter: `HINT_CLIMB_HEART_BOOST` / `_FUEL` only
-while the ready hearts afford them, `HINT_CLIMB_FUEL_BURN` with the fuel left while the thrusters burn, then the active `climb_power` with its time), `HINT_PMS_BREATHE` / `HINT_PMS_CALM` (the PMS maze, under its breath pill). The old meadow / summit don't use it. Web shortcuts: `?cave=N` (cave at
+while the ready hearts afford them, `HINT_CLIMB_FUEL_BURN` with the fuel left while the thrusters burn, then the active `climb_power` with its time), `HINT_PMS_REST` / `HINT_PMS_RESTING` (the PMS maze, under its energy gauge; see "The maze's light"). The old meadow / summit don't use it. Web shortcuts: `?cave=N` (cave at
 checkpoint N), `?climb=power` (the climb with three ready hearts and some in reserve, a super jump and the magnet, then a joker spins the reels).
 
 ## Game feel (levels 2 and 3)

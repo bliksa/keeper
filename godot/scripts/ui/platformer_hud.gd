@@ -65,12 +65,16 @@ func hint_lines() -> Array:
 func _wanted_hints() -> Array:
 	var pf := platformer
 	if pf.is_pms():
-		# The maze: the calming breath (hold), and how long the calm lasts.
+		# The maze: rest (hold) once the light is visibly small, and only where it works (on
+		# the ground: in the air Shift does nothing); while resting, the energy
+		# coming back as the line's bar (the true energy: the gauge may be foggy).
 		if pf.dialog_open or pf.hold_input:
 			return []
-		if pf.calm_t > 0:
-			return [{"key": "HINT_PMS_CALM", "k": pf.calm_t / Platformer.CALM_TIME}]
-		return ["HINT_PMS_BREATHE"]
+		if pf.resting:
+			return [{"key": "HINT_PMS_RESTING", "k": pf.pms_light}]
+		if pf.pms_light < Platformer.REST_HINT and pf.p.is_grounded:
+			return ["HINT_PMS_REST"]
+		return []
 	if pf.prerod_t >= 0:
 		return []
 	if pf.is_climb():
@@ -705,7 +709,7 @@ func _a(c: Color) -> Color:
 
 
 ## The PMS maze (level 6): the three comfort items as slots (top-left, upright, filled when
-## found), the breath pill (top-right: fills while held, then the calm drains) and the hints.
+## found), the energy gauge (top-right: draw_energy_pill, not always right) and the hints.
 func _draw_pms(font: Font) -> void:
 	var pf := platformer
 	var t := pf.time_ms
@@ -723,21 +727,74 @@ func _draw_pms(font: Font) -> void:
 		var k := pms_item_scale(kind) * sc
 		PmsMaze.draw_item(self, kind, c - PmsMaze.item_bounds(kind).get_center() * k, t, k, 1.0 if got else 0.22)
 	labels = [{"key": "HUD_LBL_COMFORT", "box": box, "rect": Draw.hud_label(self, box, "HUD_LBL_COMFORT")}]
-	# The breath pill (top-right), the ability hints under it.
+	# The energy gauge (top-right), the ability hints under it.
 	var pill := Rect2(1066 - 16 - PILL.x, 16, PILL.x, PILL.y)
-	Draw.panel(self, pill, BG, 16)
-	var k := pf.calm_t / Platformer.CALM_TIME if pf.calm_t > 0 else pf.calm_charge
-	if k > 0:
-		_progress_outline(pill, k, Color("#8b6fa8") if pf.calm_t > 0 else TEAL)
-	var bc := pill.get_center()
-	var rr := 9.0 + 7.0 * (pf.steady if pf.calm_t > 0 else pf.calm_charge)
-	draw_circle(bc, rr + 4, Color("#b9a3cc", 0.35))
-	draw_circle(bc, rr, Color("#8b6fa8") if pf.calm_t > 0 else Color(TEAL, 0.8))
-	_wind_icon(bc + Vector2(-44, 0), INK)
-	draw_arc(bc + Vector2(44, 0), 9, 0, TAU, 24, Color(INK, 0.6), 2.0, true)
-	draw_arc(bc + Vector2(44, 0), 4 + 4 * sin(t / 600.0) * (1.0 - pf.steady), 0, TAU, 16, Color(INK, 0.6), 2.0, true)
-	labels.append({"key": "HUD_LBL_BREATH", "box": pill, "rect": Draw.hud_label(self, pill, "HUD_LBL_BREATH")})
+	draw_energy_pill(self, pill, pf.gauge(), pf.fog_k(), t / 1000.0, pf.rest_k)
+	labels.append({"key": "HUD_LBL_ENERGY", "box": pill, "rect": Draw.hud_label(self, pill, "HUD_LBL_ENERGY")})
 	hints.draw(self, Vector2(pill.end.x, Draw.label_bottom(pill)))
+
+
+## The energy pill's row: a little light (icon centre, ENERGY_ICON_R with its rays) and the
+## bar's track, centred in the pill as one row.
+const ENERGY_ICON_R := 10.0
+const ENERGY_BAR := Vector2(84, 12)
+const ENERGY_GAP := 8.0
+const ENERGY_WARM := Color("#f4b740")
+const ENERGY_LOW := Color("#e2703a")
+const ENERGY_FOG := Color("#b06fd8")
+
+static func energy_layout(pill: Rect2) -> Dictionary:
+	var w := ENERGY_ICON_R * 2 + ENERGY_GAP + ENERGY_BAR.x
+	var x0 := pill.get_center().x - w / 2
+	var cy := pill.get_center().y
+	return {"icon": Vector2(x0 + ENERGY_ICON_R, cy), "bar": Rect2(x0 + ENERGY_ICON_R * 2 + ENERGY_GAP, cy - ENERGY_BAR.y / 2, ENERGY_BAR.x, ENERGY_BAR.y)}
+
+
+## The maze's energy gauge: shown = what it says (0..1; Platformer.gauge(), wrong in a foggy
+## spell), fog 0..1 = how foggy it is now: the bar shivers and flickers, its colour shifts to
+## violet, wavy static runs over the pill and a "?" blinks on the light, so one can tell it
+## can't be trusted right now. rest 0..1: a soft pulse while the energy comes back.
+static func draw_energy_pill(ci: CanvasItem, pill: Rect2, shown: float, fog: float, ts: float, rest := 0.0) -> void:
+	Draw.panel(ci, pill, BG.lerp(Color("#e6daf0"), 0.8 * fog), 16, Color(ENERGY_FOG, 0.75 * fog), 2.0 * fog)
+	var lay := energy_layout(pill)
+	var shake := Vector2(sin(ts * 47.0) * 1.6, sin(ts * 31.0) * 0.8) * fog
+	var flick := 1.0 - 0.45 * fog * (0.5 + 0.5 * sin(ts * 23.0)) * (1.0 if sin(ts * 7.3) > -0.3 else 0.3)
+	var k := clampf(shown, 0, 1)
+	var col := ENERGY_LOW.lerp(ENERGY_WARM, clampf(k / 0.35, 0, 1)).lerp(ENERGY_FOG, 0.75 * fog)
+	# The light: a glowing dot with short rays, as big as it says.
+	var ic: Vector2 = lay.icon
+	var r := 3.0 + 3.5 * k + 0.8 * rest * sin(ts * 5.0)
+	Draw.radial_glow(ci, ic, ENERGY_ICON_R + 2, Color(col, 0.35 * flick))
+	for i in 8:
+		var d := Vector2.from_angle(TAU * i / 8.0 + ts * 0.4)
+		ci.draw_line(ic + d * (r + 1.5), ic + d * (r + 1.5 + 1.0 + 2.0 * k), Color(col, 0.9 * flick), 1.6, true)
+	ci.draw_circle(ic, r, Color(col, flick))
+	if fog > 0.5 and sin(ts * 9.0) > 0:
+		Draw.text_center(ci, Text.font_bold, ic + Vector2(0, 4.5), "?", 13, Color(1, 1, 1, 0.95))
+	# The bar.
+	var bar: Rect2 = lay.bar
+	bar.position += shake
+	Draw.panel(ci, bar, Color("#d8d2cf").lerp(Color("#cfc0dd"), fog), bar.size.y / 2)
+	if k > 0.01:
+		var fill := Rect2(bar.position, Vector2(maxf(bar.size.y, bar.size.x * k), bar.size.y))
+		Draw.panel(ci, fill, Color(col, flick), bar.size.y / 2)
+		ci.draw_circle(Vector2(fill.end.x - bar.size.y / 2, bar.get_center().y), 2.2 + 0.8 * rest, Color(1, 1, 1, 0.75 * flick))
+	if fog > 0:
+		# Wavy static across the pill, and a few stray dashes.
+		for row in 3:
+			var pts := PackedVector2Array()
+			var y0 := pill.position.y + pill.size.y * (0.28 + 0.22 * row)
+			for i in 15:
+				var x := pill.position.x + 12 + (pill.size.x - 24) * i / 14.0
+				pts.append(Vector2(x, y0 + sin(x * 0.19 + ts * (9.0 + 3.0 * row) + row * 2.1) * 3.2 * fog))
+			ci.draw_polyline(pts, Color(ENERGY_FOG.lerp(Color.WHITE, 0.35 * row), 0.5 * fog), 1.4, true)
+		for i in 5:
+			var h := sin((floorf(ts * 14.0) + i * 7.0) * 12.9898) * 43758.5453
+			h -= floorf(h)
+			var h2 := sin((floorf(ts * 14.0) + i * 3.0) * 78.233) * 43758.5453
+			h2 -= floorf(h2)
+			var q := Vector2(pill.position.x + 14 + (pill.size.x - 40) * h, pill.position.y + 9 + (pill.size.y - 18) * h2)
+			ci.draw_line(q, q + Vector2(6 + 8 * h2, 0), Color(1, 1, 1, 0.6 * fog), 1.5)
 
 
 ## The maze's three item slots (42 px each, 10 apart) in their panel (7 px round them).

@@ -209,18 +209,47 @@ const CAPTION_Y := 516.0
 const WARM_IRIS := 1.1
 const WARM_FADE := 4.0
 const WARM_TINT := Color(1.0, 0.8, 0.5)
-## The maze's breath: hold the ability to fill it, then the world is calm a while.
-const CALM_FILL := 2.0
-const CALM_TIME := 6.0
-## Blob wobble (px) and view sway (radians) in the maze, both calmed by the breath.
+## The maze's light is her energy (pms_light 0..1, the PMS tiredness): it drains LIGHT_DRAIN
+## per s while she moves or jumps (full → empty in 55 s of play), LIGHT_DRAIN_STILL standing
+## still. Rest (the ability held, on the ground: she sits and can't move): after REST_DELAY s
+## it comes back REST_FILL per s. The rest hint shows below REST_HINT (the light is visibly
+## small by then), on the ground.
+const LIGHT_DRAIN := 1.0 / 55.0
+const LIGHT_DRAIN_STILL := 1.0 / 240.0
+const REST_DELAY := 0.4
+const REST_FILL := 0.2
+const REST_HINT := 0.5
+## Blob wobble (px) and view sway (radians) in the maze; both grow by up to PMS_TIRED as the
+## energy drops (tired_k, from `tired`: the spent energy eased at TIRED_EASE per s, so a
+## pickup doesn't snap the view) and settle a little while she rests.
 const PMS_WOBBLE := 4.0
 const PMS_SWAY := 0.022
-## The dark maze (_dark): the light round Kyra (radius, screen px), with the lantern, how much
-## the calm breath widens it, and the firefly's own little light.
+const PMS_TIRED := 0.5
+const TIRED_EASE := 3.0
+## The dark maze (_dark): the light round Kyra (radius, screen px) = lerp(LIGHT_MIN, LIGHT_R,
+## energy), with the lantern lerp(LANTERN_MIN, LANTERN_R, energy): never no light at all. A
+## comfort item's warm burst adds LIGHT_BURST for BURST_TIME s. The firefly's own little light
+## doesn't depend on the energy (brighter by FIREFLY_REST while it sits beside her resting).
+const LIGHT_MIN := 85.0
 const LIGHT_R := 150.0
+const LANTERN_MIN := 125.0
 const LANTERN_R := 275.0
-const CALM_LIGHT := 60.0
+const LIGHT_BURST := 110.0
+const BURST_TIME := 1.4
 const FIREFLY_R := 70.0
+const FIREFLY_REST := 0.45
+## The energy gauge (top-right) is unreliable: every FOG_GAP s of play a foggy spell of
+## FOG_LEN s, in which it shows a wrong value (gauge(); eased in / out over FOG_EDGE s). The
+## first one comes after FOG_FIRST s and is explained (trigger pms_fog → PmsMaze.FOG_DIALOG),
+## FOG_TELL s into it, standing on the ground. If the explanation wasn't read to its end
+## (another dialog took its place), the first spell comes again after FOG_RETELL s.
+const FOG_FIRST := 12.0
+const FOG_GAP := Vector2(8.0, 15.0)
+const FOG_LEN := Vector2(3.0, 5.0)
+const FOG_EDGE := 0.4
+const FOG_TELL := 0.9
+const FOG_RETELL := 2.5
+const FOG_MODES: Array[String] = ["drift", "jitter", "freeze"]
 ## The warm arrival's light (light_radius: light_r + WARM_LIGHT · warm, the screen is lit
 ## while warm is high, then it closes in on her as the warm fades).
 const WARM_LIGHT := 2600.0
@@ -320,18 +349,37 @@ var warm := 0.0
 var _light_t := 0.0
 ## No control (the transformation, the maze's settling and its end).
 var hold_input := false
-## The maze: comfort items found (0..3), the door's open time, the breath (charge 0..1,
-## calm seconds left) and how steady the world is now (0..1).
+## The maze: comfort items found (0..3), the door's open time.
 var pms_items := 0
 ## Which comfort items (by tier = PmsMaze.ITEMS index) are found; any order is possible.
 var pms_found: Array[bool] = [false, false, false]
 var door_open := 0.0
 var _pms_done_sent := false
-var calm_charge := 0.0
-var calm_t := 0.0
-var steady := 0.0
-## The dark maze: the lantern found, the light's radius now (grows to LANTERN_R, the calm
-## breath widens it), the darkness overlay (screen space, under the HUD).
+## Her light's energy (0..1), resting now (the ability held on the ground; rest_t = s so far,
+## rest_k 0..1 eases in once the energy refills), a comfort item's warm burst (1 → 0).
+var pms_light := 1.0
+var resting := false
+var rest_t := 0.0
+var rest_k := 0.0
+var light_burst := 0.0
+## The spent energy (1 - pms_light), eased: what tired_k() feels.
+var tired := 0.0
+## The gauge's foggy spells: s of play until the next, s left of this one (0 = none) of
+## fog_len, its mode (FOG_MODES), its wrong offset, the value it froze at. Explained once:
+## fog_told = the explanation was sent (trigger pms_fog), fog_explained = it was read to its
+## end (set by Main when 4H closes); _fog_unread = s of play told but not explained.
+var fog_wait := FOG_FIRST
+var fog_t := 0.0
+var fog_len := 0.0
+var fog_mode := ""
+var fog_off := 0.0
+var fog_from := 0.0
+var fog_told := false
+var fog_explained := false
+var _fog_unread := 0.0
+var fog_count := 0
+## The dark maze: the lantern found, the light's radius now (follows the energy, smooth), the
+## darkness overlay (screen space, under the HUD).
 var has_lantern := false
 var light_r := LIGHT_R
 var _dark: ColorRect
@@ -546,11 +594,11 @@ func is_pms() -> bool:
 
 
 ## The view's angle: view_flip turned into radians, plus the maze's slow sway and the
-## transformation's wobble (the calm breath steadies it).
+## transformation's wobble (the sway grows as her energy drops, see tired_k).
 func view_angle() -> float:
 	var a := PI * view_flip
 	if is_pms():
-		a += sin(time_ms / 2300.0) * PMS_SWAY * (1.0 - steady)
+		a += sin(time_ms / 2300.0) * PMS_SWAY * tired_k()
 	a += sin(time_ms / 420.0) * 0.025 * _turning()
 	return a
 
@@ -784,7 +832,7 @@ func _draw_veil() -> void:
 		_veil.draw_rect(screen, Color(0.09, 0.05, 0.14, 0.42 * f))
 		Draw.vignette(_veil, screen, Color(0.12, 0.06, 0.18, 0.55 * f), 0.35)
 	elif is_pms():
-		Draw.vignette(_veil, screen, Color(0.14, 0.08, 0.2, 0.5 - 0.25 * steady), 0.4)
+		Draw.vignette(_veil, screen, Color(0.14, 0.08, 0.2, 0.5 - 0.15 * rest_k), 0.4)
 		if warm > 0:
 			# Inside the yellow body: warm amber at first, then the maze's dusk.
 			_veil.draw_rect(screen, Color(1, 0.62, 0.2, 0.2 * warm))
@@ -1207,7 +1255,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		# Variable jump height: let go early for a short hop.
 		p.vy *= 0.55
 	if event.is_action_pressed("jump") and not event.is_echo():
-		if p.is_recharging or meadow_end > 0:
+		if p.is_recharging or meadow_end > 0 or resting:
 			return
 		if in_water and p.y + p.height / 2 > level.water_top + 60:
 			# Too deep to jump out: swim up first.
@@ -1378,6 +1426,12 @@ func _update(dt: float) -> void:
 	var breathe := Input.is_action_pressed("breathe") and not (is_summit() and has_upgrade("dash")) and not is_climb() and not hold_input
 	var breathe_pressed := breathe and not _prev_breathe
 	_prev_breathe = breathe
+	if is_pms():
+		# The maze: Shift is rest (she sits and stays put while it is held).
+		_update_rest(dt, breathe)
+		if resting:
+			left = false
+			right = false
 
 	# --- horizontal movement
 	var max_speed := MAX_SPEED
@@ -1453,12 +1507,15 @@ func _update(dt: float) -> void:
 			if pl.regrow <= 0:
 				pl.pop_timer = 0
 
-	# --- breathing (the maze has its own calming breath)
+	# --- breathing (the maze has its light instead: energy, rest, the unreliable gauge)
 	if is_pms():
-		_update_calm(dt, breathe)
-		_update_light(dt)
-		# Breathing in or calm is not idling: the firefly stays with her (and its light).
-		_update_firefly(dt, left or right or absf(p.vx) > 0.4 or not p.is_grounded or breathe or calm_charge > 0 or calm_t > 0)
+		var moving := left or right or absf(p.vx) > 0.4 or not p.is_grounded
+		_update_light(dt, moving)
+		_update_fog(dt)
+		if door_open > 0:
+			door_open += dt
+		# Resting is not idling: the firefly doesn't fly off, it settles beside her.
+		_update_firefly(dt, moving or resting)
 	elif Game.has_breathing:
 		if breathe_pressed and p.breath_charges > 0 and p.breathing_cooldown <= 0 and not dialog_open:
 			p.is_breathing = 40
@@ -1616,7 +1673,7 @@ func _update(dt: float) -> void:
 		p.anim_progress = 0
 	else:
 		p.step_animation(d60)
-	p.is_sitting = p.is_dead or (p.is_recharging and p.held_by_cramp == -1) or (on_dialog_floor and absf(p.vx) < 0.1 and p.is_grounded)
+	p.is_sitting = p.is_dead or (p.is_recharging and p.held_by_cramp == -1) or (on_dialog_floor and absf(p.vx) < 0.1 and p.is_grounded) or resting
 
 	if level.horizontal:
 		_update_meadow(dt, d60)
@@ -2277,7 +2334,7 @@ func _draw_bg() -> void:
 	ci.draw_rect(Rect2(Vector2.ZERO, vs), Color.from_string(cfg.get("base", "#101018"), Color("#101018")))
 	if cfg.get("procedural", false):
 		if is_pms():
-			PmsMaze.draw_bg(ci, vs, time_ms, camera_y, level_h, steady)
+			PmsMaze.draw_bg(ci, vs, time_ms, camera_y, level_h, rest_k * 0.5)
 		elif is_up():
 			_draw_garden_bg()
 			if is_climb():
@@ -4015,7 +4072,7 @@ func _draw_climb_platform(ci: CanvasItem, pl: LevelData.Plat, t: float) -> void:
 		ci.draw_circle(Vector2(r.position.x + 9 + i * 18, r.position.y + 9), 3, Color("#fef08a") if on else Color("#a78bfa", 0.7))
 
 
-# --- the PMS maze (level 6): walls, comfort items, the door, the calming breath ----------
+# --- the PMS maze (level 6): walls, comfort items, the door, her light (energy, rest) ----
 
 func _overlaps(r: Rect2) -> bool:
 	return p.x + p.width > r.position.x + 0.5 and p.x < r.end.x - 0.5 and p.y + p.height > r.position.y + 0.5 and p.y < r.end.y - 0.5
@@ -4048,22 +4105,31 @@ func _walls_y() -> void:
 			p.y = r.position.y - p.height
 
 
-## The maze's breath: hold the ability to breathe in (CALM_FILL s), then the world is calm
-## for CALM_TIME s: the blobs breathe slower, the view stops swaying, the haze lifts.
-func _update_calm(dt: float, breathe: bool) -> void:
-	if calm_t > 0:
-		calm_t = maxf(0.0, calm_t - dt)
-	elif breathe and not dialog_open:
-		calm_charge += dt / CALM_FILL
-		if calm_charge >= 1.0:
-			calm_charge = 0.0
-			calm_t = CALM_TIME
-			Audio.play_sfx("breathok.wav", 0.4)
-	else:
-		calm_charge = maxf(0.0, calm_charge - dt / CALM_FILL)
-	steady = move_toward(steady, 1.0 if calm_t > 0 else 0.0, dt / 1.2)
-	if door_open > 0:
-		door_open += dt
+## How much worse the world feels now (the sway, the blobs' wobble): 1 at full energy, up to
+## 1 + PMS_TIRED when the light is spent; resting settles it a little.
+func tired_k() -> float:
+	return (1.0 + PMS_TIRED * tired) * (1.0 - 0.4 * rest_k)
+
+
+## Rest: the ability held on the ground. She sits and can't move (_update drops left / right,
+## _unhandled_input the jump); after REST_DELAY s the energy comes back (_update_light).
+## Letting go, a dialog or losing the ground ends it.
+func _update_rest(dt: float, hold: bool) -> void:
+	var can := hold and p.is_grounded and active and not dialog_open and not hold_input
+	if can and not resting:
+		resting = true
+		rest_t = 0.0
+		Audio.play_sfx("breathok.wav", 0.25)
+	elif not can:
+		resting = false
+	if resting:
+		rest_t += dt
+	rest_k = move_toward(rest_k, 1.0 if rest_filling() else 0.0, dt / 0.6)
+
+
+## Resting long enough that the energy refills.
+func rest_filling() -> bool:
+	return resting and rest_t >= REST_DELAY
 
 
 func _take_comfort(e: LevelData.Ent) -> void:
@@ -4077,12 +4143,18 @@ func _take_comfort(e: LevelData.Ent) -> void:
 	# Keyed by which item it is (its tip, its HUD slot), not by how many were found.
 	trigger.emit("pms_item_%d" % (tier + 1))
 	ff_since = 0.0
+	# Comfort: her energy is full again, with a warm burst of light.
+	pms_light = 1.0
+	light_burst = 1.0
+	for i in 16:
+		var ang := TAU * i / 16.0
+		particles.append({"x": at.x, "y": at.y, "vx": cos(ang) * 3.2, "vy": sin(ang) * 3.2, "rot": 0.0, "rot_speed": 0.0, "type": "glint", "life": 0.7, "max_life": 0.7})
 	if pms_items >= PmsMaze.ITEMS.size() and door_open <= 0:
 		door_open = 0.01
 		Audio.play_sfx("finished.wav", 0.5)
 
 
-## The lantern: her light grows (light_r → LANTERN_R); Main plays 4G.
+## The lantern: her light grows (its radius at full energy LIGHT_R → LANTERN_R); Main plays 4G.
 func _take_lantern(e: LevelData.Ent) -> void:
 	e.collected = true
 	has_lantern = true
@@ -4092,13 +4164,115 @@ func _take_lantern(e: LevelData.Ent) -> void:
 	trigger.emit("pms_lantern")
 
 
-## The light round Kyra: LIGHT_R, LANTERN_R with the lantern, + CALM_LIGHT while calm; it
-## grows and shrinks smoothly.
-func _update_light(dt: float) -> void:
-	var want := (LANTERN_R if has_lantern else LIGHT_R) + (CALM_LIGHT if calm_t > 0 else 0.0)
-	light_r += (want - light_r) * (1.0 - exp(-2.2 * dt))
+## Her light's radius at an energy (0..1): bigger with the lantern, never nothing.
+func light_for(energy: float) -> float:
+	var k := clampf(energy, 0, 1)
+	return lerpf(LANTERN_MIN, LANTERN_R, k) if has_lantern else lerpf(LIGHT_MIN, LIGHT_R, k)
+
+
+## The light round Kyra is her energy: it drains while she plays (slowly standing still),
+## comes back while she rests; the radius follows it smoothly (light_for), plus a comfort
+## item's warm burst.
+func _update_light(dt: float, moving: bool) -> void:
+	if active and not dialog_open and not hold_input:
+		if rest_filling():
+			pms_light = minf(1.0, pms_light + REST_FILL * dt)
+		elif not resting:
+			pms_light = maxf(0.0, pms_light - (LIGHT_DRAIN if moving else LIGHT_DRAIN_STILL) * dt)
+	light_burst = maxf(0.0, light_burst - dt / BURST_TIME)
+	tired += (1.0 - pms_light - tired) * (1.0 - exp(-TIRED_EASE * dt))
+	var want := light_for(pms_light) + LIGHT_BURST * light_burst
+	light_r += (want - light_r) * (1.0 - exp(-3.0 * dt))
 	if absf(want - light_r) < 0.5:
 		light_r = want
+
+
+## The gauge's foggy spells (only while she plays, after the warm arrival): the first waits
+## for her to stand on the ground, is the longest and is explained once, FOG_TELL s into it
+## (trigger pms_fog: she has seen it flicker; the spell goes on after the dialog), when she
+## stands on the ground and isn't about to pick something up (its dialog would take 4H's
+## place). Main marks it explained when 4H is closed; if it never was (another dialog
+## replaced it), the first spell and its explanation come again.
+func _update_fog(dt: float) -> void:
+	if not active or dialog_open or hold_input or warm > 0:
+		return
+	if fog_told and not fog_explained:
+		# Told, no dialog open, not marked as read: 4H was replaced before its end.
+		_fog_unread += dt
+		if _fog_unread > 0.3:
+			fog_told = false
+			fog_t = 0.0
+			fog_wait = FOG_RETELL
+			return
+	if fog_t > 0:
+		fog_t = maxf(0.0, fog_t - dt)
+		if not fog_told and not fog_explained and fog_len - fog_t >= FOG_TELL and p.is_grounded and not _pms_done_sent and not _near_pickup():
+			# She has seen it flicker for a moment: now it is explained.
+			fog_told = true
+			_fog_unread = 0.0
+			trigger.emit("pms_fog")
+		if fog_t == 0.0:
+			# A first spell that passed untold (she was in the air all along) comes again soon.
+			fog_wait = randf_range(FOG_GAP.x, FOG_GAP.y) if fog_told or fog_explained else FOG_RETELL
+	else:
+		fog_wait -= dt
+		if fog_wait <= 0 and (fog_explained or p.is_grounded):
+			start_fog()
+
+
+## Main: the gauge's explanation (4H) was read to its end.
+func fog_was_explained() -> void:
+	fog_explained = true
+	fog_told = true
+
+
+## About to touch something whose dialog would replace the gauge's explanation.
+func _near_pickup() -> bool:
+	var near := Rect2(p.x, p.y, p.width, p.height).grow(60)
+	for e in level.entities:
+		if e.collected:
+			continue
+		if e.type in ["comfort", "lantern"] or (e.type == "door" and door_open > 0):
+			if near.intersects(e.rect()):
+				return true
+	return false
+
+
+## A foggy spell now (mode: one of FOG_MODES, "" = the first drifts, later ones at random).
+func start_fog(mode := "", length := 0.0) -> void:
+	fog_len = length if length > 0 else (FOG_LEN.y if not fog_explained else randf_range(FOG_LEN.x, FOG_LEN.y))
+	fog_t = fog_len
+	fog_mode = mode if mode != "" else ("drift" if not fog_explained else FOG_MODES[randi() % FOG_MODES.size()])
+	fog_count += 1
+	fog_from = pms_light
+	# Wrong towards where the bar has room, so the lie is always visible.
+	fog_off = randf_range(0.3, 0.45) * (-1.0 if pms_light > 0.5 else 1.0)
+
+
+## 0 outside a foggy spell, 1 in it (eased in and out over FOG_EDGE s).
+func fog_k() -> float:
+	if fog_t <= 0:
+		return 0.0
+	return clampf(minf(fog_len - fog_t, fog_t) / FOG_EDGE, 0, 1)
+
+
+## What the gauge shows (0..1): the energy, except in a foggy spell, where it drifts off to a
+## wrong value, jitters between wrong values or sticks at one. The truth is her light.
+func gauge() -> float:
+	var k := fog_k()
+	if k <= 0:
+		return pms_light
+	var el := fog_len - fog_t
+	var fake := pms_light
+	match fog_mode:
+		"freeze":
+			fake = fog_from + fog_off * 0.7
+		"jitter":
+			var h := sin(floorf(el / 0.12) * 12.9898) * 43758.5453
+			fake = pms_light + fog_off * (0.35 + 0.9 * (h - floorf(h)))
+		_:
+			fake = pms_light + fog_off * (0.8 + 0.2 * sin(el * 2.3))
+	return clampf(lerpf(pms_light, clampf(fake, 0.04, 1.0), k), 0, 1)
 
 
 ## Her light on screen now (px): the warm arrival (warm 1 → 0) shrinks from the whole
@@ -4121,7 +4295,7 @@ func dark_lights() -> Array[Vector3]:
 	out.append(Vector3(kc.x, kc.y, light_radius()))
 	if firefly != Vector2.INF:
 		var fc := screen_of(firefly)
-		out.append(Vector3(fc.x, fc.y, FIREFLY_R * (0.9 + 0.1 * sin(time_ms / 260.0)) * _player_layer.modulate.a))
+		out.append(Vector3(fc.x, fc.y, FIREFLY_R * (1.0 + FIREFLY_REST * rest_k) * (0.9 + 0.1 * sin(time_ms / 260.0)) * _player_layer.modulate.a))
 	for e in level.entities:
 		if e.collected:
 			continue
@@ -4154,7 +4328,7 @@ func _draw_firefly() -> void:
 		return
 	# Faded with Kyra (the veil's own fade already applies to this node).
 	var a := clampf(_player_layer.modulate.a / maxf(_veil.modulate.a, 0.001), 0, 1)
-	PmsMaze.draw_firefly(_ff_node, screen_of(firefly), time_ms, a)
+	PmsMaze.draw_firefly(_ff_node, screen_of(firefly), time_ms, a, 1.0 + rest_k)
 
 
 ## The grid cell [row, col] of a world point.
@@ -4167,9 +4341,14 @@ func _cell_mid(c: Vector2i) -> Vector2:
 
 
 ## The firefly: it floats round her with a gentle lag; standing still FF_IDLE s (or FF_LOST s
-## without finding anything) sends it ahead along the way to the nearest thing to find.
+## without finding anything) sends it ahead along the way to the nearest thing to find. While
+## she rests it never flies off: it comes back and settles beside her (and glows brighter).
 func _update_firefly(dt: float, moving: bool) -> void:
 	var home := p.center() + Vector2(-34 if p.facing_right else 34, -44) + Vector2(sin(time_ms / 700.0) * 14, sin(time_ms / 450.0) * 8)
+	if resting:
+		home = firefly_rest_spot() + Vector2(0, sin(time_ms / 600.0) * 2.5)
+		if ff_mode == "guide":
+			ff_mode = "back"
 	if firefly == Vector2.INF:
 		firefly = home
 	var playing := active and not dialog_open and not hold_input
@@ -4181,7 +4360,7 @@ func _update_firefly(dt: float, moving: bool) -> void:
 	match ff_mode:
 		"follow":
 			firefly = firefly.lerp(home, 1.0 - exp(-3.0 * dt))
-			if playing and (ff_idle >= FF_IDLE or ff_since >= FF_LOST):
+			if playing and not resting and (ff_idle >= FF_IDLE or ff_since >= FF_LOST):
 				if not firefly_guide():
 					ff_idle = 0.0
 					ff_since = 0.0
@@ -4204,6 +4383,11 @@ func _update_firefly(dt: float, moving: bool) -> void:
 				ff_goal = null
 				# A short rest before it guides again.
 				ff_idle = -1.0
+
+
+## Where the firefly settles while she rests: beside her, at her shoulder as she sits.
+func firefly_rest_spot() -> Vector2:
+	return p.center() + Vector2(-32 if p.facing_right else 32, 4)
 
 
 ## Sends the firefly ahead to the nearest thing still to find (by the way through the maze,
@@ -4259,8 +4443,8 @@ func _pms_done() -> void:
 func _draw_pms_world(ci: CanvasItem, t: float, view: Rect2) -> void:
 	for d in deco:
 		if view.has_point(d.pos):
-			PmsMaze.draw_deco(ci, d, t, steady)
-	var amp := PMS_WOBBLE * (1.0 - 0.75 * steady)
+			PmsMaze.draw_deco(ci, d, t, rest_k * 0.5)
+	var amp := PMS_WOBBLE * tired_k()
 	var shown: Array = []
 	for r in wall_blobs:
 		if r.intersects(view):
@@ -4290,7 +4474,18 @@ func dev_lantern() -> void:
 		if e.type == "lantern":
 			e.collected = true
 	has_lantern = true
-	light_r = LANTERN_R
+	light_r = light_for(pms_light)
+
+
+## Developer shortcuts (the maze): a low energy (a small light, the rest hint); a foggy
+## spell of the gauge in a moment.
+func dev_low_light(energy := 0.12) -> void:
+	pms_light = energy
+	fog_wait = maxf(fog_wait, 30.0)
+
+
+func dev_fog() -> void:
+	fog_wait = 0.6
 
 
 ## Developer shortcut (the maze): stand a few cells beside the door.
