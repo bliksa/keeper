@@ -16,12 +16,10 @@ const DOOR_DIALOG := "4F"
 const LANTERN_DIALOG := "4G"
 ## The energy gauge's first foggy spell (Platformer.start_fog): it can't always be trusted.
 const FOG_DIALOG := "4H"
-## The maze is dark (Platformer._dark): the light round Kyra, the firefly's, the lantern's.
+## The maze is dark (Platformer._dark): the light round Kyra, glimmers at the things to find.
 const DARK := Color(0.045, 0.022, 0.085, 0.93)
 ## The darkness while the warm amber of the yellow body still lingers (Platformer.warm).
 const DARK_WARM := Color(0.22, 0.1, 0.03, 0.93)
-const FIREFLY := Color("#d9f99d")
-const FIREFLY_CORE := Color("#fefce8")
 const WALL := Color("#45375c")
 const WALL_RIM := Color("#2a2040")
 const WALL_TOP := Color("#7d6a96")
@@ -134,34 +132,6 @@ static func _bfs(rows: PackedStringArray, start: Vector2i) -> Dictionary:
 				seen[m] = true
 				q.append(m)
 	return seen
-
-
-## The firefly's way through the maze (it flies, so only W blocks it): the shortest
-## 4-neighbour path of cells [row, col] from `from` to `to` (both included); empty when
-## there is none.
-static func fly_path(rows: PackedStringArray, from: Vector2i, to: Vector2i) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	if rows.is_empty() or _g(rows, from.x, from.y) == "W" or _g(rows, to.x, to.y) == "W":
-		return out
-	var prev := {from: from}
-	var q: Array[Vector2i] = [from]
-	while not q.is_empty():
-		var n: Vector2i = q.pop_front()
-		if n == to:
-			break
-		for d: Vector2i in [Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 0), Vector2i(-1, 0)]:
-			var m := n + d
-			if not prev.has(m) and _g(rows, m.x, m.y) != "W":
-				prev[m] = n
-				q.append(m)
-	if not prev.has(to):
-		return out
-	var c := to
-	while c != from:
-		out.push_front(c)
-		c = prev[c]
-	out.push_front(from)
-	return out
 
 
 ## Places for the objects that don't belong: empty cells with an empty cell above,
@@ -396,20 +366,6 @@ static func draw_lantern(ci: CanvasItem, c: Vector2, t: float, s := 1.0, lit := 
 	ci.draw_line(Vector2(7, -10), Vector2(7, 9), metal, 2.0)
 	ci.draw_rect(Rect2(-9, 9, 18, 5), metal)
 	ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-
-
-## The firefly: a glowing yellow-green dot with a soft halo and two quick little wings.
-## glow > 1 = brighter (settled beside her while she rests).
-static func draw_firefly(ci: CanvasItem, c: Vector2, t: float, a := 1.0, glow := 1.0) -> void:
-	var pulse := 0.8 + 0.2 * sin(t / 260.0)
-	Draw.radial_glow(ci, c, 36 * pulse * (0.6 + 0.4 * glow), Color(FIREFLY, minf(1.0, 0.6 * glow) * a), Color(FIREFLY_CORE, minf(1.0, 0.75 * glow) * a))
-	var flap := 0.55 + 0.45 * absf(sin(t / 45.0))
-	for side in [-1.0, 1.0]:
-		ci.draw_set_transform(c + Vector2(side * 4, -3), side * 0.5, Vector2(1.0, flap))
-		ci.draw_circle(Vector2(side * 2, 0), 3.5, Color(0.9, 0.95, 1, 0.55 * a))
-	ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-	ci.draw_circle(c + Vector2(0, 1.5), 2.6, Color("#4d5a2a", a))
-	ci.draw_circle(c + Vector2(0, -1), 3.2, Color(FIREFLY_CORE, a))
 
 
 ## An object that doesn't belong, drifting slightly at an odd angle.

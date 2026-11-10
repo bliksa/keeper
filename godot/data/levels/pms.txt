@@ -3,10 +3,10 @@
 # Legend: W wall (solid from every side)  = platform (one-way)  & comfort item (tea, hot-water bottle, blanket by order)  D door  + lantern
 WWWWWWWWWWWWWWWWWWWWWWWWW
 W.......................W
-W..P.............WW.....W
+W..P...........+.WW.....W
 WWWWWWWWWWWWWWWWWWWW..WWW
 W.....W.............=...W
-W.&...W.........==.+....W
+W.&...W.........==......W
 WWW..WWWWWWWW..WWWWWWWWWW
 W..=.........=..........W
 W....==.....W..==...W...W

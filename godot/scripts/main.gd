@@ -665,7 +665,8 @@ func _start_climb(checkpoint := 1, fade := true, from_title := false) -> void:
 
 
 ## (Re)start the PMS maze (level 4 of the game, id 6): 1 start, 2 the door open (all
-## three comfort items found; developer menu). 4A when it shows.
+## three comfort items found; developer menu), 3 the lantern already found (no 4A: it
+## points to the lantern). 4A when it shows.
 func _start_pms(checkpoint := 1, fade := true) -> void:
 	var run := _run_id
 	_progress(4, 1)
@@ -684,6 +685,9 @@ func _start_pms(checkpoint := 1, fade := true) -> void:
 	if checkpoint == 2:
 		platformer.dev_all_comforts()
 		platformer.dev_near_door()
+	elif checkpoint == 3:
+		# No phase board, no 4A: its 4A6 sends her to the lantern she already carries.
+		pass
 	else:
 		await get_tree().create_timer(0.4).timeout
 		if run == _run_id and platformer != null and platformer.is_pms():

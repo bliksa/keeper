@@ -466,7 +466,7 @@ and the door (and the lantern) reachable, no soft lock), run by the test. Dialog
 Progesterónka = `Progesteronka` in `characters.json`, portrait `portrait_progesterone`, a plain
 disc until it has art; Estrogenka). Flow: `Main._start_pms(checkpoint)` (1 start + 4A, 2 the
 door open beside it), dev menu column "4 · PMS maze" (`checkpoint6`), web `?pms=1` /
-`?pms=door` / `?pms=lantern` (checkpoint 3, `dev_lantern`; dev menu "Lantern") / `?pms=low` (checkpoint 4,
+`?pms=door` / `?pms=lantern` (checkpoint 3, `dev_lantern`, no phase board / 4A; dev menu "Lantern") / `?pms=low` (checkpoint 4,
 `dev_low_light`: little energy; dev menu "Low energy") / `?pms=fog` (checkpoint 5, `dev_fog`: the gauge's first
 foggy spell right after 4A); keys: 1–4 restart, 5 opens the
 door. Music `menu.mp3`. Level editor: tool group "PMS maze" (W, &, D, +, P, =), test play upside down, the door
@@ -483,7 +483,7 @@ in the other levels (`look_down_timer`, the pose) and peeks ahead: `pms_peek` (e
 added to the camera target and lets her nearer the dialog box's place (`PMS_PEEK_EDGE` from the screen's
 bottom; not in a dialog, resting or under `hold_input`). While a DialogBox dialog (node or panel) is open
 she is **held** (`dialog_frozen()` = `is_pms() and dialog_open`: no walking, jumping or resting, `vx` = 0; in
-the air she falls straight onto the next ground and stays; the firefly hovers, the energy doesn't drain); a
+the air she falls straight onto the next ground and stays; the energy doesn't drain); a
 movement / jump / rest press meanwhile (`_is_move_press`) emits `dialog_nudge` → `Main._nudge_dialog` →
 `DialogBox.nudge()`: the Next / choice button wiggles `NUDGE_TIME` 0.3 s with a soft click ("click me
 first"; at most one per `NUDGE_GAP`, counted in `nudges`, `shaking()`). A stick nudges once per push
@@ -495,20 +495,20 @@ The test `_pms_hold_and_hud` plays it (spawn, a jump there, the middle, a fall, 
 
 **The dark maze** (level 6 only): `Platformer._dark`, a full-screen `ColorRect` with a small canvas shader
 (`DARK_SHADER`) on `_veil` (over the world and the haze, under the HUD; Kyra's layer 9 stays above): the colour
-`PmsMaze.DARK` (dusky violet, very dark but not black) with up to four soft holes of light in screen px
-(`dark_lights()`: [x, y, radius] for Kyra, the firefly, the lantern still lying in the maze (a glimmer), the open
-door), set every frame by `_update_dark()`; positions through the rotated, swaying view (`screen_of(world)` =
+`PmsMaze.DARK` (dusky violet, very dark but not black) with up to four (`DARK_HOLES`) soft holes of light in screen px
+(`dark_lights()`: [x, y, radius] for Kyra, the lantern still lying in the maze (a warm glimmer, `LANTERN_GLIMMER`,
+seen from anywhere), the open door (`DOOR_GLIMMER`), then the nearest comfort items still
+to find (`item_glimmer(e)`: a faint glow `ITEM_GLIMMER`, nothing beyond `GLIMMER_RANGE` = 500 world px from her, full
+from `GLIMMER_NEAR`; none while she is still in the lantern's corridor without it, above its floor)), set every frame by `_update_dark()`; positions through the rotated, swaying view (`screen_of(world)` =
 the player layer's transform). Her light `light_r` follows her energy (below). **The lantern** `+` (entity `lantern`, `_take_lantern` →
-`has_lantern`, trigger `pms_lantern` → Main 4G = `PmsMaze.LANTERN_DIALOG`); she then carries it floating at her
+`has_lantern`, trigger `pms_lantern` → Main 4G = `PmsMaze.LANTERN_DIALOG`) lies at the end of the spawn corridor
+(the same row as P, a plain walk, the wall right behind it: the first thing she finds; 4A6 points her to it and
+its glimmer is the only light besides hers at the start; it is taken anywhere in its column, floor to ceiling,
+`lantern_reach(e)`, so a jump for the wall can't fly over it); she then carries it floating at her
 side (`PmsMaze.draw_lantern`); no HUD slot. `PmsMaze.check` includes the lantern (`lantern` in its result).
-**The firefly** (`firefly`, world px; drawn in screen space by `_draw_firefly` on `_ff_node`, the HUD layer right over
-`_dark`, so it stays under the dim and the dialog box; `PmsMaze.draw_firefly`; introduced in 4A6):
-`ff_mode` "follow" (floats round her with a lag) → "guide" (`firefly_guide()`: after `FF_IDLE` s standing still (resting
-doesn't count: it never flies off while she rests) or `FF_LOST` s without finding anything, to the nearest thing still to find by the way through the maze,
-`PmsMaze.fly_path` (a 4-neighbour BFS round the walls): the lantern, the comfort items, the door once open; along
-`ff_path` at `FF_SPEED`, at most `FF_REACH` px, waits `FF_HOLD` s) → "back". The test checks the light follows
-her on the rotated screen, the firefly guides to the nearest item, the lantern widens the light, and
-that the darkness is only in the maze.
+There is no firefly / guide any more: the glimmers show what is near. The test checks the light follows
+her on the rotated screen, the lantern is in the spawn corridor and picked up first by just walking or by any running jump over it, it widens the
+light, near items glimmer (and far / found ones don't), and that the darkness is only in the maze.
 
 **The maze's light = her energy** (the PMS tiredness; replaces the old calm breath). `pms_light` 0..1: the radius
 of her light is `light_for(energy)` = lerp(`LIGHT_MIN`, `LIGHT_R`, energy), with the lantern lerp(`LANTERN_MIN`,
@@ -518,8 +518,7 @@ not in dialogs; `tired_k()` (1 … 1 + `PMS_TIRED`) grows the view's sway and th
 `tired`, the spent energy eased at `TIRED_EASE`, so a pickup's refill doesn't snap the view).
 **Rest** (Shift / 🔴 held on the ground, `_update_rest`): `resting` → she sits, left / right and the jump are
 ignored; after `REST_DELAY` (0.4 s, `rest_filling()`) the energy comes back `REST_FILL` (20 %/s), `rest_k` 0..1
-eases in: the firefly comes back from guiding, settles at `firefly_rest_spot()` beside her and glows brighter
-(`FIREFLY_REST`; its own light never depends on the energy). Letting go (or a dialog, losing the ground) ends it.
+eases in (the haze and the sway calm). Letting go (or a dialog, losing the ground) ends it.
 Hints: `HINT_PMS_REST` only below `REST_HINT` (0.5: the light is visibly small), on the ground (where resting
 works) and not resting, `HINT_PMS_RESTING` with the (true) energy as its bar while resting. **Comfort items** fill the energy (`_take_comfort`: `pms_light` = 1, `light_burst` → +
 `LIGHT_BURST` px for `BURST_TIME` s, a ring of glints). The maze is doable without resting (the light only gets

@@ -203,8 +203,21 @@ func _run() -> void:
 	lant_shut[lnr] = lant_shut[lnr].substr(0, lnc - 1) + "W+W" + lant_shut[lnr].substr(lnc + 2)
 	lant_shut[lnr - 1] = lant_shut[lnr - 1].substr(0, lnc - 1) + "WWW" + lant_shut[lnr - 1].substr(lnc + 2)
 	check(not PmsMaze.check(lant_shut).ok, "the check includes the lantern (a walled-in lantern fails)")
-	var fp := PmsMaze.fly_path(rows6, Vector2i(1, 1), Vector2i(23, 22))
-	check(fp.size() > 20 and fp.all(func(v): return rows6[v.x][v.y] != "W"), "the firefly's way through the maze avoids the walls (%d cells)" % fp.size())
+	# The lantern lies in the spawn corridor: the same row as P, a walk along the floor (no
+	# jump, no gap, no branching on the way), a few cells away, before anything else to find.
+	var sp_r := -1
+	var sp_c := -1
+	for r in rows6.size():
+		if rows6[r].find("P") >= 0:
+			sp_r = r
+			sp_c = rows6[r].find("P")
+	var ln_c: int = rows6[sp_r].find("+") if sp_r >= 0 else -1
+	var walk_ok := sp_r >= 0 and ln_c >= 0
+	if walk_ok:
+		for c in range(mini(sp_c, ln_c), maxi(sp_c, ln_c) + 1):
+			walk_ok = walk_ok and rows6[sp_r][c] in [".", " ", "P", "+"] and rows6[sp_r + 1][c] == "W"
+	check(walk_ok and absi(ln_c - sp_c) >= 6 and absi(ln_c - sp_c) <= 14, "the lantern lies in the spawn corridor, a plain walk from P (%d cells along the floor)" % absi(ln_c - sp_c))
+	check(walk_ok and rows6[sp_r][ln_c + signi(ln_c - sp_c) * 2] == "W", "… at the corridor's end (the wall is right behind it)")
 	check(LevelData.parse_text(LevelData.to_text(rows6)) == rows6 and Game.LEVELS.keys().find(Game.PMS_ID) == Game.LEVELS.keys().find(Game.CLIMB_ID) + 1, "maze text round-trips; it comes after the climb in the level list")
 
 	step("pipes layouts are solvable")
@@ -1338,7 +1351,16 @@ func _run() -> void:
 	var cooled := await until(func(): return pms.warm == 0.0 and pms.warm_t < 0, 6)
 	check(cooled and pms._world.modulate == Color.WHITE, "the maze has its dusky colours after the warm start")
 	check(absf(pms.light_radius() - pms.light_r) < 1.0 and pms.light_r < Platformer.LIGHT_R + 1, "the warm light shrank to her light in the dark (%d px)" % pms.light_radius())
-	check(Text.dialogs["4A"].parts.any(func(pt): return pt.text == "4A6"), "4A introduces the firefly")
+	var no_firefly := true
+	var lang_ff := Text.language
+	for lang in ["sk", "en", "pt"]:
+		Text.language = lang
+		for key in ["4A1", "4A2", "4A3", "4A4", "4A5", "4A6", "4A7", "4G1", "4H1"]:
+			var line := Text.t(key).to_lower()
+			for word in ["firefly", "svetlušk", "pirilampo"]:
+				no_firefly = no_firefly and line.find(word) < 0
+	Text.language = lang_ff
+	check(no_firefly and Text.dialogs["4A"].parts.any(func(pt): return pt.text == "4A6"), "4A points her to the lantern at the corridor's end; no firefly in the maze's talk")
 	check(pms.modulate.a == 1.0 and not pms.hold_input and pms.p.is_grounded, "Kyra settled onto her platform; control is back after 4A")
 
 	step("level 4 – the PMS maze")
@@ -3191,8 +3213,6 @@ func _pms_hold_and_hud(pf: Platformer) -> void:
 	pf.p.vy = 0
 	pf.last_ground = start
 	pf.pms_light = energy
-	pf.firefly = Vector2.INF
-	pf.ff_mode = "follow"
 	pf.camera_y = pf.pms_camera_clamp(start.y - Platformer.H * Platformer.PMS_VIEW_Y)
 	await frames(30)
 
@@ -3246,8 +3266,6 @@ func _pms_play(pf: Platformer) -> void:
 		await frames(1)
 		through = through or pf.p.y < floor3.end.y - 1
 	check(not through and pf.p.y >= floor3.end.y - 0.5, "a wall stops her from below")
-	var ff_layer := pf._ff_node.get_parent().get_parent() as CanvasLayer
-	check(ff_layer != null and ff_layer.layer < 7 and pf.player_layer > 8, "the firefly is drawn under the dim (7) and the dialog box (8), on layer %d" % (ff_layer.layer if ff_layer else -1))
 	await _pms_light(pf, events)
 	# The door is closed until all three items are found.
 	var door: LevelData.Ent = null
@@ -3465,14 +3483,11 @@ func _end_and_continue() -> void:
 
 
 ## The maze's light is her energy: it drains (slower standing still), the radius follows it,
-## rest (hold the ability) refills it and keeps her put, the firefly settles beside her; the
+## rest (hold the ability) refills it and keeps her put; the
 ## gauge top-right is wrong in its foggy spells (explained once) and right outside them.
 func _pms_light(pf: Platformer, events: Array) -> void:
 	pf.fog_wait = 999.0
 	pf.fog_t = 0.0
-	pf.ff_mode = "follow"
-	pf.ff_idle = -30.0
-	pf.ff_since = 0.0
 	pf.p.vx = 0
 	await until(func(): return pf.p.is_grounded, 3)
 	pf.pms_light = 1.0
@@ -3509,32 +3524,21 @@ func _pms_light(pf: Platformer, events: Array) -> void:
 	check(plain_full == Platformer.LIGHT_R and pf.light_for(1.0) == Platformer.LANTERN_R and pf.light_for(1.0) > plain_full + 90 and pf.light_for(0.1) > plain_low, "the lantern raises the light at every energy")
 	check(pf.tired_k() > sway_full + 0.3, "tired, the world sways a bit more (%.2f → %.2f)" % [sway_full, pf.tired_k()])
 	check(pf.hud.hint_lines() == ["HINT_PMS_REST"], "low energy: the hint to rest %s" % str(pf.hud.hint_lines()))
-	# Rest while the firefly is away guiding: it comes back and settles beside her.
-	pf.ff_mode = "follow"
-	pf.ff_idle = Platformer.FF_IDLE
-	var away := await until(func(): return pf.ff_mode == "guide", 2)
-	await seconds(0.6)
-	check(away and pf.ff_mode == "guide" and pf.firefly.distance_to(pf.p.center()) > 100, "(the firefly flew ahead: %s, %d px)" % [pf.ff_mode, pf.firefly.distance_to(pf.p.center())])
 	var x0 := pf.p.x
 	var e_low := pf.pms_light
 	Input.action_press("breathe")
 	await frames(8)
 	check(pf.resting and pf.p.is_sitting and not pf.rest_filling() and pf.pms_light <= e_low, "holding the ability she sits down to rest; nothing refills in the first %.1f s" % Platformer.REST_DELAY)
-	check(pf.ff_mode != "guide", "resting calls the firefly back (%s)" % pf.ff_mode)
 	Input.action_press("move_right")
 	var jump := InputEventAction.new()
 	jump.action = "jump"
 	jump.pressed = true
 	pf._unhandled_input(jump)
-	var guided := false
-	for i in int((Platformer.FF_IDLE + 1.2) * 60):
-		await frames(1)
-		guided = guided or pf.ff_mode == "guide"
+	await seconds(3.2)
 	Input.action_release("move_right")
 	check(absf(pf.p.x - x0) < 1.0 and pf.p.is_grounded and pf.p.vy == 0.0, "she can't walk or jump while she rests (%.1f → %.1f)" % [x0, pf.p.x])
 	check(pf.pms_light > e_low + Platformer.REST_FILL * 2.0 and pf.light_r > r_low + 25, "rest refills her energy and the light grows (%.2f → %.2f, %d → %d px)" % [e_low, pf.pms_light, r_low, pf.light_r])
-	check(not guided and pf.ff_mode == "follow" and pf.firefly.distance_to(pf.firefly_rest_spot()) < 30, "resting longer than its idle time, the firefly doesn't fly off: it sits beside her (%s, %d px)" % [pf.ff_mode, pf.firefly.distance_to(pf.firefly_rest_spot())])
-	check(pf.rest_k > 0.95 and pf.dark_lights()[1].z > Platformer.FIREFLY_R * 1.2, "… and glows brighter (%d px)" % pf.dark_lights()[1].z)
+	check(pf.rest_k > 0.95, "… and the maze calms while she rests (%.2f)" % pf.rest_k)
 	check(pf.hud.hint_lines() == ["HINT_PMS_RESTING"], "while resting: the resting hint with the energy as its bar %s" % str(pf.hud.hint_lines()))
 	pf.pms_light = 0.97
 	await seconds(0.5)
@@ -3716,52 +3720,140 @@ func _pms_light_edges(pf: Platformer, events: Array) -> void:
 	check(k_low > 1.4 and step_k < 0.05 and pf.tired_k() < 1.02, "the sway eases when the energy jumps (%.2f, %.3f in one frame, then %.2f)" % [k_low, step_k, pf.tired_k()])
 
 
-## The dark maze: the light follows her on screen (the rotated view), the firefly guides her
-## to the nearest thing to find after she stands still, the lantern makes the light bigger.
+## The dark maze: the light follows her on screen (the rotated view), no firefly, the lantern
+## glimmers at the end of the spawn corridor and is the first thing she walks into, it makes
+## her light bigger; comfort items glimmer only when she is near.
 func _pms_dark(pf: Platformer) -> void:
 	await frames(2)
 	var ls := pf.dark_lights()
 	var sc := pf.screen_of(pf.p.center())
 	var upright := Vector2(Platformer.W, Platformer.H) - (pf.p.center() - Vector2(pf.camera_x, pf.camera_y))
 	check(pf._dark.visible and ls.size() >= 2 and Vector2(ls[0].x, ls[0].y).distance_to(sc) < 1.0 and sc.distance_to(upright) < 30, "the maze is dark, lit round Kyra where she is on the rotated screen %s (≈ %s)" % [sc, upright])
-	check(pf.firefly != Vector2.INF and pf.firefly.distance_to(pf.p.center()) < 160, "the firefly is with her")
+	var ff_left := false
+	for prop in pf.get_property_list():
+		var pn: String = prop.name
+		ff_left = ff_left or pn.begins_with("ff_") or pn.find("firefly") >= 0 or pn == "_ff_node"
+	check(not ff_left and not pf.has_method("firefly_guide") and not pf.has_method("_update_firefly"), "there is no firefly in the maze any more (no state, no guiding)")
 	Input.action_press("move_left")
 	await frames(25)
 	Input.action_release("move_left")
 	await frames(2)
 	var sc2 := pf.screen_of(pf.p.center())
 	check(Vector2(pf.dark_lights()[0].x, pf.dark_lights()[0].y).distance_to(sc2) < 1.0 and sc2.x > sc.x + 10, "her light follows her on screen (left in the world = right on screen: %d → %d)" % [sc.x, sc2.x])
-	# Standing still: the firefly flies ahead to the nearest thing to find (by the way).
-	pf.ff_mode = "follow"
-	pf.ff_idle = 0.0
-	pf.ff_since = 0.0
-	var from := pf._cell_of(pf.p.center())
-	var nearest: LevelData.Ent = null
-	var best := 99999
+	# The lantern glimmers down the corridor from the start, on screen, outside her own light.
+	var lantern: LevelData.Ent = null
+	var items: Array[LevelData.Ent] = []
 	for e in pf.level.entities:
-		if not e.collected and e.type in ["comfort", "lantern"]:
-			var n := PmsMaze.fly_path(pf.level.rows, from, pf._cell_of(e.rect().get_center())).size()
-			if n > 0 and n < best:
-				best = n
-				nearest = e
-	var guiding := await until(func(): return pf.ff_mode == "guide", Platformer.FF_IDLE + 1.0)
-	check(guiding and pf.ff_goal == nearest and nearest != null and nearest.type == "lantern", "after standing still the firefly guides her to the nearest thing to find (%s)" % (pf.ff_goal.type if pf.ff_goal else "-"))
-	var d0 := pf.firefly.distance_to(nearest.rect().get_center())
-	await seconds(1.2)
-	check(pf.firefly.distance_to(nearest.rect().get_center()) < d0 - 150 and pf.dark_lights()[1].z > 30, "the firefly flies the way there, with its light (%d → %d px)" % [d0, pf.firefly.distance_to(nearest.rect().get_center())])
-	var back := await until(func(): return pf.ff_mode == "follow", 12)
-	check(back, "… and comes back to her")
-	# The lantern: a bigger light.
+		if e.type == "lantern":
+			lantern = e
+		elif e.type == "comfort":
+			items.append(e)
+	ls = pf.dark_lights()
+	var lsc := pf.screen_of(lantern.rect().get_center())
+	var glim := ls.size() == 2 and Vector2(ls[1].x, ls[1].y).distance_to(lsc) < 1.0 and ls[1].z >= 45.0
+	var on_screen := Rect2(40, 40, Platformer.W - 80, Platformer.H - 80).has_point(lsc)
+	check(glim and on_screen and lsc.distance_to(sc2) > pf.light_radius() + ls[1].z * 0.5, "the lantern glimmers down the spawn corridor, on screen and beyond her own light (%s, %d px away, glimmer %d px)" % [lsc, lsc.distance_to(sc2), ls[1].z if ls.size() > 1 else 0.0])
+	check(items.size() == 3 and items.all(func(e): return pf.item_glimmer(e) == 0.0), "only the lantern glimmers until she has it (no comfort item yet)")
+	# A running jump towards the wall behind it can't carry her over it: from each of the
+	# cells before it (single and double jumps) she still ends up with the lantern.
 	var r0 := pf.light_r
-	pf.p.x = nearest.x + nearest.w / 2 - pf.p.width / 2
-	pf.p.y = nearest.y + nearest.h - pf.p.height
+	var home := Vector2(pf.p.x, pf.p.y)
+	var reach := pf.lantern_reach(lantern)
+	check(reach.size.y >= LevelData.ROW_H * 2 - 10 and reach.position.y == LevelData.ROW_H and reach.size.x >= LevelData.CELL_W - 1 and reach.end.y == lantern.y + lantern.h, "the lantern is taken anywhere in its column, floor to ceiling (%s)" % reach)
+	var lcol := int(lantern.rect().get_center().x / LevelData.CELL_W)
+	var jumped_over := ""
+	var highest := 0.0
+	for variant in [[4, 0], [3, 0], [2, 0], [1, 0], [4, 14], [3, 16], [2, 12], [5, 22]]:
+		lantern.collected = false
+		pf.has_lantern = false
+		pf.p.x = (lcol - 7) * LevelData.CELL_W
+		pf.p.y = home.y
+		pf.p.vx = 0
+		pf.p.vy = 0
+		var jump_x: float = (lcol - int(variant[0])) * LevelData.CELL_W
+		Input.action_press("move_right")
+		await until(func(): return pf.p.x >= jump_x or pf.has_lantern, 3)
+		var jump_ev := InputEventAction.new()
+		jump_ev.action = "jump"
+		jump_ev.pressed = true
+		var y_jump: float = pf.p.y
+		pf._unhandled_input(jump_ev)
+		if int(variant[1]) > 0:
+			await frames(int(variant[1]))
+			pf._unhandled_input(jump_ev)
+		var top := [pf.p.y]
+		await until(func(): top[0] = minf(top[0], pf.p.y); return pf.has_lantern or pf.p.x > lantern.x + LevelData.CELL_W * 4, 3)
+		highest = maxf(highest, y_jump - top[0])
+		Input.action_release("move_right")
+		if not pf.has_lantern:
+			jumped_over += " %s" % str(variant)
+		if pf.has_lantern:
+			await finish_dialog(PmsMaze.LANTERN_DIALOG)
+		await frames(2)
+	check(jumped_over == "" and highest > 46.0, "a running jump before the lantern never flies over it (taken up to %d px above the floor)%s" % [highest, jumped_over])
+	# Past the corridor without it (an edited map), the items glimmer all the same.
+	lantern.collected = false
+	pf.has_lantern = false
+	var gy := pf.p.y
+	var gx := pf.p.x
+	pf.p.x = items[0].rect().get_center().x + 60
+	pf.p.y = items[0].y
+	var past: float = pf.item_glimmer(items[0])
+	pf.p.x = gx
+	pf.p.y = gy
+	check(past == 1.0, "below the spawn corridor the items glimmer even without the lantern (%.2f)" % past)
+	pf.p.x = home.x
+	pf.p.y = home.y
+	pf.p.vx = 0
 	pf.p.vy = 0
-	var lit := await until(func(): return node_box().node_id() == PmsMaze.LANTERN_DIALOG, 3)
-	check(lit and pf.has_lantern and nearest.collected, "the lantern is picked up (%s)" % PmsMaze.LANTERN_DIALOG)
+	await frames(3)
+	check(items.all(func(e): return pf.item_glimmer(e) == 0.0), "… but not while she is still in the corridor")
+	# She just walks along the corridor (no jump) and picks it up first.
+	Input.action_press("move_right")
+	var lit := await until(func(): return node_box().node_id() == PmsMaze.LANTERN_DIALOG, 6)
+	Input.action_release("move_right")
+	check(lit and pf.has_lantern and lantern.collected and pf.pms_items == 0, "walking along the corridor she picks the lantern up first (%s)" % PmsMaze.LANTERN_DIALOG)
 	await finish_dialog(PmsMaze.LANTERN_DIALOG)
 	await seconds(1.5)
 	check(pf.light_r > r0 + 90 and pf.light_radius() > Platformer.LIGHT_R + 90, "the lantern makes her light bigger (%d → %d px)" % [r0, pf.light_r])
-	check(pf.dark_lights().size() == 2, "no glimmer where the lantern lay")
+	check(pf.dark_lights().size() == 1, "no glimmer where the lantern lay")
+	# Comfort items still to find glimmer when she is near (nearest first, ≤ 4 holes), not far.
+	var it: LevelData.Ent = items[0]
+	var ic := it.rect().get_center()
+	pf.p.x = ic.x + Platformer.GLIMMER_NEAR * 0.6
+	pf.p.y = ic.y - pf.p.height / 2
+	ls = pf.dark_lights()
+	var isc := pf.screen_of(ic)
+	check(pf.item_glimmer(it) == 1.0 and ls.size() >= 2 and Vector2(ls[1].x, ls[1].y).distance_to(isc) < 1.0 and ls[1].z > Platformer.ITEM_GLIMMER * 0.8 and ls[1].z < pf.light_radius() * 0.5, "a comfort item nearby glimmers faintly in the dark (%d px)" % (ls[1].z if ls.size() > 1 else 0.0))
+	pf.p.x = ic.x + (Platformer.GLIMMER_RANGE + Platformer.GLIMMER_NEAR) * 0.5
+	var half := pf.item_glimmer(it)
+	pf.p.x = ic.x + Platformer.GLIMMER_RANGE + 20
+	check(half > 0.2 and half < 0.8 and pf.item_glimmer(it) == 0.0, "… fading out with the distance (%.2f half-way, none beyond %d px)" % [half, Platformer.GLIMMER_RANGE])
+	pf.p.x = ic.x + 60
+	it.collected = true
+	check(pf.item_glimmer(it) == 0.0 and not pf.dark_lights().any(func(l: Vector3): return Vector2(l.x, l.y).distance_to(isc) < 1.0), "a found item doesn't glimmer")
+	it.collected = false
+	pf.door_open = 1.0
+	var xs: Array[float] = []
+	var ys: Array[float] = []
+	for e in items:
+		xs.append(e.x)
+		ys.append(e.y)
+		e.x = it.x + items.find(e) * 30.0
+		e.y = it.y
+	var crowd := pf.dark_lights()
+	for i in items.size():
+		items[i].x = xs[i]
+		items[i].y = ys[i]
+	check(crowd.size() == Platformer.DARK_HOLES and crowd[2].z >= crowd[3].z, "at most %d lights: Kyra, the open door, the nearest items" % Platformer.DARK_HOLES)
+	pf.door_open = 0.0
+	# On to the corridor below (where the rest of the maze is played from).
+	pf.p.x = (19 + 0.5) * LevelData.CELL_W - pf.p.width / 2
+	pf.p.y = 6 * pf.level.row_h - 6 - pf.p.height
+	pf.p.vx = 0
+	pf.p.vy = 0
+	pf.camera_y = pf.pms_camera_clamp(pf.p.y - Platformer.H * Platformer.PMS_VIEW_Y)
+	await until(func(): return pf.p.is_grounded, 3)
 
 
 func _go_trigger(pf: Platformer, kind: String) -> void:
