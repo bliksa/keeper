@@ -3516,7 +3516,7 @@ func _pms_light(pf: Platformer, events: Array) -> void:
 	await seconds(2.5)
 	var r_low := pf.light_r
 	check(pf.has_lantern and absf(r_full - pf.light_for(1.0)) < 12 and absf(r_low - pf.light_for(pf.pms_light)) < 4 and r_low < r_full - 100, "her light's radius follows the energy (%d → %d px)" % [r_full, r_low])
-	check(pf.light_for(0.0) == Platformer.LANTERN_MIN and Platformer.LIGHT_MIN >= 60.0, "a small glow always stays (%d px, %d without the lantern)" % [Platformer.LANTERN_MIN, Platformer.LIGHT_MIN])
+	check(pf.light_for(0.0) == Platformer.LANTERN_MIN and Platformer.LIGHT_MIN == 0.0 and Platformer.LIGHT_R == 0.0, "with the lantern a small glow always stays (%d px); without it she gives no light (%d)" % [Platformer.LANTERN_MIN, Platformer.LIGHT_MIN])
 	pf.has_lantern = false
 	var plain_full := pf.light_for(1.0)
 	var plain_low := pf.light_for(0.1)

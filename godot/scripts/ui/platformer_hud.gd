@@ -662,13 +662,14 @@ func _draw_pms(font: Font) -> void:
 	var pf := platformer
 	var t := pf.time_ms
 	var box := PMS_SLOTS
-	Draw.panel(self, box, BG, 18, Color("#b27c94", 0.5), 2)
+	# No outlines (like the other levels' pills): a plain light panel, plain slots.
+	Draw.panel(self, box, BG, 18)
 	for i in 3:
 		var c := pms_slot_center(i)
 		var got: bool = pf.pms_found[i]
 		var pop: float = _slot_pop[i]
 		var sc := 1.0 + 0.35 * sin(clampf(pop / 0.45, 0, 1) * PI)
-		Draw.panel(self, Rect2(c - Vector2(21, 21), Vector2(42, 42)), Color("#f6e9ef") if got else Color("#e9e4ea"), 12, Color("#b27c94") if got else Color("#c9bccd"), 2)
+		Draw.panel(self, Rect2(c - Vector2(21, 21), Vector2(42, 42)), Color("#f6e9ef") if got else Color("#e4dfe6"), 12)
 		if got:
 			Draw.radial_glow(self, c, 22, Color(1, 0.86, 0.7, 0.35))
 		var kind: String = PmsMaze.ITEMS[i]

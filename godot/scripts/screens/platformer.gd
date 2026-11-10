@@ -251,8 +251,9 @@ const TIRED_EASE := 3.0
 ## glimmer in the dark: the lantern lying in the maze (LANTERN_GLIMMER, from anywhere), once
 ## she has it the nearest comfort items within GLIMMER_RANGE world px of her (ITEM_GLIMMER,
 ## growing from nothing at the range's edge to full GLIMMER_NEAR px away), the door once open.
-const LIGHT_MIN := 85.0
-const LIGHT_R := 150.0
+## Without the lantern she gives no light of her own (it is the lantern that shines).
+const LIGHT_MIN := 0.0
+const LIGHT_R := 0.0
 const LANTERN_MIN := 125.0
 const LANTERN_R := 275.0
 const LIGHT_BURST := 110.0

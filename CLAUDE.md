@@ -511,7 +511,7 @@ her on the rotated screen, the lantern is in the spawn corridor and picked up fi
 light, near items glimmer (and far / found ones don't), and that the darkness is only in the maze.
 
 **The maze's light = her energy** (the PMS tiredness; replaces the old calm breath). `pms_light` 0..1: the radius
-of her light is `light_for(energy)` = lerp(`LIGHT_MIN`, `LIGHT_R`, energy), with the lantern lerp(`LANTERN_MIN`,
+of her light is `light_for(energy)`: without the lantern none (`LIGHT_MIN` = `LIGHT_R` = 0: she doesn't shine by herself, the lantern does), with the lantern lerp(`LANTERN_MIN`,
 `LANTERN_R`, energy) (never no light), followed smoothly by `light_r` (`_update_light(dt, moving)`). It drains
 `LIGHT_DRAIN` per s while she moves or jumps (full → spent in 55 s of play), `LIGHT_DRAIN_STILL` standing still,
 not in dialogs; `tired_k()` (1 … 1 + `PMS_TIRED`) grows the view's sway and the blobs' wobble as it drops (from
