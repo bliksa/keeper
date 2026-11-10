@@ -60,12 +60,14 @@ func _ready() -> void:
 		c.draw.connect(_draw_card.bind(c, i))
 		add_child(c)
 		_cards.append(c)
-	_again = UiKit.button("", BUTTON, UiKit.MENU_FONT, Color("#059669"))
-	_again.position = Vector2(533 - BUTTON.x - 10, BUTTON_Y)
+	# The main menu is the main way out (green, on the left, Enter); playing again is
+	# the second choice.
+	_again = UiKit.button("", BUTTON, UiKit.MENU_FONT)
+	_again.position = Vector2(533 + 10, BUTTON_Y)
 	_again.pressed.connect(func(): _pick(again_pressed))
 	add_child(_again)
-	_menu = UiKit.button("", BUTTON, UiKit.MENU_FONT)
-	_menu.position = Vector2(533 + 10, BUTTON_Y)
+	_menu = UiKit.button("", BUTTON, UiKit.MENU_FONT, Color("#059669"))
+	_menu.position = Vector2(533 - BUTTON.x - 10, BUTTON_Y)
 	_menu.pressed.connect(func(): _pick(menu_pressed))
 	add_child(_menu)
 	Game.control_mode_changed.connect(_refresh)
@@ -77,9 +79,9 @@ func _ready() -> void:
 func _refresh() -> void:
 	var pad := Game.control_mode == "gamepad"
 	_again.text = Text.t("BTN_PLAY_AGAIN")
-	_again.icon = load("res://assets/ui/pad_blue.png") if pad else null
+	_again.icon = load("res://assets/ui/pad_red.png") if pad else null
 	_menu.text = Text.t("BTN_MAIN_MENU")
-	_menu.icon = load("res://assets/ui/pad_red.png") if pad else null
+	_menu.icon = load("res://assets/ui/pad_blue.png") if pad else null
 	queue_redraw()
 	for c in _cards:
 		c.queue_redraw()
@@ -97,7 +99,7 @@ func skip_intro() -> void:
 
 
 func buttons() -> Array:
-	return [_again, _menu]
+	return [_menu, _again]
 
 
 func _pick(sig: Signal) -> void:
@@ -128,10 +130,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("confirm"):
 		get_viewport().set_input_as_handled()
-		_pick(again_pressed)
+		_pick(menu_pressed)
 	elif event.is_action_pressed("choice_1"):
 		get_viewport().set_input_as_handled()
-		_pick(menu_pressed)
+		_pick(again_pressed)
 
 
 ## Where day `day` (1..28, fractions allowed: 3.0 = the middle of day 3) sits on a circle

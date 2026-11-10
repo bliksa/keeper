@@ -3144,7 +3144,7 @@ func _end_and_continue() -> void:
 	var ts := main._menu as TitleScreen
 	check(main.state == "title" and ts != null, "Main menu goes to the title")
 	check(not ts._continue_btn.visible and ts._finished.visible and ts._start_btn.text == Text.t("BTN_START") and ts._chapters.all(func(b): return b.visible and not b.disabled), "a finished game: a Finished mark, no Continue, every phase open")
-	# Play again from the end screen: a new game from the forest.
+	# Enter on the end screen is the main menu too (not a new game from the start).
 	main._go_end()
 	await frames(3)
 	es = main._menu as EndScreen
@@ -3153,7 +3153,15 @@ func _end_and_continue() -> void:
 	await frames(2)
 	_key(KEY_ENTER, false)
 	await frames(5)
-	check(main.state == "intro" and main.forest != null, "Play again (Enter) starts a new game")
+	check(main.state == "title" and main.forest == null, "Enter on the end screen goes to the main menu")
+	# Play again is the second button: a new game from the forest.
+	main._go_end()
+	await frames(3)
+	es = main._menu as EndScreen
+	es.skip_intro()
+	es._again.pressed.emit()
+	await frames(5)
+	check(main.state == "intro" and main.forest != null, "Play again starts a new game")
 	main._quit_to_title()
 	await frames(3)
 
