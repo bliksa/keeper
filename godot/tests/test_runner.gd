@@ -2338,6 +2338,13 @@ func _click(pos: Vector2) -> void:
 		await get_tree().process_frame
 
 
+func _stick(axis: JoyAxis, value: float) -> void:
+	var e := InputEventJoypadMotion.new()
+	e.axis = axis
+	e.axis_value = value
+	Input.parse_input_event(e)
+
+
 func _key(code: Key, pressed: bool) -> void:
 	var e := InputEventKey.new()
 	e.physical_keycode = code
@@ -3004,6 +3011,192 @@ func _climb_ent(pf: Platformer, type: String) -> LevelData.Ent:
 	return best
 
 
+## Kyra's drawn bounds on the rotated screen (her box, with room for the sprite's head and
+## sides).
+func _pms_screen_rect(pf: Platformer) -> Rect2:
+	var world := Rect2(pf.p.x - 12, pf.p.y - 28, pf.p.width + 24, pf.p.height + 28)
+	var a := pf.screen_of(world.position)
+	var r := Rect2(a, Vector2.ZERO)
+	for c in [Vector2(world.end.x, world.position.y), world.end, Vector2(world.position.x, world.end.y)]:
+		r = r.expand(pf.screen_of(c))
+	return r
+
+
+## Whether she is clear of the maze's HUD (the top) and the dialog box's place (the bottom).
+func _pms_clear(pf: Platformer) -> bool:
+	var r := _pms_screen_rect(pf)
+	for h in PlatformerHud.pms_hud_rects():
+		if r.intersects(h):
+			return false
+	return r.end.y <= Platformer.H - DialogBox.H + 0.5
+
+
+## The maze: a dialog holds Kyra in place (a movement press nudges its button), and the
+## camera keeps her clear of the HUD and the dialog box at the spawn, in the middle, at the
+## door and in a fall.
+func _pms_hold_and_hud(pf: Platformer) -> void:
+	var start := Vector2(pf.p.x, pf.p.y)
+	var energy := pf.pms_light
+	await frames(30)
+	check(_pms_clear(pf), "at the spawn (the map's first rows) she is clear of the HUD and the dialog box's place %s" % _pms_screen_rect(pf))
+	# A jump at the spawn (as high in the world = as low on screen as she gets there).
+	var clear := true
+	_key(KEY_SPACE, true)
+	for i in 50:
+		await frames(1)
+		clear = clear and _pms_clear(pf)
+	_key(KEY_SPACE, false)
+	await until(func(): return pf.p.is_grounded, 3)
+	check(clear, "… and through a jump there (the camera may over-scroll the first rows: %.0f)" % pf.camera_y)
+	# A dialog open: she is held; movement keys only nudge its button.
+	main._dialog("4G")
+	await frames(3)
+	var box := node_box()
+	var held := Vector2(pf.p.x, pf.p.y)
+	var n0 := box.nudges
+	check(pf.dialog_frozen() and box.is_open(), "a dialog in the maze holds Kyra")
+	_key(KEY_RIGHT, true)
+	await frames(5)
+	check(box.nudges == n0 + 1 and box.shaking(), "pressing a movement key nudges the dialog's button (it wiggles)")
+	_key(KEY_RIGHT, false)
+	await frames(15)
+	_key(KEY_LEFT, true)
+	await frames(3)
+	check(box.nudges == n0 + 1 and not box.shaking(), "the wiggle is short and the nudge rate-limited")
+	await frames(40)
+	_key(KEY_LEFT, false)
+	_key(KEY_SPACE, true)
+	await frames(15)
+	_key(KEY_SPACE, false)
+	Input.action_press("breathe")
+	await frames(10)
+	Input.action_release("breathe")
+	check(box.nudges == n0 + 2 and Vector2(pf.p.x, pf.p.y).distance_to(held) < 0.5 and pf.p.is_grounded and not pf.resting and not pf.p.is_sitting, "she doesn't walk, jump or rest while it is open (%s → %s)" % [held, Vector2(pf.p.x, pf.p.y)])
+	check(_pms_clear(pf), "… and stays clear of the HUD and the dialog box")
+	# A held stick sends an event for every small change: one nudge per push, not one per event.
+	var mode_was: String = Game.control_mode
+	await frames(40)
+	var n1 := box.nudges
+	for i in 60:
+		_stick(JOY_AXIS_LEFT_X, 0.6 + 0.3 * sin(i * 0.9))
+		await frames(1)
+	check(box.nudges == n1 + 1, "a held (jittering) stick nudges once (%d)" % (box.nudges - n1))
+	_stick(JOY_AXIS_LEFT_X, 0.0)
+	await frames(2)
+	_stick(JOY_AXIS_LEFT_X, -0.9)
+	await frames(3)
+	_stick(JOY_AXIS_LEFT_X, 0.0)
+	check(box.nudges == n1 + 2, "… and again after it came back to the centre")
+	# The dialog's own face buttons never nudge (a debounced one reaches the maze).
+	var jb := InputEventJoypadButton.new()
+	jb.button_index = JOY_BUTTON_X
+	jb.pressed = true
+	var rb := InputEventJoypadButton.new()
+	rb.button_index = JOY_BUTTON_RIGHT_SHOULDER
+	rb.pressed = true
+	check(not pf._is_move_press(jb) and pf._is_move_press(rb), "the dialog's face buttons are not a movement press (RB is)")
+	Game.control_mode = mode_was
+	# At the door (4E) she is under hold_input: the nudge works there too.
+	await frames(40)
+	n1 = box.nudges
+	pf.hold_input = true
+	_key(KEY_LEFT, true)
+	await frames(3)
+	_key(KEY_LEFT, false)
+	pf.hold_input = false
+	check(box.nudges == n1 + 1, "a dialog under hold_input (4E at the door) nudges too")
+	while box.is_open():
+		box._press(0)
+		await frames(2)
+	_key(KEY_RIGHT, true)
+	await frames(20)
+	_key(KEY_RIGHT, false)
+	check(pf.p.x > held.x + 15 and not pf.dialog_frozen(), "after it is closed she moves again")
+	await frames(20)
+	# Holding down while standing: the look-down pose and a peek ahead (bounded), as elsewhere.
+	await until(func(): return pf.p.is_grounded and absf(pf.p.vx) < 0.5, 3)
+	var cam0 := pf.camera_y
+	Input.action_press("move_down")
+	await seconds(1.4)
+	var peek_r := _pms_screen_rect(pf)
+	check(pf.p.look_down_timer > 0.3 and pf.pms_peek > 100.0 and pf.camera_y > cam0 + 60.0, "holding down in the maze looks down and peeks ahead (peek %.0f, camera %.0f → %.0f)" % [pf.pms_peek, cam0, pf.camera_y])
+	check(Rect2(0, 0, Platformer.W, Platformer.H).encloses(peek_r), "… she stays on screen meanwhile %s" % peek_r)
+	main._dialog("4G")
+	await frames(3)
+	check(pf.p.look_down_timer == 0.0, "… a dialog ends the look-down")
+	Input.action_release("move_down")
+	while box.is_open():
+		box._press(0)
+		await frames(2)
+	await until(func(): return pf.pms_peek == 0.0, 3)
+	await frames(30)
+	check(pf.pms_peek == 0.0 and _pms_clear(pf), "… and the camera comes back, clear of the HUD and the dialog box's place")
+	# A dialog opened in the air: she lands (no drifting sideways) and then stays.
+	pf._do_jump()
+	pf.p.vx = 5.0
+	await frames(4)
+	main._dialog("4G")
+	await frames(2)
+	var air_x := pf.p.x
+	check(not pf.p.is_grounded and pf.p.vx == 0.0, "a dialog opened in the air stops her drift")
+	Input.action_press("move_right")
+	var landed := await until(func(): return pf.p.is_grounded, 3)
+	var land := Vector2(pf.p.x, pf.p.y)
+	_key(KEY_SPACE, true)
+	await frames(20)
+	_key(KEY_SPACE, false)
+	Input.action_release("move_right")
+	check(landed and absf(land.x - air_x) < 0.5 and Vector2(pf.p.x, pf.p.y).distance_to(land) < 0.5 and pf.p.is_grounded, "… she lands straight down and stays there")
+	while box.is_open():
+		box._press(0)
+		await frames(2)
+	# The middle of the maze, a fall, the door (the map's last rows).
+	var mid: LevelData.Plat = null
+	for t in pf.wall_tops:
+		if is_equal_approx(t.base_y, 1440.0) and t.x <= 100 and t.x + t.w >= 140:
+			mid = t
+	check(mid != null, "the maze has the middle floor the test stands on")
+	if mid != null:
+		pf.p.x = 100
+		pf.p.y = mid.base_y - pf.p.height
+		pf.p.vx = 0
+		pf.p.vy = 0
+		await frames(60)
+		check(_pms_clear(pf), "in the middle of the maze she is clear of the HUD %s" % _pms_screen_rect(pf))
+		# A fall (down in the world = up on screen, towards the HUD).
+		pf.p.y = mid.base_y - 2 * LevelData.ROW_H + 4
+		pf.p.vy = Platformer.MAX_FALL
+		clear = true
+		for i in 40:
+			await frames(1)
+			clear = clear and _pms_clear(pf)
+		check(clear and pf.p.is_grounded, "… and while she falls (up on screen)")
+	for e in pf.level.entities:
+		if e.type == "door":
+			pf.p.x = e.x - 70
+			pf.p.y = e.y + e.h - pf.p.height - 2
+			pf.p.vx = 0
+			pf.p.vy = 0
+			pf.p.y -= 100
+			clear = true
+			for i in 70:
+				await frames(1)
+				clear = clear and (i < 3 or _pms_clear(pf))
+			check(clear and pf.p.is_grounded, "at the door (the map's last rows) she is clear of the HUD %s" % _pms_screen_rect(pf))
+	# The cave keeps its dialog floor (she can run and sit on the box): only the maze holds her.
+	check(not pf.dialog_frozen(), "nothing holds her without a dialog")
+	pf.p.x = start.x
+	pf.p.y = start.y
+	pf.p.vx = 0
+	pf.p.vy = 0
+	pf.last_ground = start
+	pf.pms_light = energy
+	pf.firefly = Vector2.INF
+	pf.ff_mode = "follow"
+	pf.camera_y = pf.pms_camera_clamp(start.y - Platformer.H * Platformer.PMS_VIEW_Y)
+	await frames(30)
+
+
 ## The PMS maze from its start (4A finished): reversed on screen, walls, the breath, the
 ## items, the door, the end.
 func _pms_play(pf: Platformer) -> void:
@@ -3011,6 +3204,7 @@ func _pms_play(pf: Platformer) -> void:
 	pf.trigger.connect(func(n): events.append(n))
 	# (The gauge's foggy spells are played on their own, in _pms_light.)
 	pf.fog_wait = 999.0
+	await _pms_hold_and_hud(pf)
 	await _pms_dark(pf)
 	check(absf(pf._world.rotation - PI) < 0.05 and pf.view_flip == 1.0, "the maze's world is drawn rotated 180°")
 	# Right moves her right in the world, which is left on screen.

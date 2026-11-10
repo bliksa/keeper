@@ -472,6 +472,27 @@ foggy spell right after 4A); keys: 1–4 restart, 5 opens the
 door. Music `menu.mp3`. Level editor: tool group "PMS maze" (W, &, D, +, P, =), test play upside down, the door
 restarts the test with a toast.
 
+**The maze's camera and dialogs** (level 6 only; she falls away from the dialog box there, so the
+cave's "run and sit on the dialog box" can't work, and the screen's top is where she falls to):
+`Platformer._pms_camera` keeps her at `PMS_VIEW_Y` of the upright view and `pms_camera_clamp(cy)` always
+between the HUD and the dialog box on the rotated screen (her top never above `PMS_TOP` = 140 px: the slots,
+the gauge, their labels, a hint line and the sway; her feet never below H − `PMS_BOTTOM`), at the map's first
+rows too (the camera may over-scroll them by `PMS_OVER`; the last rows already scroll past the map) and in a
+fall; `PlatformerHud.pms_hud_rects()` = where the HUD is. Holding down while standing still looks down as
+in the other levels (`look_down_timer`, the pose) and peeks ahead: `pms_peek` (eased, up to `PMS_PEEK`) is
+added to the camera target and lets her nearer the dialog box's place (`PMS_PEEK_EDGE` from the screen's
+bottom; not in a dialog, resting or under `hold_input`). While a DialogBox dialog (node or panel) is open
+she is **held** (`dialog_frozen()` = `is_pms() and dialog_open`: no walking, jumping or resting, `vx` = 0; in
+the air she falls straight onto the next ground and stays; the firefly hovers, the energy doesn't drain); a
+movement / jump / rest press meanwhile (`_is_move_press`) emits `dialog_nudge` → `Main._nudge_dialog` →
+`DialogBox.nudge()`: the Next / choice button wiggles `NUDGE_TIME` 0.3 s with a soft click ("click me
+first"; at most one per `NUDGE_GAP`, counted in `nudges`, `shaking()`). A stick nudges once per push
+(`_stick_edge`: it must come back under `STICK_REST` first; one held when the dialog opens is no press), the
+dialog's own four face buttons never do, and the nudge also works under `hold_input` (4E at the door). No
+dialog floor in the maze. The phase
+board holds her by `hold_input` (no button, no nudge). The cave keeps running and sitting on the dialog box.
+The test `_pms_hold_and_hud` plays it (spawn, a jump there, the middle, a fall, the door).
+
 **The dark maze** (level 6 only): `Platformer._dark`, a full-screen `ColorRect` with a small canvas shader
 (`DARK_SHADER`) on `_veil` (over the world and the haze, under the HUD; Kyra's layer 9 stays above): the colour
 `PmsMaze.DARK` (dusky violet, very dark but not black) with up to four soft holes of light in screen px

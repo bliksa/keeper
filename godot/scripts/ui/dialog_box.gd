@@ -29,6 +29,11 @@ var _on_done: Callable
 var _panel: Dictionary = {}
 var _last_pad := 0
 var _shake := 0.0
+## nudge(): how long the button wiggles, the shortest gap between two, how many there were.
+const NUDGE_TIME := 0.3
+const NUDGE_GAP := 0.45
+var nudges := 0
+var _nudge_wait := 0.0
 
 var _bg: Panel
 var _avatar: TextureRect
@@ -283,6 +288,26 @@ func _press(index: int) -> void:
 			close()
 
 
+## "Click me first": the Next / choice button wiggles briefly with a soft click (the maze
+## calls it when a movement key is pressed while the dialog holds Kyra). Rate-limited;
+## true when it shook.
+func nudge() -> bool:
+	if not visible or _buttons.get_child_count() == 0:
+		return false
+	if _nudge_wait > 0:
+		return false
+	_nudge_wait = NUDGE_GAP
+	nudges += 1
+	_shake = NUDGE_TIME
+	Audio.play_sfx("click.wav", 0.25)
+	return true
+
+
+## The button's wiggle is running (tests).
+func shaking() -> bool:
+	return _shake > 0
+
+
 func _accepts_input() -> bool:
 	if not visible:
 		return false
@@ -319,9 +344,10 @@ func _process(delta: float) -> void:
 	if visible and _portrait_of != "" and SpriteArt.portrait_animated(_portrait_of):
 		_portrait_ms += delta * 1000.0
 		_avatar.texture = SpriteArt.portrait(_portrait_of, _portrait_ms)
+	_nudge_wait = maxf(0, _nudge_wait - delta)
 	if _shake > 0:
 		_shake = maxf(0, _shake - delta)
-		_buttons.position.x = 1066 - 16 - 220 + sin(_shake * 60) * 5 * (_shake / 0.4)
+		_buttons.position.x = 1066 - 16 - 220 + sin(_shake * 60) * 6 * minf(1.0, _shake / 0.3)
 
 
 ## Kyra and Estra have art; Iskra (FSH, level 2) is a sparkle drawn in code.

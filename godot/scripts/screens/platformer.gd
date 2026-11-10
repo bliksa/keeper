@@ -32,6 +32,11 @@ extends Node2D
 signal trigger(name: String)
 signal boss_defeated
 signal boss_lost
+## The maze: a movement key was pressed while a dialog holds her (Main shakes its button).
+signal dialog_nudge
+var _stick_held := {}
+## The maze's look-down peek, eased (px of camera).
+var pms_peek := 0.0
 ## The climb: a dialog played on the board (board_dialog) has said all its parts.
 signal board_dialog_done(id: String)
 ## The climb's end: the transformation has turned the view upside down (start_prerod).
@@ -224,6 +229,20 @@ const REST_HINT := 0.5
 ## pickup doesn't snap the view) and settle a little while she rests.
 const PMS_WOBBLE := 4.0
 const PMS_SWAY := 0.022
+## The maze's camera keeps Kyra on screen between the HUD (the top: slots, gauge, labels, a
+## hint line, with room for the sway) and the dialog box / phase board (the bottom).
+## On screen her top is never above PMS_TOP, her feet never below H - PMS_BOTTOM; the camera
+## may over-scroll the map's first rows by PMS_OVER for it.
+const PMS_TOP := 140.0
+const PMS_BOTTOM := 190.0
+const PMS_OVER := 200.0
+const PMS_VIEW_Y := 0.42
+## Holding down (standing still) peeks ahead, as in the other levels: up to PMS_PEEK px, her
+## head then at least PMS_PEEK_EDGE from the screen's bottom (no dialog is open meanwhile).
+const PMS_PEEK := 300.0
+const PMS_PEEK_EDGE := 40.0
+## A stick counts as let go (for the next dialog nudge) below this.
+const STICK_REST := 0.2
 const PMS_TIRED := 0.5
 const TIRED_EASE := 3.0
 ## The dark maze (_dark): the light round Kyra (radius, screen px) = lerp(LIGHT_MIN, LIGHT_R,
@@ -1230,6 +1249,46 @@ func _stand_at_trigger(e: LevelData.Ent) -> void:
 		_board_camera()
 
 
+## The maze with a dialog (node or panel) open: Kyra stays where she is until it is closed
+## (a press meanwhile nudges the dialog's button: dialog_nudge).
+func dialog_frozen() -> bool:
+	return is_pms() and dialog_open
+
+
+const MOVE_ACTIONS := ["move_left", "move_right", "move_up", "move_down", "jump", "breathe"]
+
+
+## A stick event: true when it newly pushes a movement action (a held stick sends an event
+## for every small change, all of them "pressed"; it must come back to the centre first).
+func _stick_edge(event: InputEventJoypadMotion) -> bool:
+	var edge := false
+	for a in MOVE_ACTIONS:
+		if not event.is_action(a):
+			continue
+		if event.is_action_pressed(a):
+			if not _stick_held.get(a, false):
+				edge = true
+			_stick_held[a] = true
+		elif absf(event.axis_value) < STICK_REST:
+			_stick_held[a] = false
+	return edge
+
+
+## A movement / jump / rest press (not the keys the dialog itself takes: Enter and the
+## gamepad's four face buttons, also when the dialog's debounce let one through).
+func _is_move_press(event: InputEvent, stick_edge := false) -> bool:
+	if event.is_echo():
+		return false
+	if event is InputEventJoypadMotion:
+		return stick_edge
+	if event is InputEventJoypadButton and event.button_index <= JOY_BUTTON_Y:
+		return false
+	for a in MOVE_ACTIONS:
+		if event.is_action_pressed(a):
+			return true
+	return false
+
+
 func _can_jump_in_dialog() -> bool:
 	# The climb's dialogs sit on the board: she keeps jumping while they talk.
 	return not dialog_open or active_dialog_id in ["1A", "1B", "3A", "MA", "SA"] or (is_climb() and active_dialog_id.begins_with("3"))
@@ -1268,7 +1327,18 @@ func _do_jump() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not active or hold_input:
+	# (The stick's state is followed all the time, so one held when a dialog opens is no press.)
+	var stick_edge := false
+	if event is InputEventJoypadMotion:
+		stick_edge = _stick_edge(event)
+	if not active:
+		return
+	if dialog_frozen():
+		# "Click me first": the dialog's button shakes (also at the door's 4E, under hold_input).
+		if _is_move_press(event, stick_edge):
+			dialog_nudge.emit()
+		return
+	if hold_input:
 		return
 	if is_meadow():
 		if event is InputEventMouseMotion:
@@ -1460,6 +1530,14 @@ func _update(dt: float) -> void:
 	if meadow_end > 0 or hold_input:
 		left = false
 		right = false
+	# The maze: a dialog freezes her (she falls away from the dialog box there, so she can't
+	# sit on it): no walking, no drifting; a fall ends on the next ground.
+	var frozen := dialog_frozen()
+	if frozen:
+		left = false
+		right = false
+		p.vx = 0
+		p.jump_buffer = 0
 	var up := Input.is_action_pressed("move_up") and not hold_input
 	var down := Input.is_action_pressed("move_down") and not hold_input
 	# Shift is the level's one ability: on the summit, once the dash is earned,
@@ -1740,7 +1818,45 @@ func _update(dt: float) -> void:
 		summit_timer += dt
 
 
+## The maze's camera: she is kept a little above the middle of the (upright) view, and always between the
+## HUD and the dialog box on the rotated screen, at the map's first and last rows too.
+func _pms_camera(dt: float, d60: float, down: bool) -> void:
+	# Holding down while standing: the look-down pose and a peek ahead (not in a dialog / resting).
+	if down and p.is_grounded and not p.is_sitting and absf(p.vx) < 0.5 and not dialog_open and not resting and not hold_input:
+		p.look_down_timer += dt
+	else:
+		p.look_down_timer = 0
+	var want := 0.0
+	if p.look_down_timer > 0.3:
+		want = minf(PMS_PEEK, (p.look_down_timer - 0.3) * 400)
+	var k := 0.15 if p.vy > 5 else 0.1
+	var e := 1.0 - pow(1.0 - k, d60)
+	pms_peek += (want - pms_peek) * e
+	if want == 0.0 and pms_peek < 0.5:
+		pms_peek = 0.0
+	var target := p.y - H * PMS_VIEW_Y + pms_peek
+	camera_y += (target - camera_y) * e
+	camera_y = pms_camera_clamp(camera_y, pms_peek)
+	if p.y > level_h + 200 or p.y < -400:
+		# Out of the maze (it is closed, but just in case): back where she last stood.
+		p.x = last_ground.x
+		p.y = last_ground.y
+		p.vx = 0
+		p.vy = 0
+
+
+## A camera y that keeps her between the HUD and the dialog box (upright view: her top at
+## least PMS_BOTTOM from its top, her feet at least PMS_TOP from its bottom).
+## A peek (pms_peek) lets her nearer the dialog box's place, down to PMS_PEEK_EDGE.
+func pms_camera_clamp(cy: float, peek := 0.0) -> float:
+	cy = clampf(cy, p.y + p.height - (H - PMS_TOP), p.y - maxf(PMS_PEEK_EDGE, PMS_BOTTOM - peek))
+	return clampf(cy, -PMS_OVER, level_h)
+
+
 func _camera(dt: float, d60: float, down: bool) -> void:
+	if is_pms():
+		_pms_camera(dt, d60, down)
+		return
 	var target := p.y - (H / 2 if is_up() else H / 3)
 	if down and p.is_grounded and not p.is_sitting and absf(p.vx) < 0.5 and not p.is_recharging:
 		p.look_down_timer += dt
@@ -1758,12 +1874,6 @@ func _camera(dt: float, d60: float, down: bool) -> void:
 		camera_y = p.y - H + 100
 	if boss.active:
 		camera_y = level_h
-	if is_pms() and (p.y > level_h + 200 or p.y < -400):
-		# Out of the maze (it is closed, but just in case): back where she last stood.
-		p.x = last_ground.x
-		p.y = last_ground.y
-		p.vx = 0
-		p.vy = 0
 	if not boss.active and p.y > level_h + 1000:
 		p.held_by_cramp = -1
 		p.is_recharging = false
@@ -4551,7 +4661,7 @@ func dev_near_door() -> void:
 			p.y = e.y + e.h - p.height - 2
 			p.vx = 0
 			p.vy = 0
-			camera_y = clampf(p.y - H / 3, 0, level_h)
+			camera_y = pms_camera_clamp(p.y - H * PMS_VIEW_Y)
 			last_ground = Vector2(p.x, p.y)
 
 

@@ -682,6 +682,17 @@ func _draw_pms(font: Font) -> void:
 	hints.draw(self, Vector2(pill.end.x, Draw.label_bottom(pill)))
 
 
+## Where the maze's HUD is on screen (the comfort slots and the energy gauge, each with its
+## label; the gauge with room for a hint line under it): the maze's camera keeps Kyra out of
+## these (Platformer.PMS_TOP).
+static func pms_hud_rects() -> Array[Rect2]:
+	var slots := PMS_SLOTS.grow(4)
+	slots.end.y = Draw.label_bottom(PMS_SLOTS) + 2
+	var pill := Rect2(1066 - 16 - PILL.x, 16, PILL.x, PILL.y)
+	var gauge := Rect2(1066 - 16 - 380, 12, 384, Draw.label_bottom(pill) + 7 + AbilityHints.H + 5 + AbilityHints.GAP - 12)
+	return [slots, gauge]
+
+
 ## The energy pill's row: a little light (icon centre, ENERGY_ICON_R with its rays) and the
 ## bar's track, centred in the pill as one row.
 const ENERGY_ICON_R := 10.0

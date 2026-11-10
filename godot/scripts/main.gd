@@ -713,6 +713,15 @@ func _dev_climb_end() -> void:
 	platformer.dev_to_top()
 
 
+## The maze holds Kyra while a dialog is open; a movement press there shakes the button of
+## the dialog on top ("click me first").
+func _nudge_dialog() -> void:
+	if _node_box.is_open():
+		_node_box.nudge()
+	elif _panel_box.is_open():
+		_panel_box.nudge()
+
+
 ## A new Platformer for a level (not added to the tree yet), its signals connected.
 func _make_platformer(lvl: int, checkpoint: int) -> Platformer:
 	var pf := Platformer.new()
@@ -720,6 +729,7 @@ func _make_platformer(lvl: int, checkpoint: int) -> Platformer:
 	pf.trigger.connect(_on_trigger)
 	pf.boss_defeated.connect(_on_boss_defeated)
 	pf.boss_lost.connect(_on_boss_lost)
+	pf.dialog_nudge.connect(_nudge_dialog)
 	return pf
 
 
