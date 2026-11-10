@@ -343,6 +343,27 @@ func _run() -> void:
 	await frames(3)
 	check(Game.iron == iron_before + 1, "collected one iron")
 
+	step("the cramp lesson 1B can't be skipped")
+	var cave_rows := Game.level_rows(1)
+	var b_rows := 0
+	var b_open := false
+	for row in cave_rows:
+		if row.contains("b"):
+			b_rows += 1
+			for ch in row:
+				if ch != "b" and ch != "=":
+					b_open = true
+	check(b_rows == 1 and not b_open, "the row with the cramp lesson's letter is closed but for the letter itself (no way past it)")
+	pf.p.x = Platformer.W / 2 - 15
+	for bi in cave_rows.size():
+		if cave_rows[bi].contains("b"):
+			pf.p.y = bi * LevelData.ROW_H - 100
+	pf.p.vy = 0
+	pf.camera_y = pf.p.y - 200
+	await finish_dialog("1B")
+	check(Game.cramp_taught, "falling through the gap plays 1B (the breath-attack lesson)")
+	await frames(3)
+
 	step("cramp grabs, breathing frees")
 	Game.iron = 10
 	var enemy := _teleport_to_entity(pf, "enemy")
@@ -1642,22 +1663,9 @@ func _run() -> void:
 	await seconds(0.5)
 	check(main._fade.modulate.a == 0.0, "aborting a run stops a fade in progress")
 
-	step("game over")
-	main._dev_action("checkpoint", 1)
-	await until(func(): return main.platformer != null and main.state == "platformer", 5)
-	pf = main.platformer
-	await finish_dialog("1A")
-	Game.iron = 1
-	var en := _teleport_to_entity(pf, "enemy")
-	var over := await until(func(): return panel_box().is_open(), 5)
-	check(over, "game over panel after losing the last iron")
-	panel_box()._press(0)
-	var old_id := pf.get_instance_id()
-	var restarted := await until(func(): return main.platformer != null and main.platformer.get_instance_id() != old_id, 5)
-	check(restarted, "try again restarts the cave")
+	await _cave_fail_soft()
 
 	step("pause menu")
-	await finish_dialog("1A")
 	_key(KEY_ESCAPE, true)
 	await frames(2)
 	_key(KEY_ESCAPE, false)
@@ -1716,6 +1724,7 @@ func _run() -> void:
 	pw_edit.text = "four random words here"
 	pw_edit.text_submitted.emit(pw_edit.text)
 	await frames(4)
+	check(Game.dev_unlocked, "opening developer mode unlocks the debug keys for this session")
 	check(main.state == "dev" and main._menu is DevMenu and GitHubSave.get_token() == "github_pat_TEST123", "DEV button on the first screen opens developer mode (password unlocks saving too)")
 	var lock_btn: Array = (main._menu as DevMenu).header_tools.get_children().filter(func(b): return b is Button and b.text == "Lock")
 	check(lock_btn.size() == 1, "developer mode has a Lock button once the team password exists")
@@ -2238,6 +2247,245 @@ func _key(code: Key, pressed: bool) -> void:
 	e.keycode = code
 	e.pressed = pressed
 	Input.parse_input_event(e)
+
+
+## The next Platformer after the one with instance id `old` (a restart), once its fade is over.
+func _next_pf(old: int, what: String) -> Platformer:
+	var ok := await until(func(): return main.platformer != null and main.platformer.get_instance_id() != old and main.state == "platformer", 6)
+	check(ok, what)
+	await seconds(1.2)
+	return main.platformer
+
+
+func _debug_key(code: Key) -> void:
+	var e := InputEventKey.new()
+	e.physical_keycode = code
+	e.keycode = code
+	e.pressed = true
+	main._unhandled_input(e)
+
+
+func _collected(pf: Platformer, kind: String) -> bool:
+	for e in pf.level.entities:
+		if e.type == "trigger" and e.trigger_type == kind:
+			return e.collected
+	return false
+
+
+## The cave fails soft (the iron rule, "try again" at the last checkpoint / rest point, the
+## boss's "Retry fight" + 1E, the breath in the boss) and the debug keys are developer-only.
+func _cave_fail_soft() -> void:
+	step("the iron rule: a hit costs iron, only a hit with none left is too much")
+	Game.dev_unlocked = false
+	var old: int = main.platformer.get_instance_id() if main.platformer else 0
+	main._dev_action("checkpoint", 3)
+	Game.cramp_taught = true
+	var pf := await _next_pf(old, "the cave from checkpoint 3")
+	check(Game.cave_checkpoint == 3 and Game.checkpoint == 3 and node_box().node_id() == "", "checkpoint 3: after the pipes, no dialog")
+	var spike := LevelData._ent("spike", pf.p.x, pf.p.y, 30, 30)
+	spike.id = 99999
+	pf.level.entities.append(spike)
+	Game.iron = 4
+	await frames(3)
+	check(Game.iron <= 1 and not pf.p.is_dead and pf.p.hit_timer > 0 and not panel_box().is_open(), "a spike with 4 iron: it costs iron (down to 0), knocks her back, she goes on (%d left)" % Game.iron)
+	pf.level.entities.erase(spike)
+	Game.iron = 2
+	pf.p.hit_timer = 0
+	pf.p.invuln_timer = 0
+	var en := _teleport_to_entity(pf, "enemy")
+	await frames(3)
+	check(pf.p.held_by_cramp == en.id, "a cramp grabs her with 2 iron")
+	await seconds(5.0)
+	check(Game.iron == 0 and not pf.p.is_dead and pf.p.held_by_cramp == en.id and not panel_box().is_open(), "held: the cramp takes her nuts down to 0 but never kills, she can still breathe free")
+	pf.p.breath_index = 0
+	pf.p.breath_timer = 0
+	await _do_recharge()
+	check(pf.p.held_by_cramp == -1 and not pf.p.is_dead and Game.iron == 0, "she breathes free with 0 iron")
+	pf.p.invuln_timer = 0
+	pf.p.hit_timer = 0
+	pf.p.is_breathing = 0
+	_teleport_to_entity(pf, "enemy")
+	var over := await until(func(): return panel_box().is_open(), 5)
+	check(over and pf.p.is_dead and panel_box()._panel.get("text", "") == "UI_CRAMPS_OVERWHELMED", "grabbed with no iron at all: too much pain, the game-over panel")
+	var lang_was := Text.language
+	var long_btns := []
+	for lang in Text.LANGUAGES:
+		Text.language = lang
+		for bk in ["BTN_TRY_AGAIN", "BTN_RETRY_FIGHT", "BTN_MORE_IRON"]:
+			check(Text._strings.get(lang, {}).has(bk), "%s exists in %s" % [bk, lang])
+			if Text.font_dialog_bold.get_string_size(Text.plain(Text.t(bk)), HORIZONTAL_ALIGNMENT_LEFT, -1, DialogBox.BUTTON_SIZES.back()).x > 220.0 - 24 - 28:
+				long_btns.append("%s/%s" % [lang, bk])
+		for tk in ["UI_CRAMPS_OVERWHELMED", "UI_PAIN_PULLED_DOWN", "UI_BOSS_NO_IRON"]:
+			check(Text._strings.get(lang, {}).has(tk), "%s exists in %s" % [tk, lang])
+	Text.language = lang_was
+	check(long_btns.is_empty(), "the game-over buttons fit in sk / en / pt %s" % str(long_btns))
+
+	step("try again: the last checkpoint with a little iron, no 1A, no finished minigames")
+	old = pf.get_instance_id()
+	panel_box()._press(0)
+	pf = await _next_pf(old, "try again starts a new cave")
+	var mg3y := 0.0
+	for e in pf.level.entities:
+		if e.type == "trigger" and e.trigger_type == "mg3":
+			mg3y = e.y
+	check(Game.checkpoint == 3 and absf(pf.p.y - mg3y) < 1000, "she is back at checkpoint 3 (after the pipes), not at the cave's start (y %d, the pipes' row %d)" % [int(pf.p.y), int(mg3y)])
+	check(Game.iron == Game.RETRY_IRON, "with a little iron (%d)" % Game.iron)
+	check(node_box().node_id() == "" and not panel_box().is_open() and main.state == "platformer" and not pf.p.is_dead, "1A doesn't replay")
+	check(_collected(pf, "mg2") and _collected(pf, "mg3") and not _collected(pf, "mg4"), "the chocolate and the pipes are done, the prices still ahead")
+	Game.checkpoint_iron = 12
+	pf._die(false)
+	await until(func(): return panel_box().is_open(), 5)
+	old = pf.get_instance_id()
+	panel_box()._press(0)
+	pf = await _next_pf(old, "try again once more")
+	check(Game.iron == 12 and Game.checkpoint == 3, "she had 12 iron at the checkpoint: she gets them back (%d)" % Game.iron)
+
+	step("debug keys are for developers only")
+	old = pf.get_instance_id()
+	var iron0 := Game.iron
+	for kc in [KEY_5, KEY_1, KEY_G, KEY_H, KEY_C]:
+		_debug_key(kc)
+	await seconds(1.5)
+	check(main.platformer != null and main.platformer.get_instance_id() == old and not pf.boss.active and Game.iron == iron0 and Game.level == 1, "1 / 5 / G / H / C do nothing for a normal player")
+	await _go_trigger(pf, "mg4")
+	await finish_dialog("mg3_start")
+	var mgx: Minigame = main.minigame
+	_key(KEY_X, true)
+	await frames(3)
+	_key(KEY_X, false)
+	await frames(10)
+	check(main.minigame == mgx and mgx != null and main.state == "mg4" and node_box().node_id() == "", "X doesn't skip a minigame for a normal player")
+	Game.dev_unlocked = true
+	_key(KEY_X, true)
+	await frames(3)
+	_key(KEY_X, false)
+	await finish_dialog("mg3_after")
+	await frames(3)
+	check(main.state == "platformer" and Game.checkpoint == 4 and Game.cave_checkpoint == 4, "with developer mode unlocked X skips it (checkpoint 4)")
+	Game.dev_unlocked = false
+
+	step("a rest point between the prices and the boss")
+	Game.iron = 9
+	await _go_trigger(pf, "rest")
+	var rest_y := Game.rest_y
+	check(rest_y > 0 and Game.checkpoint_iron == 9 and main.state == "platformer" and node_box().node_id() == "", "passing the rest point (map marker R) saves it, the game goes on")
+	Game.iron = 3
+	pf._die(false)
+	await until(func(): return panel_box().is_open(), 5)
+	old = pf.get_instance_id()
+	panel_box()._press(0)
+	pf = await _next_pf(old, "try again after the rest point")
+	check(Game.checkpoint == 4 and absf(pf.p.y - rest_y) < 400 and Game.iron == 9 and _collected(pf, "mg4") and _collected(pf, "rest"), "she starts at the rest point with the iron she had there (y %d, rest %d, iron %d)" % [int(pf.p.y), int(rest_y), Game.iron])
+
+	step("boss lost: retry the fight")
+	Game.iron = 14
+	await _go_trigger(pf, "end")
+	await finish_dialog("1C")
+	check(pf.boss.active and Game.boss_iron == 14 and Game.checkpoint == 5, "in the arena with 14 iron")
+	Game.iron = 6
+	# A real fall: the floor under her goes, she drops into the depths.
+	for hx in pf.hexes:
+		if absf(hx.x - (pf.p.x + pf.p.width / 2)) < 140:
+			hx.active = false
+	pf.p.is_grounded = false
+	var lost := await until(func(): return panel_box().is_open(), 8)
+	check(pf.boss.lost, "she fell through the gap into the depths")
+	# The monster drifts over what is left of the floor while the panel waits.
+	for hx in pf.hexes:
+		if hx.active:
+			pf.boss.x = hx.x
+			pf.boss.y = hx.y - 20
+			break
+	await seconds(1.5)
+	check(panel_box()._panel.get("text", "") == "UI_PAIN_PULLED_DOWN" and Game.iron == 0, "the fallen fight is over: the monster takes nothing more, the one panel stays")
+	var choices: Array = panel_box()._panel.get("choices", [])
+	check(lost and choices.size() == 2 and choices[0].text == "BTN_RETRY_FIGHT" and choices[1].text == "BTN_MORE_IRON", "falling into the depths offers Retry fight and Back for more iron")
+	old = pf.get_instance_id()
+	panel_box()._press(0)
+	pf = await _next_pf(old, "Retry fight starts the arena again")
+	check(pf.boss.active and Game.iron == 14 and pf.hexes.size() == 14 and Game.checkpoint == 5, "the fight restarts at the arena with the iron she entered with (%d)" % Game.iron)
+	await seconds(1.5)
+	check(not panel_box().is_open() and Game.boss_retries == 1, "no stale game-over panel over the rematch (retries %d)" % Game.boss_retries)
+	await finish_dialog("1E")
+	await frames(3)
+	check(node_box().node_id() == "" and main.state == "platformer", "Estrogenka's rematch talk 1E played (not 1C, not the whole cave)")
+
+	step("the breath in the boss fight")
+	pf.boss.x = pf.p.x + 110
+	pf.boss.y = pf.p.y
+	var hp0: int = pf.boss.hp
+	pf.p.breath_charges = 0
+	pf.p.breathing_cooldown = 0
+	pf.p.is_recharging = true
+	pf.p.breath_index = 2
+	pf.p.breath_timer = 11.9
+	Input.action_press("move_down")
+	await frames(12)
+	Input.action_release("move_down")
+	await frames(10)
+	check(pf.boss.hp < hp0 and pf.p.breath_charges == 1, "a finished breathing cycle shrinks the monster at once (as 1C says) and leaves one charge (hp %d → %d, charges %d)" % [hp0, pf.boss.hp, pf.p.breath_charges])
+
+	step("boss lost again: no talk; back for more iron")
+	pf._die(true)
+	await until(func(): return panel_box().is_open(), 5)
+	choices = panel_box()._panel.get("choices", [])
+	check(panel_box()._panel.get("text", "") == "UI_BOSS_NO_IRON" and choices.size() == 2, "the iron ran out in the fight: the same two choices (%s)" % str(panel_box()._panel.get("text", "")))
+	old = pf.get_instance_id()
+	panel_box()._press(0)
+	pf = await _next_pf(old, "Retry fight again")
+	await seconds(0.5)
+	check(pf.boss.active and Game.iron == 14 and node_box().node_id() == "" and main.state == "platformer", "the second retry starts the fight at once (1E only the first time) %s" % str([pf.boss.active, Game.iron, node_box().node_id(), main.state]))
+	pf.p.y = pf.camera_y + 600
+	await until(func(): return panel_box().is_open(), 5)
+	for hx in pf.hexes:
+		if hx.active:
+			pf.boss.x = hx.x
+			pf.boss.y = hx.y - 20
+			break
+	await seconds(1.5)
+	old = pf.get_instance_id()
+	panel_box()._press(1)
+	pf = await _next_pf(old, "Back for more iron")
+	check(not pf.boss.active and Game.checkpoint == 4 and absf(pf.p.y - rest_y) < 400 and Game.iron == 14 and Game.checkpoint_iron == 14 and node_box().node_id() == "", "back at the last checkpoint (the rest point) keeping the iron she entered the fight with (%d), so what she gathers is more" % Game.iron)
+	await seconds(1.5)
+	check(not panel_box().is_open() and main.state == "platformer", "no stale game-over panel in the cave after Back for more iron")
+	Game.iron = 3
+	await _go_trigger(pf, "end")
+	await finish_dialog("1C")
+	check(pf.boss.active and pf.hexes.size() == 10 and Game.iron == 10 and Game.boss_iron == 10, "the arena's floor is at least 10 hexes and she has as much iron as there is floor")
+
+	step("debug keys once developer mode is unlocked; 1B when the first cramp comes near")
+	Game.dev_unlocked = true
+	old = pf.get_instance_id()
+	_debug_key(KEY_2)
+	pf = await _next_pf(old, "with developer mode unlocked, key 2 restarts at checkpoint 2")
+	check(Game.checkpoint == 2 and not pf.boss.active, "checkpoint 2")
+	_debug_key(KEY_C)
+	check(Game.iron == 20, "C gives 20 iron")
+	Game.dev_unlocked = false
+	# 1B was never played in this (pretend) run and she is past its letter: the first cramp
+	# that comes near plays it.
+	Game.cramp_taught = false
+	pf._first_enemy_seen = false
+	for e in pf.level.entities:
+		if e.type == "enemy" and not e.defeated:
+			pf.p.x = clampf(e.x + 160, 40, 1000)
+			pf.p.y = e.y - 30
+			pf.p.vy = 0
+			pf.camera_y = pf.p.y - 200
+			break
+	await finish_dialog("1B")
+	check(Game.cramp_taught, "past the letter (an edited map): the first cramp near her still plays 1B")
+	pf._first_enemy_seen = false
+	await seconds(0.5)
+	check(node_box().node_id() == "", "1B plays once per run")
+	Game.iron = 20
+	pf.p.held_by_cramp = -1
+	pf.p.is_recharging = false
+	Audio.stop_loop("krcloop.wav")
+	pf._place_at_checkpoint(2)
+	pf.p.invuln_timer = 5
+	await frames(5)
 
 
 func _teleport_to_entity(pf: Platformer, type: String) -> LevelData.Ent:

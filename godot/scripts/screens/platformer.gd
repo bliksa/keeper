@@ -493,6 +493,8 @@ var _boss_dialog_sent := false
 var _first_enemy_seen := false
 var _initial_dialog_sent := false
 var _start_checkpoint := 0
+## A "try again" restart (Main._start_level with retry): the level's dialog A doesn't replay.
+var skip_start_dialog := false
 var _prev_breathe := false
 ## Background (BackgroundData config). Empty = the level's own (bundled or "Use
 ## in game"); the level editor's test play sets the one being edited.
@@ -1015,11 +1017,39 @@ func _reset_boss() -> void:
 	boss = {
 		"active": false, "x": W / 2, "y": 3800.0, "vx": 1.5, "vy": -1.5, "hp": 8, "max_hp": 8,
 		"hit_timer": 0.0, "slow_timer": 0.0, "radius": 40.0, "lost": false, "spike_order": [],
-		"defeated_timer": 0.0,
+		"defeated_timer": 0.0, "wait": 0.0,
 	}
 
 
+## The cave's rest points (map marker R) she has passed: the y of the lowest one, -1 = none.
+func last_rest_y() -> float:
+	var y := -1.0
+	for e in level.entities:
+		if e.type == "trigger" and e.trigger_type == "rest" and e.collected:
+			y = maxf(y, e.y)
+	return y
+
+
+## A "try again" at a rest point (after _place_at_checkpoint): she stands at the rest row
+## at `y`, it and the rest rows above it are done. False if the map has none there.
+func place_at_rest(y: float) -> bool:
+	var at: LevelData.Ent = null
+	for e in level.entities:
+		if e.type == "trigger" and e.trigger_type == "rest" and e.y <= y + 1 and (at == null or e.y > at.y):
+			at = e
+	if at == null:
+		return false
+	for e in level.entities:
+		if e.type == "trigger" and e.trigger_type == "rest" and e.y <= at.y:
+			e.collected = true
+	p.vx = 0
+	p.vy = 0
+	_stand_at_trigger(at)
+	return true
+
+
 ## Starts the boss arena (from the trigger, or from Main for retry / dev skip).
+## The iron is the floor: at least 10 hexes, and she has as much iron as there is floor.
 func start_boss(iron: int) -> void:
 	p.held_by_cramp = -1
 	p.is_recharging = false
@@ -1064,7 +1094,8 @@ func start_boss(iron: int) -> void:
 	for e in level.entities:
 		if e.type == "iron" or e.trigger_type == "end":
 			e.collected = false
-	Game.boss_iron = iron
+	Game.iron = total
+	Game.boss_iron = total
 
 
 func _process(delta: float) -> void:
@@ -1089,6 +1120,8 @@ func _process(delta: float) -> void:
 		_update(dt)
 		if active and not _initial_dialog_sent and _start_checkpoint <= 1 and not is_climb() and not is_pms():
 			_initial_dialog_sent = true
+			if skip_start_dialog:
+				return
 			get_tree().create_timer(0.3).timeout.connect(_send_initial_dialog)
 	_shake = Vector2.ZERO
 	if shake_timer > 0:
@@ -1300,6 +1333,9 @@ func _unhandled_input(event: InputEvent) -> void:
 # --- update -------------------------------------------------------------------
 
 func _die(boss_variant: bool) -> void:
+	# (Already down, e.g. fell into the depths: one game over, no second panel.)
+	if p.is_dead:
+		return
 	p.is_recharging = false
 	p.breath_charges = 0
 	p.breath_timer = 0
@@ -1336,14 +1372,14 @@ func _hurt(from_x: float) -> void:
 		# No losses in the climb: just a knock.
 		Audio.play_sfx("au%d.wav" % randi_range(1, 5), 0.5)
 		return
-	var lose := randi_range(3, 5)
-	var lost := mini(Game.iron, lose)
-	var left := maxi(0, Game.iron - lose)
-	if left == 0:
+	# The iron rule: a hit costs 3–5 iron, down to 0; only a hit with none left is too much
+	# (game over → Main restarts at the last checkpoint).
+	if Game.iron <= 0:
 		_die(boss.active)
-	else:
-		Game.iron = left
-		Audio.nut_sound()
+		return
+	var lost := mini(Game.iron, randi_range(3, 5))
+	Game.iron -= lost
+	Audio.nut_sound()
 	_spray_nuts(lost)
 
 
@@ -1537,11 +1573,10 @@ func _update(dt: float) -> void:
 		p.cramp_drain_timer += dt
 		if p.cramp_drain_timer >= 1.5:
 			p.cramp_drain_timer = 0
-			var n := maxi(0, Game.iron - 1)
-			if n == 0:
-				_die(boss.active)
-			else:
-				Game.iron = n
+			# The cramp takes a nut now and then while it holds her, down to 0; it never kills
+			# (only being grabbed with no iron at all does: _update_enemy).
+			if Game.iron > 0:
+				Game.iron -= 1
 				Audio.nut_sound()
 				_spray_nuts(1)
 	elif p.dash_timer > 0:
@@ -1789,7 +1824,9 @@ func _update_recharge(dt: float, up: bool, down: bool) -> void:
 			Audio.set_bgm_volume(0.5)
 			Audio.play_sfx("krcoff.wav")
 		else:
-			p.breath_charges = 0 if boss.active else 3
+			# The boss: the finished cycle is a blast at once (below: it shrinks the monster, as
+			# 1C says) and one charge to aim later (the hint says "charge breath").
+			p.breath_charges = 1 if boss.active else 3
 		Audio.play_sfx("breathok.wav")
 		p.is_recharging = false
 		p.breath_index = 0
@@ -1834,7 +1871,7 @@ func _update_entities(dt: float, d60: float) -> void:
 			"enemy":
 				_update_enemy(e, dt, d60, touching)
 			"spike":
-				if touching and not p.is_dead and p.hit_timer <= 0 and p.invuln_timer <= 0 and Game.iron > 0 and not dialog_open:
+				if touching and not p.is_dead and p.hit_timer <= 0 and p.invuln_timer <= 0 and not dialog_open:
 					_hurt(e.x)
 			"trigger":
 				if touching and active:
@@ -1965,9 +2002,12 @@ func _update_enemy(e: LevelData.Ent, dt: float, d60: float, touching: bool) -> v
 			else:
 				Audio.play_sfx("krcoff.wav", 0.5)
 		return
-	if touching and not p.is_dead and p.hit_timer <= 0 and p.invuln_timer <= 0 and not e.defeated and Game.iron > 0 and not dialog_open and p.is_breathing <= 0:
+	if touching and not p.is_dead and p.hit_timer <= 0 and p.invuln_timer <= 0 and not e.defeated and not dialog_open and p.is_breathing <= 0:
 		if Game.has_breathing and not is_climb():
-			if p.held_by_cramp == -1:
+			if p.held_by_cramp == -1 and Game.iron <= 0:
+				# Grabbed with no iron left: too much (the same rule as a hit, _hurt).
+				_die(boss.active)
+			elif p.held_by_cramp == -1:
 				# A cramp grabs the player: breathe (▲■▼) to get free.
 				p.held_by_cramp = e.id
 				p.cramp_drain_timer = 0
@@ -2006,6 +2046,10 @@ func _hit_trigger(e: LevelData.Ent) -> void:
 				board_dialog(did)
 			return
 		trigger.emit("dialog_" + e.dialog_id)
+		return
+	if e.trigger_type == "rest":
+		# A rest point (the cave): a checkpoint between the minigames; she keeps moving.
+		trigger.emit("rest")
 		return
 	if e.trigger_type == "jackpot":
 		# A jackpot row (the climb): the JACKPOT and a checkpoint; she keeps flying.
@@ -2126,7 +2170,10 @@ func _update_boss(dt: float, d60: float) -> void:
 				var ty := p.y - 120
 				b.x += (tx - b.x) * 0.05 * d60
 				b.y += (ty - b.y) * 0.05 * d60 + sin(time_ms / 200.0) * 1.5
-			elif dialog_open:
+			elif dialog_open or b.wait > 0:
+				# (wait: a retry without a dialog gives her a moment before it comes.)
+				if not dialog_open:
+					b.wait -= dt
 				b.x = W / 2
 				b.y = level_h + 400
 			else:
@@ -2182,8 +2229,8 @@ func _update_boss(dt: float, d60: float) -> void:
 							hexes[i].active = false
 							removed += 1
 					_spray_nuts(lost, 10, 8, 2)
-			# Boss eats the iron floor.
-			if not dialog_open:
+			# Boss eats the iron floor (not once the fight is lost: nothing more to take).
+			if not dialog_open and not b.lost and not p.is_dead:
 				for hx in hexes:
 					if not hx.active:
 						continue
@@ -2257,8 +2304,10 @@ func _update_boss(dt: float, d60: float) -> void:
 		for e in level.entities:
 			if e.type == "iron":
 				e.collected = false
-		_die_quiet()
-		boss_lost.emit()
+		# (Already lost because the iron ran out: that game-over panel is on its way.)
+		if not p.is_dead:
+			_die_quiet()
+			boss_lost.emit()
 
 
 func _die_quiet() -> void:

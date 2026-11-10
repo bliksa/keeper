@@ -37,6 +37,6 @@ func finish(delay := 0.0) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# X skips the minigame (debug shortcut from the web build).
-	if not dialog_active and event.is_action_pressed("skip_minigame"):
+	# X skips the minigame (a debug shortcut: developer mode / ?dev=1 only, Game.dev_unlocked).
+	if Game.dev_unlocked and not dialog_active and event.is_action_pressed("skip_minigame"):
 		finish()

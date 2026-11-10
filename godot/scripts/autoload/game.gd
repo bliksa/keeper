@@ -31,10 +31,26 @@ var control_mode := "keyboard":
 		control_mode = v
 		control_mode_changed.emit()
 
-## Iron (the collectible) — also the player's "health" in the cave.
+## Iron (the collectible): her protection in the cave and the floor / fuel of the boss fight.
+## A hit costs iron, down to 0; only a hit with none left sends her back to the last
+## checkpoint (Platformer._hurt / the cramp's grab).
 var iron := 0
 ## Iron the player had when reaching the boss (used for boss retry).
 var boss_iron := 20
+## The cave's fail-soft state (Main._retry_cave / _retry_boss): the last cave checkpoint
+## reached (1 start, 2..4 after its minigames; stays when `checkpoint` becomes 5 at the boss),
+## the iron she had there, the rest point (map marker R) reached after it (its y, -1 = none),
+## whether 1B (the cramp lesson) has played, and the boss retries so far (1E plays on the first).
+var cave_checkpoint := 1
+var checkpoint_iron := 0
+var rest_y := -1.0
+var cramp_taught := false
+var boss_retries := 0
+## The iron a restart at a checkpoint gives at least.
+const RETRY_IRON := 5
+## Developer mode was opened in this session (Main._open_dev) or the page has ?dev=1: only
+## then the debug keys work (Main._unhandled_input: 1–5, Shift+2–5, G, H, C; X in a minigame).
+var dev_unlocked := false
 ## Breathing ability unlocked (after the forest breathing minigame).
 var has_breathing := false
 ## Skip the forest intro on restart (set after it was finished once).
@@ -65,6 +81,11 @@ func _ready() -> void:
 func reset_run() -> void:
 	iron = 0
 	boss_iron = 20
+	cave_checkpoint = 1
+	checkpoint_iron = 0
+	rest_y = -1.0
+	cramp_taught = false
+	boss_retries = 0
 	has_breathing = false
 	intro_done = false
 	checkpoint = 0

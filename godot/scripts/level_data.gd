@@ -13,6 +13,7 @@ extends RefCounted
 ##   5 B    boss fight trigger — spans the whole row
 ##   a…z    dialog trigger: the level's dialog with that letter (c in the cave = 1C)
 ##   X      "first cramp" dialog trigger (uppercase)
+##   R      rest point: a checkpoint between the minigames (a "try again" starts here) — whole row
 ##   T      teleport to the top of the level
 ##   I      on-screen hint text (double jump)
 ##   . or space   empty
@@ -58,7 +59,7 @@ const PALETTE := {
 	"=": "Platform", "O": "Iron", "^": "Spike", "P": "Spawn",
 	"S": "Cramp static", "F": "Cramp floating", "J": "Cramp lunging", "C": "Cramp chasing",
 	"2": "Minigame: chocolate", "3": "Minigame: pipes", "4": "Minigame: prices", "5": "Boss",
-	"T": "Teleport to top", "I": "Hint text",
+	"T": "Teleport to top", "I": "Hint text", "R": "Rest point (checkpoint)",
 	"@": "Bubble platform", "%": "Popping bubble", "~": "Updraft", "N": "Distraction",
 	"6": "Minigame: iron plate", "7": "Minigame: rhythm", "8": "Minigame: body signals",
 	"9": "LH wave", "E": "Summit / top",
@@ -212,6 +213,11 @@ static func build(level_rows: PackedStringArray, rh := ROW_H, horizontal := fals
 					e.behavior = {"S": "static", "F": "float", "L": "lunge", "J": "lunge", "C": "chase", "N": "distract"}[ch]
 					if e.behavior == "lunge":
 						e.lunge_timer = randf() * 2
+				"R":
+					if not horizontal:
+						# A rest point: the whole row (like the minigame rows).
+						e = _ent("trigger", 0, y - 100, L.width(), 200)
+						e.trigger_type = "rest"
 				"T":
 					e = _ent("trigger", x, y, CELL_W, rh)
 					e.trigger_type = "teleport"

@@ -246,6 +246,7 @@ const GROUPS := [
 		["4", "euro", "Minigame: prices (4)"],
 		["5", "skull", "Boss fight (5)"],
 		["I", "lightbulb", "Hint text (I)"],
+		["R", "flag", "Rest point (R): a checkpoint, \"try again\" starts here"],
 	]},
 	{"id": "teleports", "name": "Spawn & teleports", "items": [
 		["P", "map-pin", "Spawn point (P)"],
@@ -593,7 +594,7 @@ func _draw_grid() -> void:
 				"Y":
 					ci.draw_circle(mid, 11, Color("#fde68a", 0.5))
 					ci.draw_circle(mid, 5, Color("#fff4c2"))
-				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E", "K", "M", "Q", "G", "Z":
+				"1", "2", "3", "4", "5", "B", "6", "7", "8", "9", "E", "K", "M", "Q", "G", "Z", "R":
 					ci.draw_rect(cell.grow(-1), Color("#581c87", 0.8))
 					ci.draw_rect(cell.grow(-1), Color("#c084fc"), false, 1.0)
 					Draw.text_center(ci, font, mid, ch, 12, Color.WHITE)

@@ -41,8 +41,8 @@ tools/                     setup_godot.sh, test.sh, export_web.sh, gen_climb.py 
 
 - **Level**: edit `godot/data/levels/cave.txt` (or `climb.txt`, `pms.txt`, `garden.txt`). `.` = empty.
   Legend is in the header of `scripts/level_data.gd` (`=` platform, `O` iron,
-  `^` spike, `S/F/J/C` cramps, `P` spawn, `2/3/4` minigames, `5` boss, `a–z`
-  dialogs; level 2: `@` bubble, `%` popping bubble, `~` updraft, `N` distraction,
+  `^` spike, `S/F/J/C` cramps, `P` spawn, `2/3/4` minigames, `5` boss, `R` rest point
+  (a checkpoint between the minigames, whole row), `a–z` dialogs; level 2: `@` bubble, `%` popping bubble, `~` updraft, `N` distraction,
   `6/7/8` minigames, `9` LH wave, `E` summit; the jackpot climb: `!` spring, `$` heart,
   `:` bell, `?` joker, `0` jackpot row, `Z` the wheel of the cycle (mg11), `E` the top; no letters
   there; the PMS maze: `W` wall,
@@ -588,7 +588,37 @@ Fullscreen on/off, Main menu. It uses `get_tree().paused`; the menu itself runs 
 `PROCESS_MODE_ALWAYS`. Async steps in `main.gd` check `_run_id` so a fade
 started before a restart can't act on the new run.
 
-## Debug shortcuts (in the cave)
+## The cave fails soft (level 1)
+
+- **The iron rule** (one rule everywhere `_hurt` is used): iron is her protection. A hit (a spike: `_hurt`,
+  3–5 nuts and a knock-back with `hit_timer`) or a cramp's grab (one nut per 1.5 s while it holds her) costs
+  iron, down to 0, and never kills while she has any; only a hit / a grab with **0 iron** is too much
+  (`_die` → trigger `game_over` → the panel `UI_TOO_MUCH_PAIN` / `UI_CRAMPS_OVERWHELMED`, "Try again").
+  More iron is always better (it is also the boss's floor).
+- **Try again** (`Main._retry_cave`, also the cave branch of `_restart_cave`): the last checkpoint reached
+  (`Game.cave_checkpoint`: 1 the start, 2–4 after the minigames, set by `Main._cave_checkpoint`), or the
+  **rest point** passed after it (map marker `R` → trigger `rest` → `Game.rest_y`,
+  `Platformer.last_rest_y` / `place_at_rest`; the cave has one, between the prices and the boss; it is
+  invisible), with the iron she had there, at least `Game.RETRY_IRON` = 5 (`Game.checkpoint_iron`).
+  `_start_level(…, retry = true)`: dialog 1A doesn't replay (`Platformer.skip_start_dialog`), finished
+  minigames stay done, 2 s of invulnerability.
+- **1B** (the cramp lesson, the only breath-attack lesson) plays once per run (`Game.cramp_taught`,
+  `Main._teach_cramp`): from its letter `b` (its row in `cave.txt` is closed but for the letters, the test
+  checks it) or, if she got past it (an edited map), when the first cramp comes near (trigger `first_enemy`).
+- **The boss**: `start_boss(iron)` builds the floor of max(10, iron) hexes and sets `Game.iron` /
+  `Game.boss_iron` to it (iron = floor). Losing (fell into the depths: `boss_lost`; the iron ran out:
+  `game_over_boss`, text `UI_BOSS_NO_IRON`) offers `BTN_RETRY_FIGHT` → `Main._retry_boss` (the arena again
+  with `Game.boss_iron`; the first time Estrogenka's rematch talk 1E plays instead of 1C, later retries
+  start after `boss.wait` = 2 s) and `BTN_MORE_IRON` → `_retry_more_iron` → `_retry_cave` (back to the last checkpoint / rest
+  point, keeping at least `Game.boss_iron`, so the iron on the way back down is on top). Once the fight is lost
+  (`boss.lost` / `p.is_dead`) the monster eats no more floor and `_die` does nothing, and Main drops a
+  game-over panel whose platformer was replaced meanwhile: one panel per loss. A finished breathing cycle in the fight is a blast at once (it shrinks the
+  monster, as 1C says) and leaves one charge (the "charge breath" hint).
+
+## Debug shortcuts (developer mode only)
+
+They work only when `Game.dev_unlocked` is set: developer mode was opened in this session
+(`Main._open_dev`) or the page has `?dev=1` (web). A normal player's keys do nothing. Tests set the flag.
 
 `1–4` restart at checkpoint · `Shift+2…5` jump to minigame / boss / gate / LH wave
 trigger (climb: its checkpoints) · `5` boss (meadow: gate, old summit: wave, climb:

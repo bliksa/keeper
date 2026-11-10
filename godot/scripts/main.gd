@@ -69,6 +69,10 @@ func _ready() -> void:
 	_go_boot()
 	# Developer shortcut: ?mg=mg1 … mg11 opens that minigame right away.
 	if OS.has_feature("web"):
+		# ?dev=1: the debug keys work without opening developer mode (Game.dev_unlocked).
+		var dq: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('dev') || ''")
+		if dq is String and dq == "1":
+			Game.dev_unlocked = true
 		var q: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('mg') || ''")
 		if q is String and q != "":
 			open_minigame_for_dev.call_deferred(q)
@@ -352,6 +356,8 @@ func _go_dev() -> void:
 func _open_dev() -> void:
 	_clear_menu()
 	state = "dev"
+	# From now on (this session) the debug keys work in the game.
+	Game.dev_unlocked = true
 	Audio.stop_bgm()
 	var d := DevMenu.new()
 	d.back.connect(_go_title)
@@ -508,8 +514,8 @@ func _enter_cave() -> void:
 
 
 ## (Re)start the cave at a checkpoint (0/1 start, 2–4 after minigame N).
-func _start_cave(checkpoint: int, iron: int, fade := true) -> void:
-	await _start_level(1, checkpoint, iron, fade)
+func _start_cave(checkpoint: int, iron: int, fade := true, retry := false) -> void:
+	await _start_level(1, checkpoint, iron, fade, retry)
 
 
 ## (Re)start the meadow (level 2): 1 start, 2–4 after its minigames, 5 the gate.
@@ -620,7 +626,10 @@ func _into_pms(old: Platformer) -> void:
 	_dialog("4A")
 
 
-func _start_level(lvl: int, checkpoint: int, iron: int, fade := true) -> void:
+## retry: a "try again" (Main._retry_cave / _retry_boss): the level's dialog A doesn't replay,
+## the cave's fail-soft state (Game.cave_checkpoint / checkpoint_iron / rest_y) is kept and
+## she starts at the rest point reached after the checkpoint, if any, safe for a moment.
+func _start_level(lvl: int, checkpoint: int, iron: int, fade := true, retry := false) -> void:
 	var run := _run_id
 	if fade:
 		await _fade_to(1.0)
@@ -634,7 +643,16 @@ func _start_level(lvl: int, checkpoint: int, iron: int, fade := true) -> void:
 	Game.checkpoint = checkpoint
 	Game.iron = iron
 	Game.has_breathing = Game.has_breathing or checkpoint >= 1 or Game.intro_done
+	if not retry:
+		Game.cave_checkpoint = clampi(checkpoint, 1, 4)
+		Game.checkpoint_iron = iron
+		Game.rest_y = -1.0
 	platformer = _make_platformer(lvl, checkpoint)
+	if retry:
+		platformer.skip_start_dialog = true
+		platformer.p.invuln_timer = 2
+		if lvl == 1 and checkpoint < 5 and Game.rest_y >= 0 and not platformer.place_at_rest(Game.rest_y):
+			Game.rest_y = -1.0
 	_world_layer.add_child(platformer)
 	_set_state("platformer")
 	if fade:
@@ -670,12 +688,30 @@ func _open_minigame(m: Minigame, on_done: Callable) -> void:
 func _on_trigger(name: String) -> void:
 	if name.begins_with("dialog_"):
 		var id := Text.dialog_for_letter(name.substr(7), Game.level)
-		if id != "" and _node_box.node_id() != id:
+		if id == "1B":
+			# The cramp lesson plays once per run (not again after a "try again").
+			_teach_cramp()
+		elif id != "" and _node_box.node_id() != id:
 			_dialog(id)
 		return
 	match name:
 		"first_cramp":
-			_dialog("1B")
+			_teach_cramp()
+		"first_enemy":
+			# The first cramp comes near and 1B (the only breath-attack lesson) hasn't played:
+			# she got past its letter in the map (an edited map, a gap). Never skipped.
+			if Game.level == 1 and not Game.cramp_taught:
+				var run0 := _run_id
+				while _node_box.is_open() or state != "platformer":
+					await get_tree().process_frame
+					if run0 != _run_id:
+						return
+				_teach_cramp()
+		"rest":
+			# A rest point (map marker R): "try again" starts here from now on.
+			if Game.level == 1 and platformer and Game.checkpoint < 5:
+				Game.rest_y = platformer.last_rest_y()
+				Game.checkpoint_iron = Game.iron
 		"mg2":
 			_set_state("mg2")
 			_open_minigame(ChocoPuzzle.new(), _mg2_done)
@@ -810,16 +846,31 @@ func _on_trigger(name: String) -> void:
 		"game_over", "game_over_boss":
 			_set_dim(true)
 			var run := _run_id
+			var tries := _retries
+			var pf := platformer
 			await get_tree().create_timer(0.5).timeout
-			if run != _run_id:
+			# (A retry chosen meanwhile, e.g. from the boss-lost panel: no stale panel over it;
+			# nor one from the level that retry is already replacing.)
+			if run != _run_id or tries != _retries or platformer != pf or not is_instance_valid(pf):
+				return
+			if name == "game_over_boss" and Game.level == 1:
+				# The iron ran out in the boss fight: the fight again, or back for more iron.
+				_panel_box.show_panel({
+					"title": "UI_TOO_MUCH_PAIN", "text": "UI_BOSS_NO_IRON", "hide_button": true,
+					"choices": _boss_lost_choices(),
+				})
 				return
 			_panel_box.show_panel({
 				"title": "UI_TOO_MUCH_PAIN", "text": "UI_CRAMPS_OVERWHELMED", "hide_button": true,
-				"choices": [{"text": "BTN_TRY_AGAIN" if name == "game_over" else "BTN_RESTART_CAVE", "action": _restart_cave}],
+				"choices": [{"text": "BTN_TRY_AGAIN", "action": _restart_cave}],
 			})
 		"white_fade":
 			await _fade_to(1.0, 0.1, Color.WHITE)
 			_fade_to(0.0, 0.2, Color.WHITE)
+
+
+## Counts the "try again" restarts (a game-over panel still waiting to show is dropped).
+var _retries := 0
 
 
 func _restart_cave() -> void:
@@ -837,8 +888,57 @@ func _restart_cave() -> void:
 	if Game.level == 2:
 		_start_meadow(maxi(1, mini(Game.checkpoint, 4)), 5)
 		return
-	Game.boss_iron = 0
-	_start_cave(1, 0)
+	_retry_cave()
+
+
+## The cramp lesson 1B (the breath attack), once per run.
+func _teach_cramp() -> void:
+	if Game.cramp_taught or Game.level != 1:
+		return
+	Game.cramp_taught = true
+	_dialog("1B")
+
+
+## "Try again" in the cave: back to the last checkpoint reached (1 the start, 2–4 after its
+## minigames; or the rest point after it) with the iron she had there, at least
+## Game.RETRY_IRON. Dialog 1A, the finished minigames and their dialogs don't replay.
+func _retry_cave() -> void:
+	_panel_box.close()
+	_set_dim(false)
+	_retries += 1
+	_start_cave(clampi(Game.cave_checkpoint, 1, 4), maxi(Game.checkpoint_iron, Game.RETRY_IRON), true, true)
+
+
+## The boss fight again, at the arena, with the iron she entered with (Game.boss_iron), not
+## the whole cave. The first time Estrogenka's rematch talk 1E plays instead of 1C.
+func _retry_boss() -> void:
+	_panel_box.close()
+	_set_dim(false)
+	_retries += 1
+	var iron := Game.boss_iron
+	var run := _run_id
+	await _start_cave(5, iron, true, true)
+	if run != _run_id or platformer == null:
+		return
+	platformer.start_boss(iron)
+	Game.checkpoint = 5
+	Game.boss_retries += 1
+	if Game.boss_retries == 1:
+		_dialog("1E")
+	else:
+		# No talk this time: a moment to get ready before it comes.
+		platformer.boss.wait = 2.0
+
+
+func _boss_lost_choices() -> Array:
+	return [{"text": "BTN_RETRY_FIGHT", "action": _retry_boss}, {"text": "BTN_MORE_IRON", "action": _retry_more_iron}]
+
+
+## "Back for more iron" after a lost fight: the last checkpoint / rest point, keeping at least
+## the iron she entered the fight with, so what she gathers on the way back down is on top.
+func _retry_more_iron() -> void:
+	Game.checkpoint_iron = maxi(Game.checkpoint_iron, Game.boss_iron)
+	_retry_cave()
 
 
 func _retry_wave() -> void:
@@ -849,19 +949,28 @@ func _retry_wave() -> void:
 
 
 func _mg2_done() -> void:
-	Game.checkpoint = 2
+	_cave_checkpoint(2)
 	_panel_box.close()
 	_dialog("mg1_after", _back_to_cave)
 
 
 func _mg3_done() -> void:
-	Game.checkpoint = 3
+	_cave_checkpoint(3)
 	_panel_box.close()
 	_dialog("mg2_win", func(): _dialog("mg2_after", _back_to_cave))
 
 
+## A cave checkpoint is reached (after its minigame N − 1): where "try again" starts, and
+## with how much iron.
+func _cave_checkpoint(n: int) -> void:
+	Game.checkpoint = n
+	Game.cave_checkpoint = n
+	Game.checkpoint_iron = Game.iron
+	Game.rest_y = -1.0
+
+
 func _mg4_done() -> void:
-	Game.checkpoint = 4
+	_cave_checkpoint(4)
 	_panel_box.close()
 	_dialog("mg3_after", _back_to_cave)
 
@@ -1101,15 +1210,19 @@ func _walk_to_meadow() -> void:
 
 
 func _on_boss_lost() -> void:
+	_retries += 1
 	_set_dim(true)
 	_panel_box.show_panel({
 		"title": "UI_FALLING_DEPTHS", "text": "UI_PAIN_PULLED_DOWN", "hide_button": true,
-		"choices": [{"text": "BTN_RESTART_CAVE", "action": _restart_cave}],
+		"choices": _boss_lost_choices(),
 	})
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Debug keys in the cave (same as the web build).
+	# Debug keys (same as the web build): only once developer mode was opened in this session
+	# or with ?dev=1 on the web (Game.dev_unlocked), never for a normal player.
+	if not Game.dev_unlocked:
+		return
 	if state != "platformer" or not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	if platformer and platformer.corridor_t > 0:
