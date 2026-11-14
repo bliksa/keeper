@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>Keeper of the Cycle</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #121212;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<style>body{background:#000}#status #status-progress{--s:min(calc(100vw / 1066),calc(100vh / 600));position:fixed;top:calc(50vh - 74 * var(--s));left:calc(50vw - 128 * var(--s));right:auto;bottom:auto;margin:0;width:calc(256 * var(--s));height:calc(8 * var(--s));-webkit-appearance:none;appearance:none;border:0;border-radius:calc(4 * var(--s));overflow:hidden;background:#1f2937}#status-progress::-webkit-progress-bar{background:#1f2937;border-radius:calc(4 * var(--s))}#status-progress::-webkit-progress-value{background:#10b981;border-radius:calc(4 * var(--s))}#status-progress::-moz-progress-bar{background:#10b981;border-radius:4px}</style>
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<style>@font-face{font-family:KeeperComfortaa;src:url(Comfortaa.ttf);font-weight:300 700}</style><div id="status"><div id="kc-build" style="position:fixed;--s:min(calc(100vw / 1066),calc(100vh / 600));left:calc(50vw - 200 * var(--s));width:calc(400 * var(--s));top:calc(50vh - 60 * var(--s));text-align:center;color:#6b7280;font-family:KeeperComfortaa,sans-serif;font-weight:500;font-size:calc(12 * var(--s));z-index:5">v2.0.0 · build 93a90f9 · 2026-11-14 14:34</div>
+			<img id="status-splash" class="show-image--false fullsize--true use-filter--true" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="index.js"></script>
+		<script>
+const GODOT_CONFIG = {"mainPack":"index-93a90f95.pck","args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index-93a90f95.pck":42086784,"index.wasm":43699190},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	<script>// Injected into build/web/index.html by tools/export_web.sh (93a90f9 is replaced).
+// Checks version.json (written next to the page at export: the build and its
+// recent commits) on load, every minute and when the tab comes back. A newer
+// build: a chime and a card "New version" with, in a few words, what is new since
+// this page's build. On the boot / title screens the page then reloads by itself
+// after a few seconds (once per new build); during play or in developer mode
+// (unsaved edits) it waits for the Reload button. The game reports its state and
+// language in window.keeperState / window.keeperLang (main.gd _report_state).
+(function () {
+  var BUILD = "93a90f9";
+  var told = false;
+  var T = {
+    sk: { title: "Nová verzia", news: "Čo je nové:", reload: "Obnoviť", all: "Všetky zmeny", soon: "Obnovím o %d s…", more: "…a ďalšie (%d)" },
+    en: { title: "New version", news: "What's new:", reload: "Reload", all: "All changes", soon: "Reloading in %d s…", more: "…and %d more" },
+    pt: { title: "Nova versão", news: "O que há de novo:", reload: "Recarregar", all: "Todas as alterações", soon: "A recarregar em %d s…", more: "…e mais %d" }
+  };
+  function tr() {
+    var l = (window.keeperLang || navigator.language || "en").slice(0, 2).toLowerCase();
+    return T[l] || T.en;
+  }
+  function chime() {
+    try {
+      var A = window.AudioContext || window.webkitAudioContext;
+      var ctx = new A();
+      [[988, 0], [1319, 0.12]].forEach(function (n) {
+        var o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = "sine"; o.frequency.value = n[0];
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + n[1]);
+        g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + n[1] + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + n[1] + 0.6);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(ctx.currentTime + n[1]); o.stop(ctx.currentTime + n[1] + 0.65);
+      });
+    } catch (e) {}
+  }
+  // The commits newer than this page's build (the list is newest first).
+  function news(v) {
+    var out = [];
+    var list = v.changes || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].sha === BUILD) break;
+      out.push(list[i].s);
+    }
+    return out;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function card(v, auto) {
+    var t = tr();
+    var items = news(v);
+    var d = document.createElement("div");
+    d.id = "kc-update";
+    d.style.cssText = "position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:20;max-width:min(560px,92vw);background:#f0eee9;color:#0f3d34;" +
+      "font:500 13px KeeperComfortaa,sans-serif;padding:12px 14px 12px 18px;border-radius:18px;box-shadow:0 4px 18px rgba(0,0,0,.35)";
+    var html = "<div style='display:flex;gap:12px;align-items:center'><b style='font-size:15px;flex:1'>" + esc(t.title) +
+      " <span style='color:#64748b;font-weight:500'>(" + esc(v.sha) + ")</span></b></div>";
+    if (items.length) {
+      html += "<div style='margin-top:6px;color:#334155'>" + esc(t.news) + "</div><ul style='margin:4px 0 0 18px;padding:0;line-height:1.45'>";
+      items.slice(0, 4).forEach(function (s) { html += "<li>" + esc(s) + "</li>"; });
+      if (items.length > 4) html += "<li style='list-style:none;color:#64748b'>" + esc(t.more.replace("%d", items.length - 4)) + "</li>";
+      html += "</ul>";
+    }
+    html += "<div style='display:flex;gap:10px;align-items:center;margin-top:10px'><a href='changelog.html' target='_blank' style='color:#16a34a'>" + esc(t.all) + "</a><span id='kc-soon' style='flex:1;color:#64748b;text-align:right'></span></div>";
+    d.innerHTML = html;
+    var row = d.lastChild;
+    var b = document.createElement("button");
+    b.textContent = t.reload;
+    b.style.cssText = "font:700 13px KeeperComfortaa,sans-serif;background:#16a34a;color:#fff;border:0;border-radius:12px;padding:7px 14px;cursor:pointer";
+    b.onclick = function () { location.reload(); };
+    var x = document.createElement("button");
+    x.textContent = "×";
+    x.style.cssText = "font:700 16px sans-serif;background:none;border:0;color:#64748b;cursor:pointer";
+    x.onclick = function () { auto = false; d.remove(); };
+    row.appendChild(b); row.appendChild(x);
+    document.body.appendChild(d);
+    if (auto) {
+      var n = 6;
+      var soon = d.querySelector("#kc-soon");
+      var tick = function () {
+        if (!auto) return;
+        soon.textContent = t.soon.replace("%d", n);
+        if (n-- <= 0) { location.reload(); return; }
+        setTimeout(tick, 1000);
+      };
+      tick();
+    }
+  }
+  function check() {
+    if (told) return;
+    fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.json() : null; }).then(function (v) {
+      if (!v || !v.sha || v.sha === BUILD || told) return;
+      told = true;
+      chime();
+      var st = window.keeperState || "";
+      var tried = "";
+      try { tried = sessionStorage.getItem("keeperReloadFor") || ""; } catch (e) {}
+      // Once per new build: if the page still comes back old (a cache), no auto reload.
+      var auto = (st === "" || st === "boot" || st === "title") && tried !== v.sha;
+      if (auto) {
+        try { sessionStorage.setItem("keeperReloadFor", v.sha); } catch (e) {}
+      }
+      card(v, auto);
+    }).catch(function () {});
+  }
+  check();
+  setInterval(check, 60000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) check(); });
+})();
+</script></body>
+</html>
+
